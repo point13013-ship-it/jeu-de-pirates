@@ -99,4 +99,6 @@ def paint(look):
 
 paint({"coat": (170, 52, 62), "pants": (74, 70, 104), "beard": (96, 56, 44), "patch": False, "hat": "tricorne"}).save(OUT / "pirate_red.png")
 paint({"coat": (52, 90, 150), "pants": (90, 72, 70), "beard": None, "patch": True, "hat": "bandana"}).save(OUT / "pirate_blue.png")
+paint({"coat": (62, 128, 74), "pants": (84, 70, 62), "beard": (58, 38, 30), "patch": False, "hat": "bandana"}).save(OUT / "pirate_green.png")
+paint({"coat": (204, 158, 58), "pants": (70, 74, 112), "beard": None, "patch": True, "hat": "tricorne"}).save(OUT / "pirate_yellow.png")
 print("ok", W, H)
