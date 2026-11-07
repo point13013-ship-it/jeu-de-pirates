@@ -5,6 +5,7 @@ shader_type spatial;
 
 uniform int kind = 0;
 uniform vec3 base : source_color = vec3(0.8, 0.7, 0.5);
+uniform float emit = 0.0;   // kind 4 : couleur unie, éventuellement lumineuse (vitrines, lanternes)
 
 varying vec3 op;
 varying vec3 on;
@@ -66,14 +67,17 @@ void fragment() {
 		c *= mix(0.86, 1.1, hash(vec2(lane, 2.0)));
 		c = mix(c * 0.45, c, step(0.1, f));
 		c *= 1.0 - 0.1 * step(0.8, hash(floor(vec2(p.x * 12.0, p.y * 3.0))));
-	} else {
+	} else if (kind == 3) {
 		// pierre de taille : blocs de 60 x 30 cm décalés, joints clairs, blocs plus ou moins usés
 		vec2 b = vec2(p.x / 0.6 + floor(p.y / 0.3) * 0.5, p.y / 0.3);
 		vec2 bf = fract(b);
 		c *= mix(0.84, 1.12, hash(floor(b)));
 		c = mix(c * 1.25, c, step(0.07, bf.y) * step(0.04, bf.x));
+	} else {
+		c = base;
 	}
 	ALBEDO = c;
+	EMISSION = base * emit;
 	ROUGHNESS = 1.0;
 	SPECULAR = 0.0;
 }

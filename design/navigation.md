@@ -12,7 +12,7 @@ au poste, on appuie sur E. Personne ne « pilote » depuis un menu.
 | Cabine | château arrière | entrer par la porte ; toit et murs côté caméra disparaissent | fait |
 | Table de cartes | cabine | choisir la destination | à faire |
 | Vigie | nid-de-pie | voir loin, signaler | à faire |
-| Réparations / écopage | coque | planches, seau, voie d'eau après un tir | à faire |
+| Cale | écoutille sur le pont (E) | descendre, boucher les voies d'eau avec une planche (étagère au fond), écoper au seau | fait |
 
 ## Vent
 Le vent a une direction. Le rendement des voiles va de 12 % (face au vent) à 100 % (vent arrière) ;
@@ -38,3 +38,17 @@ Un joueur héberge (ENet, port 7777), jusqu'à 3 amis rejoignent le même bateau
 
 ## Réglages (data/ship_stats.json)
 `max_speed` (m/s), `turn_rate` (rad/s), `accel` (m/s²), `sail_speed` (ouverture par seconde).
+
+## Dégâts de coque et cale (src/hull_damage.gd, hold_layout.gd, hold_room.gd, sea_rocks.gd)
+Un choc à plus de 1,6 m/s (récif, quai ou mur, boulet) ouvre 1 à 3 voies d'eau sur 12 emplacements fixes le long
+des deux flancs (6 par côté, autour de l'impact). Chaque voie d'eau remplit la cale de 0,8 % par seconde ; cale
+pleine = le bateau coule (remorqué au port, remis à neuf). L'eau enfonce le bateau et le ralentit (jusqu'à -45 %).
+- Cale : écoutille du pont (E), fondu au noir, vue en coupe. Au fond : l'échelle, l'étagère à planches, le seau.
+  Bâbord est au fond de l'écran, tribord devant ; les trous sont sur les pentes des bordés, visibles des deux côtés.
+- Réparer : prendre une planche à l'étagère (E), aller devant la voie d'eau (E). La planche reste clouée.
+  Écoper : E devant le seau, une fois par coup (-5 %).
+- Récifs : `rocks` dans data/hull.json ([x, z, rayon]). Boulets ennemis : `spawn_enemy_ball()` (essai
+  `--enemy-fire=secondes,côté`), prêt pour le PvP.
+- Réseau : l'hôte décide ; l'état de la coque (masque des voies d'eau, des planches, niveau d'eau) est dans
+  l'état du bateau (protocole 2), les chocs et le naufrage sont des événements fiables.
+- Essais : `--hold --hpos=x,z --hit=abscisse,côté,nombre --water=0.4 --send=patch:3,bail:0`.

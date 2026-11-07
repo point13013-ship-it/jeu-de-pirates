@@ -17,7 +17,12 @@ const INTERACT_RANGE := 1.5
 const STATS_PATH := "res://data/ship_stats.json"
 
 enum Mode { WALK, HELM }
-enum Loc { SHIP, LAND, CLIMB, NEST }   ## où est le pirate : sur le pont, à terre, sur une échelle, dans le nid de pie
+enum Loc { SHIP, LAND, CLIMB, NEST, HOLD }   ## où est le pirate : sur le pont, à terre, sur une échelle, dans le nid de pie, dans la cale
+const SPRITE_DEPTH_BIAS := 0.7         ## m : de combien on avance un pirate à terre vers la caméra (voir _snap_sprite)
+const HOLD_Y := 40.0                  ## hauteur (m) où la cale est posée dans la scène, loin au-dessus de tout
+const HIT_BALL := 0                    ## types de choc : boulet, récif, quai ou mur
+const HIT_ROCK := 1
+const HIT_WALL := 2
 const JUMP_SPEED := 5.0                ## m/s
 const GRAVITY := 15.0                  ## m/s²
 const CLIMB_SPEED := 2.6               ## m/s le long du mât
@@ -90,6 +95,45 @@ var _net_target: Dictionary = {}    ## client : dernier état du bateau reçu de
 var _rudder_sent := 0.0
 var _port: Node3D
 var _port_meta: Dictionary = {}
+var _hull := HullDamage.new()        ## voies d'eau et eau dans la cale (l'hôte décide, les clients copient)
+var _rocks := SeaRocks.new()
+var _hold_layout := HoldLayout.new()
+var _hold: HoldRoom
+var _hold_items: Array = []
+var _hpos := Vector2.ZERO            ## position dans la cale (x, z)
+var _prev_hpos := Vector2.ZERO
+var _prev_hold := false
+var _carry_kind := ""                ## ce que je porte : "" (rien), "ball" (boulet) ou "plank" (planche)
+var _plank_icon: MeshInstance3D
+var _hull_marks: Array = []          ## par voie d'eau : repère visible sur la coque, vu de dehors
+var _env: Environment
+var _env_saved: Dictionary = {}
+var _fade: ColorRect
+var _fade_busy := false
+var _gauge_back: ColorRect
+var _gauge_fill: ColorRect
+var _gauge_label: Label
+var _impact_cd := 0.0
+var _bail_cd := 0.0
+var _shake_t := 0.0
+var _spawn_pos := Vector2.ZERO       ## où le bateau est remorqué quand il coule
+var _spawn_yaw := 0.0
+var _shown_leaks := -1
+var _shown_patched := -1
+var _lh := 0.0                       ## hauteur du sol sous mes pieds à terre (terrasse, escalier, étage)
+var _profile := Profile.new()        ## mon or et mes quêtes
+var _quests: QuestLog
+var _dialog: DialogueBox
+var _dialog_ctx: Dictionary = {}     ## le dialogue en cours : {npc, offer, turn_in}
+var _npcs: Array = []                ## TownNpc de la ville (boutiquiers et promeneurs)
+var _npc_range := 2.3
+var _interior_nodes: Array = []      ## par intérieur : {root, building}
+var _interior_active := -1           ## indice de l'intérieur où je suis, ou -1
+var _buildings: Array = []           ## les bâtiments du port : {mesh, normal, ghost, alpha, ghosted}
+var _ghost_shader_cache: Shader
+var _ghosting := false               ## un bâtiment est rendu transparent devant moi
+var _gold_label: Label
+var _quest_label: Label
 
 
 const SEA_PATH := "res://data/sea.json"
@@ -157,6 +201,7 @@ func _setup_ship(ship_name: String) -> void:
 	_build_blob()
 	_build_player()
 	_build_interactables()
+	_setup_hull()
 	_apply_test_args()
 	_float_ship()
 	var rel0 := _player_world() - _ship.position
@@ -320,6 +365,7 @@ func _build_view() -> void:
 	env.ambient_light_color = Color(0.62, 0.66, 0.78) if day else Color(0.42, 0.40, 0.68)
 	env.ambient_light_energy = 1.05 if day else 1.25
 	env.tonemap_mode = Environment.TONE_MAPPER_LINEAR
+	_env = env
 	var world_env := WorldEnvironment.new()
 	world_env.environment = env
 	_world.add_child(world_env)
@@ -456,18 +502,40 @@ func _build_port() -> void:
 				is_ground = true
 		if is_ground or mi.mesh == null:
 			continue
+		var is_building := String(n.name).begins_with("bldg_")
+		var record := {"mesh": mi, "normal": {}, "ghost": {}, "alpha": 1.0, "ghosted": false}
 		for s in mi.mesh.get_surface_count():
 			var src := mi.mesh.surface_get_material(s) as BaseMaterial3D
 			if src == null:
 				continue
+			var mat: ShaderMaterial = null
 			for prefix: String in surface_kinds:
 				if src.resource_name.begins_with(prefix):
-					var sm := ShaderMaterial.new()
-					sm.shader = surface_shader
-					sm.set_shader_parameter("kind", surface_kinds[prefix])
-					sm.set_shader_parameter("base", src.albedo_color)
-					mi.set_surface_override_material(s, sm)
+					mat = ShaderMaterial.new()
+					mat.shader = surface_shader
+					mat.set_shader_parameter("kind", surface_kinds[prefix])
+					mat.set_shader_parameter("base", src.albedo_color)
 					break
+			if mat == null and is_building:
+				# le reste d'un bâtiment (volets, auvents, vitrines) : couleur unie
+				mat = ShaderMaterial.new()
+				mat.shader = surface_shader
+				mat.set_shader_parameter("kind", 4)
+				mat.set_shader_parameter("base", src.albedo_color)
+				mat.set_shader_parameter("emit", 1.0 if src.emission_enabled else 0.0)
+			if mat == null:
+				continue
+			mi.set_surface_override_material(s, mat)
+			if is_building:
+				# la même matière en version transparente, qu'on met à la place quand le bâtiment cache le pirate
+				var ghost := ShaderMaterial.new()
+				ghost.shader = _ghost_shader(surface_shader)
+				for param in ["kind", "base", "emit"]:
+					ghost.set_shader_parameter(param, mat.get_shader_parameter(param))
+				(record["normal"] as Dictionary)[s] = mat
+				(record["ghost"] as Dictionary)[s] = ghost
+		if is_building and not (record["normal"] as Dictionary).is_empty():
+			_buildings.append(record)
 	# amarrage : coque contre le flanc est du ponton, étrave au sud (+z dans le jeu)
 	if not _args.has("player") and not _args.has("yaw"):
 		var dock: Dictionary = _port_meta.get("dock", {})
@@ -520,6 +588,7 @@ func _float_ship() -> void:
 	var h_port := _wave_height(c2 + l2 * hb)
 	var h_star := _wave_height(c2 - l2 * hb)
 	var heave := (h_bow + h_stern + h_port + h_star) * 0.25 * float(_sea_cfg.get("buoyancy_follow", 0.85))
+	heave -= _hull.fill() * 0.55   # la cale qui se remplit enfonce le bateau
 	var pitch := atan2(h_bow - h_stern, hl * 2.0) * float(_sea_cfg.get("pitch_follow", 0.7))
 	var roll := atan2(h_port - h_star, hb * 2.0) * float(_sea_cfg.get("roll_follow", 0.7))
 	roll -= _sim.rudder * 0.035 * clampf(_sim.speed / maxf(_sim.max_speed, 0.1), 0.0, 1.0)
@@ -647,6 +716,57 @@ func _build_hud() -> void:
 	_status_label.add_theme_constant_override("outline_size", 6)
 	_status_label.add_theme_font_size_override("font_size", 15)
 	add_child(_status_label)
+	# jauge de la cale
+	_gauge_back = ColorRect.new()
+	_gauge_back.color = Color(0.05, 0.03, 0.1, 0.75)
+	_gauge_back.position = Vector2(12, 62)
+	_gauge_back.size = Vector2(190, 16)
+	_gauge_back.visible = false
+	add_child(_gauge_back)
+	_gauge_fill = ColorRect.new()
+	_gauge_fill.position = Vector2(2, 2)
+	_gauge_fill.size = Vector2(0, 12)
+	_gauge_back.add_child(_gauge_fill)
+	_gauge_label = Label.new()
+	_gauge_label.position = Vector2(12, 80)
+	_gauge_label.add_theme_color_override("font_color", Color(1, 0.95, 0.85))
+	_gauge_label.add_theme_color_override("font_outline_color", Color(0.05, 0.03, 0.1))
+	_gauge_label.add_theme_constant_override("outline_size", 6)
+	_gauge_label.add_theme_font_size_override("font_size", 14)
+	_gauge_label.visible = false
+	add_child(_gauge_label)
+	# or et quête en cours
+	_profile.persistent = not _args.has("fresh")
+	_profile.load_file()
+	_quests = QuestLog.new(_profile)
+	_gold_label = Label.new()
+	_gold_label.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	_gold_label.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	_gold_label.position = Vector2(-12, 8)
+	_gold_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	_gold_label.add_theme_color_override("font_color", Color(1.0, 0.85, 0.35))
+	_gold_label.add_theme_color_override("font_outline_color", Color(0.05, 0.03, 0.1))
+	_gold_label.add_theme_constant_override("outline_size", 6)
+	_gold_label.add_theme_font_size_override("font_size", 17)
+	add_child(_gold_label)
+	_quest_label = Label.new()
+	_quest_label.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
+	_quest_label.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	_quest_label.position = Vector2(12, -96)
+	_quest_label.add_theme_color_override("font_color", Color(0.75, 0.9, 1.0))
+	_quest_label.add_theme_color_override("font_outline_color", Color(0.05, 0.03, 0.1))
+	_quest_label.add_theme_constant_override("outline_size", 6)
+	_quest_label.add_theme_font_size_override("font_size", 14)
+	add_child(_quest_label)
+	_dialog = DialogueBox.new()
+	_dialog.closed.connect(_on_dialog_closed)
+	add_child(_dialog)
+	# fondu au noir des changements d'étage
+	_fade = ColorRect.new()
+	_fade.color = Color(0, 0, 0, 0)
+	_fade.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_fade.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_fade)
 
 
 func _apply_test_args() -> void:
@@ -673,6 +793,8 @@ func _apply_test_args() -> void:
 		var lp := str(_args["land"]).split(",")
 		_lpos = Vector2(float(lp[0]), float(lp[1]))
 		_loc = Loc.LAND
+		if _args.has("lh"):
+			_lh = float(_args["lh"])
 	if _args.has("press"):
 		# test : --press=E@2,SPACE@3.5 appuie sur ces touches aux secondes indiquées
 		var codes := {"E": KEY_E, "R": KEY_R, "SPACE": KEY_SPACE}
@@ -695,6 +817,27 @@ func _apply_test_args() -> void:
 			for i in _ship.cannons.size():
 				_cannon_loaded[i] = true
 				_request("fire", i))
+	if _args.has("quest"):   # essai : --quest=tonnelet met cette quête en cours
+		_profile.quests[str(_args["quest"])] = "active"
+	if _args.has("water"):
+		_hull.water = float(_args["water"])
+	if _args.has("hit"):
+		# test : --hit=abscisse,côté,nombre (côté +1 bâbord, -1 tribord) ouvre des voies d'eau 0,5 s après le départ
+		var hp := str(_args["hit"]).split(",")
+		get_tree().create_timer(0.5).timeout.connect(func() -> void:
+			apply_hit(HIT_ROCK, float(hp[0]), int(hp[1]), int(hp[2])))
+	if _args.has("hold"):
+		get_tree().create_timer(0.3).timeout.connect(func() -> void:
+			_enter_hold(true)
+			if _args.has("hpos"):
+				var hq := str(_args["hpos"]).split(",")
+				_hpos = Vector2(float(hq[0]), float(hq[1]))
+				_prev_hpos = _hpos)
+	if _args.has("enemy-fire"):
+		# test : --enemy-fire=secondes[,côté] un boulet ennemi arrive sur le bateau à ce moment
+		var ef := str(_args["enemy-fire"]).split(",")
+		get_tree().create_timer(float(ef[0])).timeout.connect(func() -> void:
+			spawn_enemy_ball(int(ef[1]) if ef.size() > 1 else -1))
 	if _args.has("shot"):
 		get_tree().create_timer(float(_args.get("shot-after-secs", "3"))).timeout.connect(func() -> void:
 			get_viewport().get_texture().get_image().save_png(str(_args["shot"])))
@@ -712,6 +855,484 @@ func _apply_test_args() -> void:
 		get_tree().create_timer(float(_args["quit-after-secs"])).timeout.connect(get_tree().quit)
 
 
+# ------------------------------------------------------------------ coque et cale
+
+
+## Prépare tout ce qui touche à la coque : règles de dégâts, récifs, cale, écoutille, repères sur la coque.
+func _setup_hull() -> void:
+	var cfg := HullDamage.load_config()
+	_hull.configure(cfg, _ship.length)
+	_rocks.load_from(cfg)
+	if not _args.has("no-rocks"):
+		_rocks.build(_world_fixed, SEA_Y)
+	_spawn_pos = _sim.position
+	_spawn_yaw = _sim.yaw
+	_hold_layout.setup(_ship.length, _ship.hatch_pos().x, _hull)
+	_hold = HoldRoom.new()
+	_hold.position = Vector3(0.0, HOLD_Y, 0.0)
+	_world.add_child(_hold)
+	_hold.build(_hold_layout)
+	_hold.visible = false
+	_hold_items = _hold_layout.items()
+	if not _land.walk_rects.is_empty():
+		_build_town()
+	_interactables.append({"kind": "hatch", "pos": _ship.hatch_pos()})
+	if _ship.ship_name == "sloop":
+		# le modèle du sloop n'a pas d'écoutille : on en pose une, basse, qu'on enjambe
+		var hatch := MeshInstance3D.new()
+		var hm := BoxMesh.new()
+		hm.size = Vector3(1.1, 0.26, 1.1)
+		hatch.mesh = hm
+		var wood := StandardMaterial3D.new()
+		wood.albedo_color = Color(0.55, 0.38, 0.22)
+		hatch.material_override = wood
+		hatch.position = _ship.to_local3(_ship.hatch_pos(), 0.13)
+		_ship.add_child(hatch)
+		var grate := MeshInstance3D.new()
+		var gm := BoxMesh.new()
+		gm.size = Vector3(0.9, 0.05, 0.9)
+		grate.mesh = gm
+		var dark := StandardMaterial3D.new()
+		dark.albedo_color = Color(0.08, 0.06, 0.06)
+		grate.material_override = dark
+		grate.position = _ship.to_local3(_ship.hatch_pos(), 0.27)
+		_ship.add_child(grate)
+	# planche portée
+	_plank_icon = MeshInstance3D.new()
+	var pm := BoxMesh.new()
+	pm.size = Vector3(0.7, 0.07, 0.16)
+	_plank_icon.mesh = pm
+	var plank_mat := StandardMaterial3D.new()
+	plank_mat.albedo_color = Color(0.82, 0.64, 0.40)
+	_plank_icon.material_override = plank_mat
+	_plank_icon.visible = false
+	_plank_icon.position = Vector3(0.0, 2.2, 0.0)
+	_sprite.add_child(_plank_icon)
+	# repères des voies d'eau sur la coque
+	for slot in _hull.slot_count():
+		var bx := _hull.slot_bx(slot)
+		var side := _hull.slot_side(slot)
+		var mark := Node3D.new()
+		var disc := MeshInstance3D.new()
+		var cm := CylinderMesh.new()
+		cm.top_radius = 0.3
+		cm.bottom_radius = 0.3
+		cm.height = 0.1
+		disc.mesh = cm
+		var dm := StandardMaterial3D.new()
+		dm.albedo_color = Color(0.03, 0.02, 0.02)
+		disc.material_override = dm
+		disc.rotation = Vector3(PI / 2.0, 0.0, 0.0)
+		mark.add_child(disc)
+		for k in 7:
+			var a := TAU * float(k) / 7.0
+			var chip := MeshInstance3D.new()
+			var bm := BoxMesh.new()
+			bm.size = Vector3(0.1, 0.07, 0.3)
+			chip.mesh = bm
+			var cmat := StandardMaterial3D.new()
+			cmat.albedo_color = Color(0.82, 0.64, 0.40)
+			chip.material_override = cmat
+			chip.position = Vector3(cos(a) * 0.36, sin(a) * 0.36, 0.0)
+			chip.rotation = Vector3(0.0, 0.0, a)
+			mark.add_child(chip)
+		var hw := _ship.half_width(bx) * ShipModel.SCALE
+		mark.position = Vector3((bx + _ship.shift) * ShipModel.SCALE, _ship.deck_height(bx) - 0.95, -float(side) * (hw * 0.93 + 0.04))
+		mark.visible = false
+		_ship.add_child(mark)
+		_hull_marks.append(mark)
+	_refresh_hull_visuals()
+
+
+func _read_json(path: String) -> Dictionary:
+	var f := FileAccess.open(path, FileAccess.READ)
+	if f == null:
+		return {}
+	var parsed: Variant = JSON.parse_string(f.get_as_text())
+	return parsed if parsed is Dictionary else {}
+
+
+## La vie de la ville : terrasses et escaliers, intérieurs, habitants et promeneurs (data/town.json, npcs.json).
+func _build_town() -> void:
+	_land.load_town(_read_json("res://data/town.json"))
+	TownBuilder.build_levels(_world_fixed, _land)
+	for it: Dictionary in _land.interiors:
+		var root := TownBuilder.build_tavern(it)
+		root.visible = false
+		_world_fixed.add_child(root)
+		var building: Node = _port.find_child(str(it.get("building_node", "")), true, false) if _port != null else null
+		_interior_nodes.append({"root": root, "building": building})
+	var cfg := _read_json("res://data/npcs.json")
+	_npc_range = float(cfg.get("range", 2.3))
+	for kind in ["npcs", "wanderers"]:
+		for d: Dictionary in cfg.get(kind, []):
+			var npc := TownNpc.from_data(d, kind == "wanderers")
+			_world_fixed.add_child(npc.sprite)
+			npc.blob = _blob.duplicate() as MeshInstance3D
+			_world_fixed.add_child(npc.blob)
+			npc.interior = _land.interior_at(npc.pos)
+			if kind == "npcs" and npc.interior < 0 and npc.h == 0.0:
+				_land.circles.append([npc.pos.x, -npc.pos.y, 0.45])   # on ne marche pas à travers un boutiquier
+			_npcs.append(npc)
+			_quests.names[npc.id] = npc.display_name
+	_update_npcs(0.0)
+
+
+## Place les habitants, fait marcher les promeneurs ; ceux d'un intérieur ne se voient que quand on y est.
+func _update_npcs(delta: float) -> void:
+	for npc: TownNpc in _npcs:
+		var move := npc.update(delta)
+		var shown := npc.interior < 0 or npc.interior == _interior_active
+		npc.sprite.visible = shown and npc.sprite.texture != null
+		npc.blob.visible = shown
+		npc.sprite.position = Vector3(npc.pos.x, npc.h + 0.02, npc.pos.y)
+		npc.blob.position = Vector3(npc.pos.x, npc.h + 0.04, npc.pos.y)
+		if shown:
+			npc.sprite.drive(delta, move, false, false, Vector2.ZERO)
+
+
+## Version « fantôme » du shader des bâtiments : même peinture, mais mélangée à ce qui est derrière (ALPHA), et
+## qui écrit la profondeur pour ne montrer que la face avant (pas de murs qui se superposent à travers).
+func _ghost_shader(base_shader: Shader) -> Shader:
+	if _ghost_shader_cache == null:
+		var gs := Shader.new()
+		gs.code = base_shader.code \
+				.replace("shader_type spatial;", "shader_type spatial;\nrender_mode blend_mix, depth_draw_always;\nuniform float ghost_alpha = 1.0;") \
+				.replace("ALBEDO = c;", "ALBEDO = c;\n\tALPHA = ghost_alpha;")
+		_ghost_shader_cache = gs
+	return _ghost_shader_cache
+
+
+## Un bâtiment qui passe devant le pirate (le rayon de lui vers la caméra le traverse) devient en partie transparent :
+## on le voit toujours, mais on voit le pirate à travers.
+func _update_building_fade(delta: float) -> void:
+	var watching := _loc == Loc.LAND and not _args.has("no-fade")
+	var from := Vector3.ZERO
+	var dir := Vector3.ZERO
+	if watching:
+		from = _sprite.global_position + Vector3(0.0, 1.0, 0.0)
+		dir = _cam.global_transform.basis.z
+	var target_alpha := float(_args.get("fade", "0.5"))
+	_ghosting = false
+	for rec: Dictionary in _buildings:
+		var mi := rec["mesh"] as MeshInstance3D
+		var want := 1.0
+		if watching and mi.visible:
+			var box := mi.global_transform * mi.get_aabb()
+			box.position += Vector3(0.3, 0.0, 0.3)   # un bâtiment à côté de lui ne compte pas
+			box.size -= Vector3(0.6, 0.0, 0.6)
+			if box.size.x > 0.0 and box.size.z > 0.0 and box.intersects_ray(from, dir) != null:
+				want = target_alpha
+		var a: float = rec["alpha"]
+		if want < 1.0:
+			_ghosting = true
+		if is_equal_approx(a, want):
+			continue
+		a = move_toward(a, want, delta * 4.0)
+		rec["alpha"] = a
+		var ghost_now: bool = a < 0.999
+		if ghost_now != rec["ghosted"]:
+			rec["ghosted"] = ghost_now
+			var mats: Dictionary = rec["ghost"] if ghost_now else rec["normal"]
+			for s: int in mats:
+				mi.set_surface_override_material(s, mats[s])
+		if ghost_now:
+			for g: ShaderMaterial in (rec["ghost"] as Dictionary).values():
+				g.set_shader_parameter("ghost_alpha", a)
+
+
+## Montre l'intérieur où je me trouve à la place du bâtiment du port (coupe sans toit ni façade).
+func _update_interior() -> void:
+	var idx := _land.interior_at(_lpos) if _loc == Loc.LAND else -1
+	if idx == _interior_active:
+		return
+	_interior_active = idx
+	for i in _interior_nodes.size():
+		var e: Dictionary = _interior_nodes[i]
+		(e["root"] as Node3D).visible = i == idx
+		if e["building"] != null:
+			(e["building"] as Node3D).visible = i != idx
+
+
+## Le PNJ le plus proche à portée de parole (même étage, même intérieur), ou null.
+func _nearest_npc() -> TownNpc:
+	var best: TownNpc = null
+	var best_d := _npc_range
+	for npc: TownNpc in _npcs:
+		if npc.interior != _interior_active and npc.interior >= 0:
+			continue
+		if absf(npc.h - _lh) > 1.0 or not npc.sprite.visible:
+			continue
+		var d := _lpos.distance_to(npc.pos)
+		if d < best_d:
+			best_d = d
+			best = npc
+	return best
+
+
+func _talk(npc: TownNpc) -> void:
+	var t := _quests.talk(npc.id, npc.lines)
+	_dialog_ctx = {"npc": npc, "offer": t["offer"], "turn_in": t["turn_in"]}
+	npc.sprite.direction = PirateSprite.direction_of(_lpos - npc.pos)   # il se tourne vers moi
+	_dialog.start(npc.display_name, t["lines"], t["offer"] != "")
+
+
+## Fin d'un dialogue : quête acceptée ou refusée, ou rendue (récompense).
+func _on_dialog_closed(accepted: bool) -> void:
+	var ctx := _dialog_ctx
+	_dialog_ctx = {}
+	if ctx.is_empty():
+		return
+	var npc := ctx["npc"] as TownNpc
+	if ctx["offer"] != "":
+		if accepted:
+			var lines := _quests.accept(str(ctx["offer"]))
+			if not lines.is_empty():
+				_dialog.start(npc.display_name, lines, false)
+			_say("Quête acceptée : %s" % str(_quests.defs[ctx["offer"]]["title"]), 3.5)
+		else:
+			_say("Tu déclines. Il te reste du temps pour changer d'avis.", 3.0)
+	elif ctx["turn_in"] != "":
+		var reward := _quests.complete(str(ctx["turn_in"]))
+		if reward > 0:
+			_say("Quête terminée ! +%d pièces d'or" % reward, 4.5)
+
+
+## Remet à jour ce qu'on voit des voies d'eau (repères sur la coque, trous dans la cale) quand elles changent.
+func _refresh_hull_visuals() -> void:
+	if _hold == null:
+		return
+	if _hull.leaks != _shown_leaks or _hull.patched != _shown_patched:
+		_shown_leaks = _hull.leaks
+		_shown_patched = _hull.patched
+		_hold.set_leaks(_hull.leaks, _hull.patched)
+		for s in _hull_marks.size():
+			(_hull_marks[s] as Node3D).visible = _hull.has_leak(s)
+	_hold.set_water(_hull.fill())
+
+
+func _is_authority() -> bool:
+	return not (_net != null and _net.active and not _net.is_host)
+
+
+## Entre dans la cale par l'écoutille (en fondu). `instant` : sans fondu (tests).
+func _enter_hold(instant: bool = false) -> void:
+	if _loc != Loc.SHIP or _fade_busy:
+		return
+	_mode = Mode.WALK
+	_drop_carried()
+	_transition(func() -> void:
+		_loc = Loc.HOLD
+		_hpos = _hold_layout.spawn_pos()
+		_prev_hpos = _hpos
+		_set_hold_view(true)
+		_snap_camera(), instant)
+
+
+## Remonte sur le pont, à côté de l'écoutille.
+func _leave_hold(instant: bool = false) -> void:
+	if _loc != Loc.HOLD:
+		return
+	if _fade_busy and not instant:
+		return
+	_drop_carried()
+	_transition(func() -> void:
+		_loc = Loc.SHIP
+		_ppos = _ship.nearest_walkable(_ship.hatch_pos() + Vector2(0.0, 1.05))
+		_prev_ppos = _ppos
+		_set_hold_view(false)
+		_snap_camera(), instant)
+
+
+## Fondu au noir, `change` pendant l'écran noir, retour de l'image.
+func _transition(change: Callable, instant: bool) -> void:
+	if instant or _fade == null:
+		change.call()
+		return
+	_fade_busy = true
+	var tw := create_tween()
+	tw.tween_property(_fade, "color:a", 1.0, 0.16)
+	tw.tween_callback(change)
+	tw.tween_property(_fade, "color:a", 0.0, 0.2)
+	tw.tween_callback(func() -> void: _fade_busy = false)
+
+
+## Bascule la vue entre le pont (le monde) et la cale : dans la cale on ne voit que la cale, plus sombre.
+func _set_hold_view(in_hold: bool) -> void:
+	_hold.visible = in_hold
+	_ship.visible = not in_hold
+	_world_fixed.visible = not in_hold
+	var holder: Node3D = _hold if in_hold else _ship
+	if _sprite.get_parent() != holder:
+		_sprite.reparent(holder, false)
+	if _blob.get_parent() != holder:
+		_blob.reparent(holder, false)
+	if in_hold:
+		if _env_saved.is_empty():
+			_env_saved = {"bg": _env.background_color, "amb": _env.ambient_light_energy, "sun": _sun.light_energy}
+		_env.background_color = Color(0.03, 0.025, 0.04)
+		_env.ambient_light_energy = float(_env_saved["amb"]) * 0.62
+		_sun.light_energy = float(_env_saved["sun"]) * 0.5
+	elif not _env_saved.is_empty():
+		_env.background_color = _env_saved["bg"]
+		_env.ambient_light_energy = _env_saved["amb"]
+		_sun.light_energy = _env_saved["sun"]
+
+
+## Ce qu'on porte est reposé en changeant d'étage.
+func _drop_carried() -> void:
+	_carrying = false
+	_carry_kind = ""
+	_ball_icon.visible = false
+	_plank_icon.visible = false
+
+
+# ------------------------------------------------------------------ chocs
+
+
+## Hôte (ou solo) : un choc ouvre `count` voies d'eau autour de (bx, side) et prévient tout l'équipage.
+func apply_hit(kind: int, bx: float, side: int, count: int) -> void:
+	if _ship == null or count <= 0:
+		return
+	var opened := _hull.add_leaks(bx, side, count)
+	_impact_cd = _hull.impact_cooldown
+	_refresh_hull_visuals()
+	if _net.active:
+		_net.broadcast_hit(kind, bx, side, opened.size())
+	else:
+		hit_visual(kind, bx, side, opened.size())
+
+
+## Chez tout le monde : secousse, éclats de bois, message.
+func hit_visual(kind: int, bx: float, side: int, opened: int) -> void:
+	if _ship == null:
+		return
+	_shake_t = 0.4
+	var at := _ship.to_global(Vector3((bx + _ship.shift) * ShipModel.SCALE, _ship.deck_height(bx) - 0.6,
+			-float(side) * _ship.half_width(bx) * ShipModel.SCALE))
+	for k in 12:
+		var chip := _make_ball(0.07, Color(0.82, 0.64, 0.40))
+		(chip.material_override as StandardMaterial3D).shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		_world_fixed.add_child(chip)
+		chip.global_position = at
+		var dir := Vector3(randf_range(-1.0, 1.0), randf_range(0.6, 1.6), -float(side) * randf_range(0.2, 1.3)).normalized()
+		var tw := chip.create_tween()
+		tw.set_parallel(true)
+		tw.tween_property(chip, "position", chip.position + dir * randf_range(1.2, 2.6) + Vector3(0, -0.9, 0), 0.7)
+		tw.tween_property(chip, "scale", Vector3.ZERO, 0.7)
+		tw.chain().tween_callback(chip.queue_free)
+	_splash(_world_fixed.to_local(Vector3(at.x, SEA_Y + 0.05, at.z)))
+	var what := {HIT_BALL: "Boulet", HIT_ROCK: "Récif", HIT_WALL: "Choc contre le quai"}.get(kind, "Choc") as String
+	var where := "bâbord" if side > 0 else "tribord"
+	if opened > 0:
+		_say("%s ! Voie d'eau à %s — descends à la cale (E sur l'écoutille) avec une planche" % [what, where], 4.5)
+	else:
+		_say("%s ! La coque tient" % what, 2.5)
+
+
+## Boulet ennemi tiré vers le bateau (essai : --enemy-fire=secondes ; plus tard, les bateaux adverses).
+func spawn_enemy_ball(from_side: int) -> void:
+	if _ship == null:
+		return
+	var travel := 1.1
+	var fwd := _sim.forward()
+	var target := _ship.global_position + Vector3(fwd.x, 0.0, fwd.y) * _sim.speed * travel + Vector3(0, 0.1, 0)
+	var side_dir := _ship.global_transform.basis * Vector3(0.0, 0.0, -float(from_side))
+	var start := target + side_dir.normalized() * 24.0 + Vector3(0, 3.5, 0)
+	var d := target - start
+	var vel := Vector3(d.x / travel, (d.y + 8.0 * travel * travel) / travel, d.z / travel)
+	var ball := _make_ball(0.16, Color(0.10, 0.10, 0.14))
+	_world_fixed.add_child(ball)
+	ball.global_position = start
+	_projectiles.append({"node": ball, "vel": vel, "age": 0.0, "enemy": true})
+
+
+## Hôte : un boulet ennemi touche-t-il la coque ? Renvoie vrai (et abîme le bateau) si oui.
+func _ball_hits_hull(ball_pos: Vector3) -> bool:
+	if not _is_authority():
+		return false
+	var loc := _ship.to_local(ball_pos)
+	var bx := loc.x / ShipModel.SCALE - _ship.shift
+	var by := -loc.z / ShipModel.SCALE
+	if absf(bx) > _ship.length * 0.5 or absf(by) > _ship.half_width(bx) + 0.12:
+		return false
+	if loc.y < -1.7 or loc.y > _ship.deck_height(bx) + 0.6:
+		return false
+	apply_hit(HIT_BALL, bx, 1 if by >= 0.0 else -1, _hull.cannon_leaks)
+	return true
+
+
+## Le bateau s'arrête contre le quai ou un récif : on essaie de glisser, sinon on revient en arrière. Un choc
+## assez fort ouvre des voies d'eau.
+func _collide_ship_with_land(prev_pos: Vector2, prev_yaw: float) -> void:
+	if _ship == null:
+		return
+	var touch := _touch(_sim.position, _sim.yaw)
+	if touch.is_empty():
+		return
+	var impact_speed := absf(_sim.speed)
+	if _is_authority() and _impact_cd <= 0.0:
+		var count := _hull.leaks_for_speed(impact_speed)
+		if count > 0:
+			apply_hit(int(touch["kind"]), float(touch["bx"]), int(touch["side"]), count)
+	var np := _sim.position
+	var yaw := _sim.yaw
+	var options: Array = [Vector2(np.x, prev_pos.y), Vector2(prev_pos.x, np.y), prev_pos]
+	for o: Vector2 in options:
+		if _touch(o, yaw).is_empty():
+			_sim.position = o
+			_sim.speed *= 0.5
+			return
+	_sim.position = prev_pos
+	_sim.yaw = prev_yaw
+	_sim.speed = 0.0
+
+
+## Ce que la coque touche à cette position : {} si rien, sinon {kind, bx, side}.
+func _touch(pos: Vector2, yaw: float) -> Dictionary:
+	if not _land.walk_rects.is_empty():
+		var pts := _ship.hull_points_world(pos, yaw)
+		var i := Land.hit_index(pts)
+		if i >= 0:
+			var info := _ship.contour_hit_info(i)
+			return {"kind": HIT_WALL, "bx": info["bx"], "side": info["side"]}
+	if not _rocks.rocks.is_empty():
+		var h := _rocks.hit(_ship.hull_points_dense(pos, yaw))
+		if h.x >= 0:
+			var info := _ship.dense_hit_info(h.y)
+			var side := int(info["side"])
+			if side == 0:
+				side = 1 if (h.x % 2 == 0) else -1
+			return {"kind": HIT_ROCK, "bx": info["bx"], "side": side}
+	return {}
+
+
+## Hôte : la cale est pleine, le bateau coule. Remorqué au port, remis à neuf.
+func _sink_ship() -> void:
+	_hull.reset()
+	_sim.position = _spawn_pos
+	_sim.yaw = _spawn_yaw
+	_sim.speed = 0.0
+	_sim.sail_level = 0
+	_sim.sail_open = 0.0
+	_sim.rudder = 0.0
+	_sim.rudder_target = 0.0
+	_sim.anchored = false
+	_refresh_hull_visuals()
+	if _net.active:
+		_net.broadcast_sunk()
+	else:
+		sunk_visual()
+
+
+## Chez tout le monde : le bateau a coulé.
+func sunk_visual() -> void:
+	_say("Le bateau a coulé ! Remorqué au port, la coque est remise à neuf", 6.0)
+	_shake_t = 0.6
+	if _loc == Loc.HOLD:
+		_leave_hold(true)
+
+
 # ------------------------------------------------------------------ boucle
 
 
@@ -720,19 +1341,35 @@ func _process(delta_raw: float) -> void:
 	if _ship == null:
 		return
 	_time += delta
+	_impact_cd = maxf(_impact_cd - delta, 0.0)
+	_bail_cd = maxf(_bail_cd - delta, 0.0)
+	if _is_authority():
+		_hull.step(delta)
+		if _hull.is_sunk():
+			_sink_ship()
+	_sim.drag = _hull.speed_factor()
 	_update_player(delta)
 	var prev_sim_pos := _sim.position
 	var prev_sim_yaw := _sim.yaw
 	_sim.step(delta)
 	_collide_ship_with_land(prev_sim_pos, prev_sim_yaw)
+	_refresh_hull_visuals()
 	if _net.active and not _net.is_host:
 		_correct_from_host(delta)
 	_float_ship()
 	_ship.set_sail_open(_sim.sail_open)
 	_place_pirate()
+	_update_building_fade(delta)
+	_update_interior()
+	_update_npcs(delta)
 	_ship.update_cutaway(_loc == Loc.SHIP and _ship.inside_cabin(_ppos))
 	var up_mast: bool = _loc == Loc.NEST or (_loc == Loc.CLIMB and _climb.get("kind") == "mast")
-	_sprite.no_depth_test = up_mast   # en haut du mât, ni le mât ni le nid ne cachent le pirate
+	# en haut du mât, ni le mât ni le nid ne cachent le pirate ; derrière un bâtiment rendu transparent, il est
+	# dessiné par-dessus (net, pas délavé par le mélange)
+	_sprite.no_depth_test = up_mast or _ghosting
+	_sprite.render_priority = 5 if _sprite.no_depth_test else 0
+	# passé en mélange (et non plus en découpe) pour être dessiné APRÈS le bâtiment transparent
+	_sprite.alpha_cut = SpriteBase3D.ALPHA_CUT_DISABLED if _ghosting else SpriteBase3D.ALPHA_CUT_DISCARD
 	_ship.hide_sails_above(float(_ship.mast_ladder[3]) - 0.3 if up_mast and not _ship.mast_ladder.is_empty() else 1000.0)
 	_update_remotes(delta)
 	for i in _cannon_icons.size():
@@ -783,11 +1420,18 @@ func _update_player(delta: float) -> void:
 			_rudder_sent = move.x
 			_request("rudder", int(move.x * 100.0))
 		return
+	if _loc == Loc.HOLD:
+		if move != Vector2.ZERO:
+			var slow := 1.0 - _hull.walk_slow_in_water * _hull.fill()   # on patauge
+			_hpos = _hold_layout.move_with_slide(_hpos, move.normalized() * WALK_SPEED * slow * delta)
+		return
 	if _jump_wind > 0.0:
 		return   # accroupi avant de sauter
 	if _loc == Loc.LAND:
-		if move != Vector2.ZERO:
-			_lpos = _land.move_with_slide(_lpos, move.normalized() * WALK_SPEED * delta)
+		if move != Vector2.ZERO and not _dialog.is_open():
+			var r := _land.step(_lpos, move.normalized() * WALK_SPEED * delta, _lh)
+			_lpos = Vector2(r.x, r.y)
+			_lh = r.z
 		return
 	var step_units := WALK_SPEED / ShipModel.SCALE * delta
 	if _walkto != Vector2.INF:
@@ -833,6 +1477,8 @@ func _land_point(w: Vector2, h: float) -> Vector3:
 ## Saut : un temps d'accroupissement, puis une parabole. Possible à terre comme sur le pont.
 func _update_jump(delta: float) -> void:
 	_land_t = maxf(_land_t - delta, 0.0)
+	if _dialog != null and _dialog.is_open():
+		_jump_wind = 0.0
 	if _notice_t > 0.0:
 		_notice_t -= delta
 	if _jump_wind > 0.0:
@@ -936,6 +1582,7 @@ func _update_nest(move: Vector2, delta: float) -> void:
 
 ## Descend par l'échelle de coque `i` : de l'autre côté du plat-bord il y a le quai.
 func _try_disembark(i: int) -> void:
+	_lh = 0.0
 	var l: Array = _ship.ladders[i]
 	var side := float(l[2])
 	var outside := _ship_to_world(Vector2(float(l[0]), float(l[3]) + side * 0.9))
@@ -980,25 +1627,6 @@ func _try_board() -> void:
 	_mode = Mode.WALK
 
 
-## Le bateau s'arrête contre la terre : on essaie de glisser, sinon on revient en arrière.
-func _collide_ship_with_land(prev_pos: Vector2, prev_yaw: float) -> void:
-	if _land.walk_rects.is_empty() or _ship == null:
-		return
-	if not Land.hits_land(_ship.hull_points_world(_sim.position, _sim.yaw)):
-		return
-	var np := _sim.position
-	var yaw := _sim.yaw
-	var options: Array = [Vector2(np.x, prev_pos.y), Vector2(prev_pos.x, np.y), prev_pos]
-	for o: Vector2 in options:
-		if not Land.hits_land(_ship.hull_points_world(o, yaw)):
-			_sim.position = o
-			_sim.speed *= 0.5
-			return
-	_sim.position = prev_pos
-	_sim.yaw = prev_yaw
-	_sim.speed = 0.0
-
-
 ## Place mon pirate et son ombre dans la scène selon l'endroit où il se trouve.
 func _place_pirate() -> void:
 	var gp: Vector3
@@ -1006,8 +1634,8 @@ func _place_pirate() -> void:
 	var shadow := true
 	match _loc:
 		Loc.LAND:
-			gp = _land_point(_lpos, 0.02 + _pz)
-			ground = _land_point(_lpos, 0.04)
+			gp = _land_point(_lpos, 0.02 + _lh + _pz)
+			ground = _land_point(_lpos, 0.04 + _lh)
 		Loc.CLIMB:
 			if _climb.get("kind") == "mast":
 				gp = _ship_point(_ppos, 0.02 + _pz)
@@ -1019,6 +1647,9 @@ func _place_pirate() -> void:
 		Loc.NEST:
 			gp = _ship_point(_ppos, 0.02 + _pz)
 			ground = _ship_point(_ppos, 0.06 + _pz)
+		Loc.HOLD:
+			gp = _hold.point(_hpos, 0.02)
+			ground = _hold.point(_hpos, 0.07)
 		_:
 			gp = _ship_point(_ppos, 0.02 + _pz)
 			ground = _ship_point(_ppos, 0.04)
@@ -1033,12 +1664,19 @@ func _place_pirate() -> void:
 ## Cale les sprites (le mien et ceux de l'équipage) sur la grille de pixels de l'écran : sinon
 ## leurs pixels « vibrent » quand ils bougent.
 func _snap_sprite() -> void:
-	_snap_node(_sprite)
+	# à terre et dans la cale, le sprite est avancé vers la caméra (sans changer sa place à l'écran) : sinon le bas
+	# du corps s'enfonce dans les marches, les terrasses et le sol qui sont à ses pieds
+	var ashore := _loc == Loc.LAND or _loc == Loc.HOLD
+	_snap_node(_sprite, SPRITE_DEPTH_BIAS if ashore else 0.0)
 	for id in _remotes:
-		_snap_node(_remotes[id]["sprite"])
+		var rl: int = _remotes[id]["loc"]
+		_snap_node(_remotes[id]["sprite"], SPRITE_DEPTH_BIAS if (rl == 1 or rl == 4) else 0.0)
+	for npc: TownNpc in _npcs:
+		if npc.sprite.visible:
+			_snap_node(npc.sprite, SPRITE_DEPTH_BIAS)
 
 
-func _snap_node(node: Node3D) -> void:
+func _snap_node(node: Node3D, depth_bias: float = 0.0) -> void:
 	var basis := _cam.global_transform.basis
 	var right := basis.x
 	var up := basis.y
@@ -1048,6 +1686,7 @@ func _snap_node(node: Node3D) -> void:
 	var du := d.dot(up)
 	g += right * (roundf(dr * PIXELS_PER_METER) / PIXELS_PER_METER - dr)
 	g += up * (roundf(du * PIXELS_PER_METER) / PIXELS_PER_METER - du)
+	g += basis.z * depth_bias   # vers la caméra : même place à l'écran (caméra orthogonale), mais devant le sol
 	node.global_position = g
 
 
@@ -1056,8 +1695,9 @@ func _snap_node(node: Node3D) -> void:
 
 func local_player_state() -> Dictionary:
 	var on_land: bool = _loc == Loc.LAND or (_loc == Loc.CLIMB and _climb.get("kind") == "hull")
-	var code := 1 if on_land else (2 if _loc == Loc.CLIMB else (3 if _loc == Loc.NEST else 0))
-	return {"pos": _lpos if on_land else _ppos, "carrying": _carrying, "loc": code, "pz": _pz}
+	var code := 1 if on_land else (2 if _loc == Loc.CLIMB else (3 if _loc == Loc.NEST else (4 if _loc == Loc.HOLD else 0)))
+	var pos := _hpos if _loc == Loc.HOLD else (_lpos if on_land else _ppos)
+	return {"pos": pos, "carrying": _carrying, "loc": code, "pz": _pz, "lh": _lh}
 
 
 ## Hôte : état du bateau diffusé aux clients.
@@ -1067,14 +1707,16 @@ func ship_state() -> Array:
 		if _cannon_loaded[i]:
 			mask |= 1 << i
 	return [_sim.position.x, _sim.position.y, _sim.yaw, _sim.speed, _sim.rudder, _sim.rudder_target,
-			_sim.sail_level, _sim.sail_open, 1 if _sim.anchored else 0, mask, _helm_owner, _time]
+			_sim.sail_level, _sim.sail_open, 1 if _sim.anchored else 0, mask, _helm_owner, _time,
+			_hull.leaks, _hull.patched, _hull.water]
 
 
 ## Client : reçoit l'état du bateau de l'hôte. La position et le cap servent de cible (recalage en
 ## douceur dans _correct_from_host) ; le reste est appliqué tel quel.
 func apply_ship_state(s: Array) -> void:
-	if _ship == null or s.size() < 12:
+	if _ship == null or s.size() < 15:
 		return
+	_hull.apply_state(int(s[12]), int(s[13]), float(s[14]))
 	_net_target = {"pos": Vector2(float(s[0]), float(s[1])), "yaw": float(s[2]), "age": 0.0}
 	_sim.speed = float(s[3])
 	_sim.rudder = float(s[4])
@@ -1107,7 +1749,7 @@ func _correct_from_host(delta: float) -> void:
 	_sim.yaw = lerp_angle(_sim.yaw, yaw, k)
 
 
-func apply_remote_player(id: int, pos: Vector2, carrying: bool, loc: int, pz: float) -> void:
+func apply_remote_player(id: int, pos: Vector2, carrying: bool, loc: int, pz: float, lh: float = 0.0) -> void:
 	if _ship == null:
 		return
 	if not _remotes.has(id):
@@ -1117,9 +1759,17 @@ func apply_remote_player(id: int, pos: Vector2, carrying: bool, loc: int, pz: fl
 		r["loc"] = loc
 		r["pos"] = pos
 		r["prev"] = pos
+		var holder: Node3D = _hold if loc == 4 else _ship
+		for key in ["sprite", "blob"]:
+			var n := r[key] as Node3D
+			if n.get_parent() != holder:
+				n.reparent(holder, false)
 	r["target"] = pos
 	r["pz"] = pz
-	(r["ball"] as MeshInstance3D).visible = carrying
+	r["lh"] = lh
+	# dans la cale on porte une planche, sur le pont un boulet
+	(r["ball"] as MeshInstance3D).visible = carrying and loc != 4
+	(r["plank"] as MeshInstance3D).visible = carrying and loc == 4
 
 
 func _add_remote(id: int, pos: Vector2) -> void:
@@ -1130,9 +1780,12 @@ func _add_remote(id: int, pos: Vector2) -> void:
 	ball.visible = false
 	sprite.add_child(ball)
 	ball.position = Vector3(0.0, 2.2, 0.0)
+	var plank := _plank_icon.duplicate() as MeshInstance3D
+	plank.visible = false
+	sprite.add_child(plank)
 	var blob := _blob.duplicate() as MeshInstance3D
 	_ship.add_child(blob)
-	_remotes[id] = {"sprite": sprite, "blob": blob, "ball": ball, "pos": pos, "target": pos, "prev": pos, "loc": 0, "pz": 0.0}
+	_remotes[id] = {"sprite": sprite, "blob": blob, "ball": ball, "plank": plank, "pos": pos, "target": pos, "prev": pos, "loc": 0, "pz": 0.0}
 
 
 func _update_remotes(delta: float) -> void:
@@ -1144,9 +1797,13 @@ func _update_remotes(delta: float) -> void:
 		var pz: float = r["pz"]
 		var sprite := r["sprite"] as Node3D
 		var blob := r["blob"] as MeshInstance3D
-		if int(r["loc"]) == 1:
-			sprite.global_position = _land_point(p, 0.02 + pz)
-			blob.global_position = _land_point(p, 0.04)
+		if int(r["loc"]) == 4:
+			sprite.global_position = _hold.point(p, 0.02)
+			blob.global_position = _hold.point(p, 0.07)
+		elif int(r["loc"]) == 1:
+			var rlh: float = r.get("lh", 0.0)
+			sprite.global_position = _land_point(p, 0.02 + pz + rlh)
+			blob.global_position = _land_point(p, 0.04 + rlh)
 		else:
 			var up := pz if int(r["loc"]) == 3 else 0.0
 			sprite.global_position = _ship_point(p, 0.02 + pz)
@@ -1191,10 +1848,13 @@ func _animate_pirates(delta: float) -> void:
 		_prev_ppos = _ppos
 	var on_land: bool = _loc == Loc.LAND or (_loc == Loc.CLIMB and _climb.get("kind") == "hull")
 	var was_land: bool = _prev_loc == Loc.LAND or (_prev_loc == Loc.CLIMB and _prev_land_climb)
+	var in_hold: bool = _loc == Loc.HOLD
 	var move := Vector2.ZERO
-	if on_land and was_land:
+	if in_hold and _prev_hold:
+		move = _hpos - _prev_hpos
+	elif on_land and was_land:
 		move = _lpos - _prev_lpos
-	elif not on_land and not was_land:
+	elif not on_land and not was_land and not in_hold and not _prev_hold:
 		move = _screen_of_ship(_ppos - _prev_ppos)
 	var helm_dir := _screen_of_ship(Vector2(1.0, 0.0))
 	var air := 0
@@ -1208,6 +1868,8 @@ func _animate_pirates(delta: float) -> void:
 	_sprite.drive(delta, move, _carrying, _loc == Loc.SHIP and _mode == Mode.HELM, helm_dir, air, climbing, helm_dir)
 	_prev_ppos = _ppos
 	_prev_lpos = _lpos
+	_prev_hpos = _hpos
+	_prev_hold = in_hold
 	_prev_loc = _loc
 	_prev_land_climb = on_land and _loc == Loc.CLIMB
 	for id in _remotes:
@@ -1215,9 +1877,10 @@ func _animate_pirates(delta: float) -> void:
 		var p: Vector2 = r["pos"]
 		var loc: int = r["loc"]
 		var d := p - (r["prev"] as Vector2)
-		var m := d if loc == 1 else _screen_of_ship(d)
+		var m := d if (loc == 1 or loc == 4) else _screen_of_ship(d)
 		var rair := 1 if (float(r["pz"]) > 0.05 and (loc == 0 or loc == 1)) else 0
-		(r["sprite"] as PirateSprite).drive(delta, m, (r["ball"] as MeshInstance3D).visible,
+		var r_carry: bool = (r["ball"] as MeshInstance3D).visible or (r["plank"] as MeshInstance3D).visible
+		(r["sprite"] as PirateSprite).drive(delta, m, r_carry,
 				loc == 0 and _helm_owner == id, helm_dir, rair, loc == 2, helm_dir)
 		r["prev"] = p
 
@@ -1246,8 +1909,10 @@ func on_peers_changed() -> void:
 
 
 func _player_world() -> Vector3:
+	if _loc == Loc.HOLD:
+		return _hold.point(_hpos, 0.9)
 	if _loc == Loc.LAND or (_loc == Loc.CLIMB and _climb.get("kind") == "hull"):
-		return _land_point(_lpos, 0.9)
+		return _land_point(_lpos, 0.9 + (_lh if _loc == Loc.LAND else 0.0))
 	return _ship_point(_ppos, 0.9)
 
 
@@ -1257,10 +1922,7 @@ func _update_camera(delta: float) -> void:
 	# de scintillement), puis l'image finale est décalée de la fraction de pixel restante, à
 	# l'échelle de l'écran. Les déplacements paraissent continus au lieu d'avancer par sauts de
 	# 2 ou 3 pixels d'écran.
-	var rel := _player_world() - _ship.position
-	# en haut du mât (échelle, nid de pie), la caméra monte avec le pirate ; pour un saut elle ne bouge pas
-	var cam_h := _pz if (_loc == Loc.NEST or (_loc == Loc.CLIMB and _climb.get("kind") == "mast")) else 0.0
-	_cam_offset = _cam_offset.lerp(Vector3(rel.x, cam_h, rel.z), 1.0 - exp(-delta * 6.0))
+	_cam_offset = _cam_offset.lerp(_camera_target(), 1.0 - exp(-delta * 6.0))
 	var el := deg_to_rad(ELEVATION_DEG)
 	var focus_exact := Vector3(_ship.position.x, 1.2, _ship.position.z) + _cam_offset
 	if _args.has("cam-world"):  # diagnostic : regarder un point précis du monde (ex. la ville)
@@ -1271,8 +1933,31 @@ func _update_camera(delta: float) -> void:
 	_cam.position = focus + Vector3(0, sin(el), cos(el)) * 60.0
 	var frac_px := Vector2((focus_exact.x - focus.x) * PIXELS_PER_METER,
 			(focus_exact.z - focus.z) * sin(el) * PIXELS_PER_METER)
-	_container.position = Vector2(-_factor, -_factor) - frac_px * float(_factor)
+	var shake := Vector2.ZERO
+	if _shake_t > 0.0:   # secousse d'un choc : quelques pixels, qui s'éteignent
+		_shake_t -= delta
+		shake = Vector2(randf_range(-1.0, 1.0), randf_range(-1.0, 1.0)) * 5.0 * clampf(_shake_t / 0.4, 0.0, 1.0)
+	_container.position = Vector2(-_factor, -_factor) - frac_px * float(_factor) + shake
 	_sea.position = Vector3(snappedf(_world_origin.x + focus.x, 1.0), SEA_Y, snappedf(_world_origin.z + focus.z, 1.0))
+
+
+## Où la caméra veut regarder : (x, hauteur, z) relatif au bateau, qui reste à l'origine. Dans la cale, c'est
+## le pirate lui-même (la cale est posée loin au-dessus du monde).
+func _camera_target() -> Vector3:
+	if _loc == Loc.HOLD:
+		var hp := _player_world()
+		return Vector3(hp.x * 0.25, hp.y - 1.2, hp.z * 0.3 + 0.4)   # cadrage : la cale entière, qui suit un peu le pirate
+	var rel := _player_world() - _ship.position
+	# en haut du mât (échelle, nid de pie), la caméra monte avec le pirate ; pour un saut elle ne bouge pas
+	var cam_h := _pz if (_loc == Loc.NEST or (_loc == Loc.CLIMB and _climb.get("kind") == "mast")) else 0.0
+	if _loc == Loc.LAND:
+		cam_h = _lh   # la caméra monte avec le pirate (terrasse, escalier, étage)
+	return Vector3(rel.x, cam_h, rel.z)
+
+
+## Place la caméra d'un coup sur sa cible (changement d'étage : pas de glissement de 40 m).
+func _snap_camera() -> void:
+	_cam_offset = _camera_target()
 
 
 ## Cale une position au sol sur la grille de pixels de l'écran (x : 1 px ; z : 1 px vertical).
@@ -1302,6 +1987,12 @@ func _unhandled_input(event: InputEvent) -> void:
 	var key := event as InputEventKey
 	if not key.pressed or key.echo:
 		return
+	if _dialog.is_open():   # pendant un dialogue : E continue, R refuse, le reste attend
+		if key.physical_keycode == KEY_E:
+			_dialog.confirm()
+		elif key.physical_keycode == KEY_R:
+			_dialog.refuse()
+		return
 	if key.physical_keycode == KEY_E:
 		_interact(false)
 	elif key.physical_keycode == KEY_R:
@@ -1310,15 +2001,75 @@ func _unhandled_input(event: InputEvent) -> void:
 		_try_jump()
 
 
+## L'objet de la cale le plus proche : échelle, étagère, seau, ou voie d'eau ouverte.
+func _hold_nearest() -> Dictionary:
+	var best: Dictionary = {}
+	var best_d := INTERACT_RANGE
+	for it: Dictionary in _hold_items:
+		if it["kind"] == "hole" and not _hull.has_leak(int(it["slot"])):
+			continue
+		var d := _hpos.distance_to(it["pos"] as Vector2)
+		if d < best_d:
+			best_d = d
+			best = it
+	return best
+
+
+func _interact_hold(secondary: bool) -> void:
+	if secondary:
+		return
+	var it := _hold_nearest()
+	if it.is_empty():
+		return
+	match it["kind"]:
+		"ladder":
+			_leave_hold()
+		"rack":
+			if not _carrying:
+				_carrying = true
+				_carry_kind = "plank"
+				_plank_icon.visible = true
+		"bucket":
+			if _bail_cd <= 0.0 and _hull.water > 0.0:
+				_bail_cd = _hull.bail_cooldown
+				_request("bail", 0)
+				_splash_bucket()
+		"hole":
+			if _carry_kind == "plank":
+				_request("patch", int(it["slot"]))
+				_drop_carried()
+			else:
+				_say("Il te faut une planche : l'étagère est au fond, à l'arrière")
+
+
+## Éclaboussure dans la cale quand on écope.
+func _splash_bucket() -> void:
+	var drop := _make_ball(0.09, Color(0.7, 0.88, 1.0))
+	(drop.material_override as StandardMaterial3D).shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	_hold.add_child(drop)
+	drop.global_position = _hold.point(_hpos, 1.4)
+	var tw := drop.create_tween()
+	tw.set_parallel(true)
+	tw.tween_property(drop, "global_position", _hold.point(_hpos + Vector2(0.0, -1.0), 2.2), 0.35)
+	tw.tween_property(drop, "scale", Vector3.ZERO, 0.35)
+	tw.chain().tween_callback(drop.queue_free)
+
+
 func _interact(secondary: bool) -> void:
 	if _loc == Loc.CLIMB:
+		return
+	if _loc == Loc.HOLD:
+		_interact_hold(secondary)
 		return
 	if _loc == Loc.NEST:
 		if not secondary:
 			_start_mast_climb(false)
 		return
 	if _loc == Loc.LAND:
-		if not secondary:
+		var npc := _nearest_npc()
+		if npc != null:
+			_talk(npc)
+		elif not secondary:
 			_try_board()
 		return
 	if _mode == Mode.HELM:
@@ -1344,20 +2095,23 @@ func _interact(secondary: bool) -> void:
 		"anchor":
 			if not secondary:
 				_request("anchor", 0)
+		"hatch":
+			if not secondary:
+				_enter_hold()
 		"ammo":
 			if not secondary and not _carrying:
 				_carrying = true
+				_carry_kind = "ball"
 				_ball_icon.visible = true
 		"cannon":
 			var i: int = it["index"]
 			if _cannon_loaded[i]:
 				if not secondary:
 					_request("fire", i)
-			elif _carrying and not secondary:
+			elif _carry_kind == "ball" and not secondary:
 				_request("load", i)
 				_cannon_loaded[i] = true  # affichage immédiat ; l'hôte confirme dans son état
-				_carrying = false
-				_ball_icon.visible = false
+				_drop_carried()
 
 
 ## Envoie une action d'équipage : appliquée directement en solo ou chez l'hôte, demandée à
@@ -1388,6 +2142,11 @@ func apply_request(peer: int, kind: String, value: int) -> void:
 			_sim.sail_level = clampi(_sim.sail_level + signi(value), 0, ShipSim.SAIL_LEVELS)
 		"anchor":
 			_sim.anchored = not _sim.anchored
+		"patch":
+			if _hull.patch(value):
+				_refresh_hull_visuals()
+		"bail":
+			_hull.bail()
 		"load":
 			if value >= 0 and value < _cannon_loaded.size():
 				_cannon_loaded[value] = true
@@ -1464,6 +2223,11 @@ func _update_projectiles(delta: float) -> void:
 		p["vel"] = vel
 		p["age"] = float(p["age"]) + delta
 		node.position += vel * delta
+		if p.get("enemy", false) and _ball_hits_hull(node.global_position):
+			_splash(Vector3(node.position.x, SEA_Y + 0.05, node.position.z))
+			node.queue_free()
+			_projectiles.remove_at(i)
+			continue
 		if node.position.y < SEA_Y or float(p["age"]) > 8.0:
 			_splash(Vector3(node.position.x, SEA_Y + 0.05, node.position.z))
 			node.queue_free()
@@ -1495,6 +2259,39 @@ func _splash(at: Vector3) -> void:
 # ------------------------------------------------------------------ interface
 
 
+## Ce que dit la ligne du bas dans la cale, selon l'objet à portée.
+func _hold_prompt() -> String:
+	var it := _hold_nearest()
+	if it.is_empty():
+		if _hull.leak_count() > 0:
+			return "Une planche (étagère au fond), puis E devant la voie d'eau pour la boucher"
+		return "Cale en ordre" + (" — E au seau pour écoper" if _hull.water > 0.0 else "")
+	match it["kind"]:
+		"ladder":
+			return "E : remonter sur le pont"
+		"rack":
+			return "Tu portes déjà une planche" if _carrying else "E : prendre une planche"
+		"bucket":
+			return "E : écoper (%d %% d'eau)" % int(_hull.fill() * 100.0) if _hull.water > 0.0 else "La cale est sèche"
+		"hole":
+			return "E : boucher la voie d'eau" if _carry_kind == "plank" else "Il te faut une planche (étagère au fond)"
+	return ""
+
+
+## Jauge de la cale en haut à gauche : visible dès qu'il y a une voie d'eau ou de l'eau.
+func _update_gauge() -> void:
+	var leaks := _hull.leak_count()
+	var show := leaks > 0 or _hull.water > 0.002
+	_gauge_back.visible = show
+	_gauge_label.visible = show
+	if not show:
+		return
+	var f := _hull.fill()
+	_gauge_fill.size.x = (_gauge_back.size.x - 4.0) * f
+	_gauge_fill.color = Color(0.25, 0.6, 0.85) if f < 0.5 else (Color(0.95, 0.65, 0.2) if f < 0.8 else Color(0.9, 0.2, 0.15))
+	_gauge_label.text = "Cale %d %%   Voies d'eau : %d" % [int(f * 100.0), leaks]
+
+
 func _update_hud() -> void:
 	var a := _sim.wind_alignment()
 	var wind := "vent arrière" if a > 0.55 else ("vent de travers" if a > -0.25 else ("vent debout" if a < -0.75 else "vent de face"))
@@ -1504,8 +2301,17 @@ func _update_hud() -> void:
 	if _net.active:
 		_hud.text += "\nÉquipage : %d / %d%s" % [_remotes.size() + 1, SailingNet.MAX_PLAYERS,
 				"   (barre tenue par un ami)" if _helm_owner != 0 and _helm_owner != _my_id() else ""]
+	_update_gauge()
+	_gold_label.text = "Or : %d" % _profile.gold
+	_quest_label.text = _quests.tracker_text()
+	if _dialog.is_open():
+		_prompt.text = ""
+		return
 	if _notice_t > 0.0:
 		_prompt.text = _notice
+		return
+	if _loc == Loc.HOLD:
+		_prompt.text = _hold_prompt()
 		return
 	if _loc == Loc.NEST:
 		_prompt.text = "Dans le nid de pie — E : redescendre"
@@ -1514,7 +2320,11 @@ func _update_hud() -> void:
 		_prompt.text = ""
 		return
 	if _loc == Loc.LAND:
-		_prompt.text = "E : monter à bord   Espace : sauter" if _nearest_ship_ladder_from_land() >= 0 else "Espace : sauter"
+		var near := _nearest_npc()
+		if near != null:
+			_prompt.text = "E : parler à %s" % near.display_name
+		else:
+			_prompt.text = "E : monter à bord   Espace : sauter" if _nearest_ship_ladder_from_land() >= 0 else "Espace : sauter"
 		return
 	if _mode == Mode.HELM:
 		_prompt.text = "À la barre : gauche/droite pour virer — E : lâcher la barre"
@@ -1524,6 +2334,9 @@ func _update_hud() -> void:
 		_prompt.text = ""
 		return
 	match it["kind"]:
+		"hatch":
+			var n := _hull.leak_count()
+			_prompt.text = "E : descendre dans la cale" + ("   (%d voie(s) d'eau !)" % n if n > 0 else "")
 		"ladder":
 			_prompt.text = "E : descendre sur le quai (échelle)"
 		"mastladder":

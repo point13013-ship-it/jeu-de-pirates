@@ -204,3 +204,41 @@ func update_cutaway(player_inside: bool) -> void:
 		var n: Vector2 = entry["normal"]
 		var world_normal := basis * Vector3(n.x, 0.0, -n.y)
 		node.visible = world_normal.z <= 0.1
+
+
+## Écoutille du pont (unités du modèle), qui mène à la cale. Le sloop n'en a pas dans son modèle : on en
+## pose une à l'exécution (voir sailing_game.gd).
+func hatch_pos() -> Vector2:
+	return Vector2(1.6 if length > 11.0 else 1.2, 0.0)
+
+
+## Beaucoup de points de la coque (repère monde, x/z), cinq par station : sert à toucher un récif plus petit
+## que l'écart entre deux points du contour.
+func hull_points_dense(sim_pos: Vector2, yaw: float) -> Array:
+	var pts: Array = []
+	var fwd := Vector2(cos(yaw), -sin(yaw))
+	var left := Vector2(-fwd.y, fwd.x) * -1.0
+	for i in 17:
+		var bx := -length * 0.5 + length * (float(i) / 16.0)
+		var hw := half_width(bx) * SCALE
+		var center := sim_pos + fwd * ((bx + shift) * SCALE)
+		for k in [-1.0, -0.5, 0.0, 0.5, 1.0]:
+			pts.append(center + left * hw * k)
+	return pts
+
+
+## Où une partie de la coque touche : à partir de la liste de `hull_points_dense` et de l'indice du point
+## touché, renvoie {bx, side} (abscisse dans le repère du modèle, +1 bâbord / -1 tribord).
+func dense_hit_info(index: int) -> Dictionary:
+	var station := floori(index / 5.0)
+	var k := index % 5
+	var bx := -length * 0.5 + length * (float(station) / 16.0)
+	var side := -1 if k < 2 else (1 if k > 2 else 0)
+	return {"bx": bx, "side": side}
+
+
+## Où la coque touche : à partir de l'indice d'un point de `hull_points_world`, renvoie {bx, side}
+## (abscisse dans le repère du modèle, +1 bâbord / -1 tribord).
+func contour_hit_info(index: int) -> Dictionary:
+	var station := mini(floori(index / 2.0), 8)
+	return {"bx": -length * 0.5 + length * (float(station) / 8.0), "side": 1 if index % 2 == 0 else -1}

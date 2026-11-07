@@ -18,7 +18,7 @@ const PORT := 7777
 const MAX_PLAYERS := 4
 const SHIP_RATE := 30.0
 const PLAYER_RATE := 20.0
-const PROTOCOL := 1
+const PROTOCOL := 3
 
 var game: Node
 var active := false
@@ -137,7 +137,7 @@ func tick(delta: float) -> void:
 	if _player_timer >= 1.0 / PLAYER_RATE:
 		_player_timer = 0.0
 		var p: Dictionary = game.local_player_state()
-		_player_state.rpc(p["pos"], p["carrying"], p["loc"], p["pz"])
+		_player_state.rpc(p["pos"], p["carrying"], p["loc"], p["pz"], p["lh"])
 	if is_host:
 		_ship_timer += delta
 		if _ship_timer >= 1.0 / SHIP_RATE:
@@ -151,8 +151,8 @@ func _ship_state(s: Array) -> void:
 
 
 @rpc("any_peer", "call_remote", "unreliable_ordered")
-func _player_state(pos: Vector2, carrying: bool, loc: int, pz: float) -> void:
-	game.apply_remote_player(multiplayer.get_remote_sender_id(), pos, carrying, loc, pz)
+func _player_state(pos: Vector2, carrying: bool, loc: int, pz: float, lh: float) -> void:
+	game.apply_remote_player(multiplayer.get_remote_sender_id(), pos, carrying, loc, pz, lh)
 
 
 ## Chaque joueur envoie son apparence (JSON) à chaque nouvel arrivant, et reçoit la leur.
@@ -180,3 +180,23 @@ func broadcast_fire(i: int) -> void:
 @rpc("authority", "call_local", "reliable")
 func _fire_event(i: int) -> void:
 	game.fire_visual(i)
+
+
+## Hôte : un choc a ouvert des voies d'eau ; chez tout le monde, secousse, éclats de bois et message.
+func broadcast_hit(kind: int, bx: float, side: int, opened: int) -> void:
+	_hit_event.rpc(kind, bx, side, opened)
+
+
+@rpc("authority", "call_local", "reliable")
+func _hit_event(kind: int, bx: float, side: int, opened: int) -> void:
+	game.hit_visual(kind, bx, side, opened)
+
+
+## Hôte : le bateau a coulé ; remorqué au port chez tout le monde.
+func broadcast_sunk() -> void:
+	_sunk_event.rpc()
+
+
+@rpc("authority", "call_local", "reliable")
+func _sunk_event() -> void:
+	game.sunk_visual()

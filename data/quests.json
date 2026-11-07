@@ -1,0 +1,61 @@
+{
+  "quests": {
+    "tonnelet": {
+      "title": "Un tonnelet pour Mathurin",
+      "giver": "barnabe",
+      "target": "mathurin",
+      "item": "un tonnelet de rhum",
+      "reward": 40,
+      "offer": [
+        "Ah, un matelot qui a l'air de savoir marcher droit ! Rare, ici.",
+        "Mathurin, le charpentier, me doit une faveur et je lui dois un tonnelet de mon meilleur rhum.",
+        "Porte-le lui, sur le quai près du ponton. Il te paiera la peine."
+      ],
+      "accepted": ["Voilà le tonnelet. Ne le bois pas en route, hein !"],
+      "active": ["Alors ? Mathurin attend son tonnelet, près du ponton."],
+      "turn_in": [
+        "Un tonnelet du Pélican ! Barnabé tient parole, pour une fois.",
+        "Tiens, pour ta peine."
+      ],
+      "done": ["Mathurin m'a dit que tu avais livré le rhum. Tu as ma confiance, matelot."]
+    },
+    "lettre": {
+      "title": "Une lettre pour Ariane",
+      "giver": "ysolde",
+      "target": "ariane",
+      "item": "une lettre cachetée",
+      "reward": 65,
+      "offer": [
+        "Tu portes l'uniforme du commerce, matelot : l'air de n'appartenir à personne.",
+        "J'ai une lettre cachetée pour la voilière, Ariane, sur la place. Ne la perds pas, ne la lis pas.",
+        "Elle paiera quand elle l'aura reçue."
+      ],
+      "accepted": ["Voici la lettre. Discrétion."],
+      "active": ["La lettre n'est pas encore remise ? Ariane, sur la place, devant la voilerie."],
+      "turn_in": [
+        "Le cachet de la quartier-maître... Elle ne m'écrit que pour de mauvaises nouvelles.",
+        "Enfin. Tiens, pour la course."
+      ],
+      "done": ["Ariane a reçu la lettre. Tu sais tenir ta langue, c'est bien."]
+    },
+    "longue_vue": {
+      "title": "Une longue-vue pour Pétronille",
+      "giver": "hector",
+      "target": "petronille",
+      "item": "une longue-vue de cuivre",
+      "reward": 80,
+      "offer": [
+        "Tu as grimpé jusqu'ici ? Tu as des jambes, au moins.",
+        "Ma longue-vue a pris l'eau de mer. Mère Pétronille, sur le quai, sait redonner du lustre au cuivre.",
+        "Porte-la lui. Elle te paiera, et moi je n'aurai pas à redescendre."
+      ],
+      "accepted": ["Elle est fragile. Ne la laisse pas tomber à l'eau."],
+      "active": ["Alors, cette longue-vue ? Pétronille tient boutique sur le quai, devant le magasin général."],
+      "turn_in": [
+        "Une longue-vue des remparts ! Il y a du sel jusque dans les rouages.",
+        "Je m'en occupe. Voilà pour ta peine, et pour les jambes."
+      ],
+      "done": ["Hector m'a dit que tu étais monté jusqu'à lui. Rare."]
+    }
+  }
+}

@@ -22,6 +22,7 @@ var max_speed: float = 8.0       ## m/s, toutes voiles dehors, vent arrière
 var turn_rate: float = 0.55      ## rad/s à pleine barre et pleine vitesse
 var accel: float = 1.1           ## m/s²
 var sail_speed: float = 0.35     ## ouverture par seconde
+var drag: float = 1.0            ## facteur sur la vitesse visée : 1 à sec, moins quand la cale se remplit
 
 
 ## Configure le bateau depuis ses caractéristiques (données externes).
@@ -51,7 +52,7 @@ func wind_factor() -> float:
 func step(dt: float) -> void:
 	sail_open = move_toward(sail_open, float(sail_level) / SAIL_LEVELS, sail_speed * dt)
 	rudder = move_toward(rudder, rudder_target, 1.6 * dt)
-	var target := 0.0 if anchored else max_speed * sail_open * wind_factor()
+	var target := 0.0 if anchored else max_speed * sail_open * wind_factor() * drag
 	var rate := accel if target > speed else accel * (2.6 if anchored else 0.6)
 	speed = move_toward(speed, target, rate * dt)
 	var steer := MIN_STEER + (1.0 - MIN_STEER) * clampf(speed / (max_speed * 0.6), 0.0, 1.0)
