@@ -8,6 +8,10 @@ shader_type canvas_item;
 uniform float outline_threshold = 0.22;
 uniform float outline_strength = 0.30;
 uniform bool use_palette = true;   // faux : couleurs brutes (diagnostic, mesure des tons)
+// Couleurs des pirates (apparence personnalisable) : elles sont hors de la palette du décor et passent
+// telles quelles ; seule une correspondance quasi exacte compte, pour ne jamais « voler » un pixel du décor.
+uniform sampler2D char_palette : filter_nearest, hint_default_black;
+uniform int char_count = 0;
 
 float lum(vec3 c) {
 	return dot(c, vec3(0.299, 0.587, 0.114));
@@ -16,6 +20,12 @@ float lum(vec3 c) {
 vec3 quantize(vec3 c) {
 	if (!use_palette) {
 		return c;
+	}
+	for (int i = 0; i < char_count; i++) {
+		vec3 d = texelFetch(char_palette, ivec2(i, 0), 0).rgb - c;
+		if (dot(d, d) < 2.5e-4) {
+			return c;
+		}
 	}
 	float best = 1e9;
 	vec3 chosen = PALETTE[0];

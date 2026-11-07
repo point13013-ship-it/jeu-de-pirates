@@ -1,0 +1,1045 @@
+{
+ "frame": [
+  48,
+  64
+ ],
+ "feet": [
+  24,
+  54
+ ],
+ "directions": 8,
+ "anims": {
+  "idle": 4,
+  "walk": 8,
+  "carry_idle": 4,
+  "carry_walk": 8,
+  "helm": 1,
+  "climb": 4,
+  "jump": 3
+ },
+ "order": [
+  "pants",
+  "boots",
+  "shirt",
+  "coat",
+  "belt",
+  "hands",
+  "head",
+  "nose",
+  "mark",
+  "eyes",
+  "brows",
+  "beard",
+  "mouth",
+  "mustache",
+  "hair",
+  "hat"
+ ],
+ "parts": {
+  "hands": {
+   "label": "Mains",
+   "optional": false,
+   "variants": [
+    "bare"
+   ],
+   "layers": {
+    "bare": [
+     {
+      "id": "hands-bare.skin",
+      "slot": "skin",
+      "color": "skin"
+     }
+    ]
+   }
+  },
+  "head": {
+   "label": "Visage",
+   "optional": false,
+   "variants": [
+    "round"
+   ],
+   "layers": {
+    "round": [
+     {
+      "id": "head-round.skin",
+      "slot": "skin",
+      "color": "skin"
+     }
+    ]
+   }
+  },
+  "nose": {
+   "label": "Nez",
+   "optional": false,
+   "variants": [
+    "small",
+    "big",
+    "pointy"
+   ],
+   "layers": {
+    "small": [
+     {
+      "id": "nose-small.skin",
+      "slot": "skin",
+      "color": "skin"
+     }
+    ],
+    "big": [
+     {
+      "id": "nose-big.skin",
+      "slot": "skin",
+      "color": "skin"
+     }
+    ],
+    "pointy": [
+     {
+      "id": "nose-pointy.skin",
+      "slot": "skin",
+      "color": "skin"
+     }
+    ]
+   }
+  },
+  "eyes": {
+   "label": "Yeux",
+   "optional": false,
+   "variants": [
+    "round",
+    "narrow",
+    "angry",
+    "wide",
+    "sleepy"
+   ],
+   "layers": {
+    "round": [
+     {
+      "id": "eyes-round.white",
+      "slot": "white",
+      "color": "#f6f1e6"
+     },
+     {
+      "id": "eyes-round.iris",
+      "slot": "iris",
+      "color": "eyes"
+     }
+    ],
+    "narrow": [
+     {
+      "id": "eyes-narrow.white",
+      "slot": "white",
+      "color": "#f6f1e6"
+     },
+     {
+      "id": "eyes-narrow.iris",
+      "slot": "iris",
+      "color": "eyes"
+     }
+    ],
+    "angry": [
+     {
+      "id": "eyes-angry.white",
+      "slot": "white",
+      "color": "#f6f1e6"
+     },
+     {
+      "id": "eyes-angry.iris",
+      "slot": "iris",
+      "color": "eyes"
+     }
+    ],
+    "wide": [
+     {
+      "id": "eyes-wide.white",
+      "slot": "white",
+      "color": "#f6f1e6"
+     },
+     {
+      "id": "eyes-wide.iris",
+      "slot": "iris",
+      "color": "eyes"
+     }
+    ],
+    "sleepy": [
+     {
+      "id": "eyes-sleepy.white",
+      "slot": "white",
+      "color": "#f6f1e6"
+     },
+     {
+      "id": "eyes-sleepy.iris",
+      "slot": "iris",
+      "color": "eyes"
+     }
+    ]
+   }
+  },
+  "brows": {
+   "label": "Sourcils",
+   "optional": true,
+   "variants": [
+    "normal",
+    "thick",
+    "angry",
+    "raised"
+   ],
+   "layers": {
+    "normal": [
+     {
+      "id": "brows-normal.hair",
+      "slot": "hair",
+      "color": "hair"
+     }
+    ],
+    "thick": [
+     {
+      "id": "brows-thick.hair",
+      "slot": "hair",
+      "color": "hair"
+     }
+    ],
+    "angry": [
+     {
+      "id": "brows-angry.hair",
+      "slot": "hair",
+      "color": "hair"
+     }
+    ],
+    "raised": [
+     {
+      "id": "brows-raised.hair",
+      "slot": "hair",
+      "color": "hair"
+     }
+    ]
+   }
+  },
+  "mouth": {
+   "label": "Bouche",
+   "optional": false,
+   "variants": [
+    "smile",
+    "neutral",
+    "grin",
+    "frown"
+   ],
+   "layers": {
+    "smile": [
+     {
+      "id": "mouth-smile.mouth",
+      "slot": "mouth",
+      "color": "#6a1f2a"
+     }
+    ],
+    "neutral": [
+     {
+      "id": "mouth-neutral.mouth",
+      "slot": "mouth",
+      "color": "#6a1f2a"
+     }
+    ],
+    "grin": [
+     {
+      "id": "mouth-grin.mouth",
+      "slot": "mouth",
+      "color": "#6a1f2a"
+     }
+    ],
+    "frown": [
+     {
+      "id": "mouth-frown.mouth",
+      "slot": "mouth",
+      "color": "#6a1f2a"
+     }
+    ]
+   }
+  },
+  "mark": {
+   "label": "Signe",
+   "optional": true,
+   "variants": [
+    "patch_l",
+    "patch_r",
+    "scar",
+    "monocle"
+   ],
+   "layers": {
+    "patch_l": [
+     {
+      "id": "mark-patch_l.patch",
+      "slot": "patch",
+      "color": "#15101a"
+     }
+    ],
+    "patch_r": [
+     {
+      "id": "mark-patch_r.patch",
+      "slot": "patch",
+      "color": "#15101a"
+     }
+    ],
+    "scar": [
+     {
+      "id": "mark-scar.scar",
+      "slot": "scar",
+      "color": "scar"
+     }
+    ],
+    "monocle": [
+     {
+      "id": "mark-monocle.frame",
+      "slot": "frame",
+      "color": "#e6b84a"
+     }
+    ]
+   }
+  },
+  "hair": {
+   "label": "Coiffure",
+   "optional": true,
+   "variants": [
+    "short",
+    "buzz",
+    "long",
+    "ponytail",
+    "bun",
+    "mohawk",
+    "afro",
+    "pigtails"
+   ],
+   "layers": {
+    "short": [
+     {
+      "id": "hair-short.hair",
+      "slot": "hair",
+      "color": "hair"
+     }
+    ],
+    "buzz": [
+     {
+      "id": "hair-buzz.hair",
+      "slot": "hair",
+      "color": "hair"
+     }
+    ],
+    "long": [
+     {
+      "id": "hair-long.hair",
+      "slot": "hair",
+      "color": "hair"
+     }
+    ],
+    "ponytail": [
+     {
+      "id": "hair-ponytail.hair",
+      "slot": "hair",
+      "color": "hair"
+     }
+    ],
+    "bun": [
+     {
+      "id": "hair-bun.hair",
+      "slot": "hair",
+      "color": "hair"
+     }
+    ],
+    "mohawk": [
+     {
+      "id": "hair-mohawk.hair",
+      "slot": "hair",
+      "color": "hair"
+     }
+    ],
+    "afro": [
+     {
+      "id": "hair-afro.hair",
+      "slot": "hair",
+      "color": "hair"
+     }
+    ],
+    "pigtails": [
+     {
+      "id": "hair-pigtails.hair",
+      "slot": "hair",
+      "color": "hair"
+     }
+    ]
+   }
+  },
+  "beard": {
+   "label": "Barbe",
+   "optional": true,
+   "variants": [
+    "stubble",
+    "goatee",
+    "full",
+    "long",
+    "braid",
+    "chinstrap"
+   ],
+   "layers": {
+    "stubble": [
+     {
+      "id": "beard-stubble.hair",
+      "slot": "hair",
+      "color": "hair"
+     }
+    ],
+    "goatee": [
+     {
+      "id": "beard-goatee.hair",
+      "slot": "hair",
+      "color": "hair"
+     }
+    ],
+    "full": [
+     {
+      "id": "beard-full.hair",
+      "slot": "hair",
+      "color": "hair"
+     }
+    ],
+    "long": [
+     {
+      "id": "beard-long.hair",
+      "slot": "hair",
+      "color": "hair"
+     }
+    ],
+    "braid": [
+     {
+      "id": "beard-braid.hair",
+      "slot": "hair",
+      "color": "hair"
+     }
+    ],
+    "chinstrap": [
+     {
+      "id": "beard-chinstrap.hair",
+      "slot": "hair",
+      "color": "hair"
+     }
+    ]
+   }
+  },
+  "mustache": {
+   "label": "Moustache",
+   "optional": true,
+   "variants": [
+    "thin",
+    "handlebar",
+    "walrus"
+   ],
+   "layers": {
+    "thin": [
+     {
+      "id": "mustache-thin.hair",
+      "slot": "hair",
+      "color": "hair"
+     }
+    ],
+    "handlebar": [
+     {
+      "id": "mustache-handlebar.hair",
+      "slot": "hair",
+      "color": "hair"
+     }
+    ],
+    "walrus": [
+     {
+      "id": "mustache-walrus.hair",
+      "slot": "hair",
+      "color": "hair"
+     }
+    ]
+   }
+  },
+  "hat": {
+   "label": "Chapeau",
+   "optional": true,
+   "variants": [
+    "tricorn",
+    "bicorn",
+    "bandana",
+    "straw",
+    "cap"
+   ],
+   "layers": {
+    "tricorn": [
+     {
+      "id": "hat-tricorn.hat",
+      "slot": "hat",
+      "color": "hat"
+     },
+     {
+      "id": "hat-tricorn.trim",
+      "slot": "trim",
+      "color": "hat_trim"
+     }
+    ],
+    "bicorn": [
+     {
+      "id": "hat-bicorn.hat",
+      "slot": "hat",
+      "color": "hat"
+     },
+     {
+      "id": "hat-bicorn.trim",
+      "slot": "trim",
+      "color": "hat_trim"
+     }
+    ],
+    "bandana": [
+     {
+      "id": "hat-bandana.hat",
+      "slot": "hat",
+      "color": "hat"
+     }
+    ],
+    "straw": [
+     {
+      "id": "hat-straw.hat",
+      "slot": "hat",
+      "color": "hat"
+     },
+     {
+      "id": "hat-straw.trim",
+      "slot": "trim",
+      "color": "hat_trim"
+     }
+    ],
+    "cap": [
+     {
+      "id": "hat-cap.hat",
+      "slot": "hat",
+      "color": "hat"
+     },
+     {
+      "id": "hat-cap.trim",
+      "slot": "trim",
+      "color": "hat_trim"
+     }
+    ]
+   }
+  },
+  "shirt": {
+   "label": "Haut",
+   "optional": false,
+   "variants": [
+    "bare",
+    "tee",
+    "pirate",
+    "striped"
+   ],
+   "layers": {
+    "bare": [
+     {
+      "id": "shirt-bare.skin",
+      "slot": "skin",
+      "color": "skin"
+     }
+    ],
+    "tee": [
+     {
+      "id": "shirt-tee.cloth",
+      "slot": "cloth",
+      "color": "shirt"
+     },
+     {
+      "id": "shirt-tee.skin",
+      "slot": "skin",
+      "color": "skin"
+     }
+    ],
+    "pirate": [
+     {
+      "id": "shirt-pirate.cloth",
+      "slot": "cloth",
+      "color": "shirt"
+     },
+     {
+      "id": "shirt-pirate.skin",
+      "slot": "skin",
+      "color": "skin"
+     }
+    ],
+    "striped": [
+     {
+      "id": "shirt-striped.cloth",
+      "slot": "cloth",
+      "color": "shirt"
+     },
+     {
+      "id": "shirt-striped.stripe",
+      "slot": "stripe",
+      "color": "shirt_stripe"
+     }
+    ]
+   }
+  },
+  "coat": {
+   "label": "Manteau",
+   "optional": true,
+   "variants": [
+    "vest",
+    "jacket",
+    "captain"
+   ],
+   "layers": {
+    "vest": [
+     {
+      "id": "coat-vest.cloth",
+      "slot": "cloth",
+      "color": "coat"
+     },
+     {
+      "id": "coat-vest.trim",
+      "slot": "trim",
+      "color": "coat_trim"
+     }
+    ],
+    "jacket": [
+     {
+      "id": "coat-jacket.cloth",
+      "slot": "cloth",
+      "color": "coat"
+     },
+     {
+      "id": "coat-jacket.trim",
+      "slot": "trim",
+      "color": "coat_trim"
+     }
+    ],
+    "captain": [
+     {
+      "id": "coat-captain.cloth",
+      "slot": "cloth",
+      "color": "coat"
+     },
+     {
+      "id": "coat-captain.trim",
+      "slot": "trim",
+      "color": "coat_trim"
+     }
+    ]
+   }
+  },
+  "belt": {
+   "label": "Ceinture",
+   "optional": true,
+   "variants": [
+    "belt",
+    "sash",
+    "baldric"
+   ],
+   "layers": {
+    "belt": [
+     {
+      "id": "belt-belt.belt",
+      "slot": "belt",
+      "color": "belt"
+     },
+     {
+      "id": "belt-belt.buckle",
+      "slot": "buckle",
+      "color": "#e6b84a"
+     }
+    ],
+    "sash": [
+     {
+      "id": "belt-sash.belt",
+      "slot": "belt",
+      "color": "belt"
+     }
+    ],
+    "baldric": [
+     {
+      "id": "belt-baldric.belt",
+      "slot": "belt",
+      "color": "belt"
+     },
+     {
+      "id": "belt-baldric.buckle",
+      "slot": "buckle",
+      "color": "#e6b84a"
+     }
+    ]
+   }
+  },
+  "pants": {
+   "label": "Pantalon",
+   "optional": false,
+   "variants": [
+    "long",
+    "shorts",
+    "rolled"
+   ],
+   "layers": {
+    "long": [
+     {
+      "id": "pants-long.cloth",
+      "slot": "cloth",
+      "color": "pants"
+     }
+    ],
+    "shorts": [
+     {
+      "id": "pants-shorts.cloth",
+      "slot": "cloth",
+      "color": "pants"
+     },
+     {
+      "id": "pants-shorts.skin",
+      "slot": "skin",
+      "color": "skin"
+     }
+    ],
+    "rolled": [
+     {
+      "id": "pants-rolled.cloth",
+      "slot": "cloth",
+      "color": "pants"
+     },
+     {
+      "id": "pants-rolled.skin",
+      "slot": "skin",
+      "color": "skin"
+     }
+    ]
+   }
+  },
+  "boots": {
+   "label": "Chaussures",
+   "optional": false,
+   "variants": [
+    "high",
+    "shoes",
+    "barefoot",
+    "sandals"
+   ],
+   "layers": {
+    "high": [
+     {
+      "id": "boots-high.boot",
+      "slot": "boot",
+      "color": "boots"
+     }
+    ],
+    "shoes": [
+     {
+      "id": "boots-shoes.boot",
+      "slot": "boot",
+      "color": "boots"
+     }
+    ],
+    "barefoot": [
+     {
+      "id": "boots-barefoot.skin",
+      "slot": "skin",
+      "color": "skin"
+     }
+    ],
+    "sandals": [
+     {
+      "id": "boots-sandals.boot",
+      "slot": "boot",
+      "color": "boots"
+     },
+     {
+      "id": "boots-sandals.skin",
+      "slot": "skin",
+      "color": "skin"
+     }
+    ]
+   }
+  }
+ },
+ "channels": {
+  "skin": {
+   "label": "Peau",
+   "palette": [
+    "#fbe0c8",
+    "#f1c7a3",
+    "#dca47a",
+    "#bf8458",
+    "#946039",
+    "#6b4128",
+    "#4a2c1c",
+    "#e8c0d0"
+   ]
+  },
+  "hair": {
+   "label": "Cheveux et barbe",
+   "palette": [
+    "#1b1410",
+    "#3a2416",
+    "#6b4423",
+    "#a8692f",
+    "#d8a64a",
+    "#e8d9a8",
+    "#a8281f",
+    "#d6d6d6",
+    "#2d4d8f",
+    "#2f7a4a",
+    "#8a4fa8",
+    "#e86aa0"
+   ]
+  },
+  "eyes": {
+   "label": "Yeux",
+   "palette": [
+    "#3a2a1c",
+    "#6b4423",
+    "#2d5fa8",
+    "#3f8f5f",
+    "#8a8f94",
+    "#a8281f",
+    "#8a4fa8",
+    "#e6b84a"
+   ]
+  },
+  "scar": {
+   "label": "Cicatrice",
+   "palette": [
+    "#c97a6e",
+    "#a8504a",
+    "#e0a8a0"
+   ]
+  },
+  "shirt": {
+   "label": "Chemise",
+   "palette": [
+    "#f2ead8",
+    "#d94a3b",
+    "#2d5fa8",
+    "#3f8f5f",
+    "#e6b84a",
+    "#2a2a33",
+    "#8a4fa8",
+    "#e8844a"
+   ]
+  },
+  "shirt_stripe": {
+   "label": "Rayures",
+   "palette": [
+    "#2a3f78",
+    "#a8281f",
+    "#2a2a33",
+    "#f2ead8"
+   ]
+  },
+  "coat": {
+   "label": "Manteau / gilet",
+   "palette": [
+    "#7a1f2a",
+    "#223a66",
+    "#2f5a3a",
+    "#2a2a33",
+    "#6b4423",
+    "#d8c7a0",
+    "#5a2f78",
+    "#a8281f"
+   ]
+  },
+  "coat_trim": {
+   "label": "Parements",
+   "palette": [
+    "#e6b84a",
+    "#d6d6d6",
+    "#f2ead8",
+    "#1b1410",
+    "#a8281f"
+   ]
+  },
+  "pants": {
+   "label": "Pantalon",
+   "palette": [
+    "#3a3a46",
+    "#6b4423",
+    "#2d4d8f",
+    "#d8c7a0",
+    "#2a2a33",
+    "#7a1f2a",
+    "#3f6f4a"
+   ]
+  },
+  "boots": {
+   "label": "Bottes",
+   "palette": [
+    "#2e1d14",
+    "#5a3a22",
+    "#1b1410",
+    "#7a1f2a",
+    "#8a8f94"
+   ]
+  },
+  "hat": {
+   "label": "Chapeau",
+   "palette": [
+    "#2a2a33",
+    "#7a1f2a",
+    "#223a66",
+    "#d8b45a",
+    "#d94a3b",
+    "#f2ead8",
+    "#2f5a3a"
+   ]
+  },
+  "hat_trim": {
+   "label": "Ruban du chapeau",
+   "palette": [
+    "#e6b84a",
+    "#d94a3b",
+    "#f2ead8",
+    "#1b1410",
+    "#2d5fa8"
+   ]
+  },
+  "belt": {
+   "label": "Ceinture / écharpe",
+   "palette": [
+    "#4a2f1c",
+    "#d94a3b",
+    "#e6b84a",
+    "#2a2a33",
+    "#2d5fa8",
+    "#f2ead8"
+   ]
+  }
+ },
+ "tones": [
+  0.62,
+  0.76,
+  0.88,
+  1.0
+ ],
+ "labels": {
+  "head": {
+   "round": "Rond"
+  },
+  "hands": {
+   "bare": "Nues"
+  },
+  "nose": {
+   "small": "Petit",
+   "big": "Gros",
+   "pointy": "Pointu"
+  },
+  "eyes": {
+   "round": "Ronds",
+   "narrow": "Fins",
+   "angry": "Méchants",
+   "wide": "Grands",
+   "sleepy": "Endormis"
+  },
+  "brows": {
+   "normal": "Normaux",
+   "thick": "Épais",
+   "angry": "Froncés",
+   "raised": "Levés"
+  },
+  "mouth": {
+   "smile": "Sourire",
+   "neutral": "Neutre",
+   "grin": "Grand sourire",
+   "frown": "Boudeuse"
+  },
+  "mark": {
+   "patch_l": "Cache-œil gauche",
+   "patch_r": "Cache-œil droit",
+   "scar": "Cicatrice",
+   "monocle": "Monocle"
+  },
+  "hair": {
+   "short": "Courts",
+   "buzz": "Ras",
+   "long": "Longs",
+   "ponytail": "Queue de cheval",
+   "bun": "Chignon",
+   "mohawk": "Crête",
+   "afro": "Afro",
+   "pigtails": "Couettes"
+  },
+  "beard": {
+   "stubble": "Barbe de trois jours",
+   "goatee": "Bouc",
+   "full": "Barbe pleine",
+   "long": "Longue barbe",
+   "braid": "Barbe tressée",
+   "chinstrap": "Favoris"
+  },
+  "mustache": {
+   "thin": "Fine",
+   "handlebar": "Guidon",
+   "walrus": "Morse"
+  },
+  "hat": {
+   "tricorn": "Tricorne",
+   "bicorn": "Bicorne",
+   "bandana": "Bandana",
+   "straw": "Chapeau de paille",
+   "cap": "Calot"
+  },
+  "shirt": {
+   "bare": "Torse nu",
+   "tee": "T-shirt",
+   "pirate": "Chemise de pirate",
+   "striped": "Marinière"
+  },
+  "coat": {
+   "vest": "Gilet",
+   "jacket": "Veste",
+   "captain": "Manteau de capitaine"
+  },
+  "belt": {
+   "belt": "Ceinture",
+   "sash": "Écharpe",
+   "baldric": "Baudrier"
+  },
+  "pants": {
+   "long": "Long",
+   "shorts": "Short",
+   "rolled": "Retroussé"
+  },
+  "boots": {
+   "high": "Hautes bottes",
+   "shoes": "Souliers",
+   "barefoot": "Pieds nus",
+   "sandals": "Sandales"
+  }
+ },
+ "default_look": {
+  "parts": {
+   "head": "round",
+   "hands": "bare",
+   "nose": "small",
+   "eyes": "round",
+   "brows": "normal",
+   "mouth": "smile",
+   "hair": "short",
+   "beard": "full",
+   "mustache": "none",
+   "hat": "tricorn",
+   "mark": "none",
+   "shirt": "pirate",
+   "coat": "captain",
+   "belt": "sash",
+   "pants": "long",
+   "boots": "high"
+  },
+  "colors": {
+   "skin": "#dca47a",
+   "hair": "#3a2416",
+   "eyes": "#2d5fa8",
+   "scar": "#c97a6e",
+   "shirt": "#f2ead8",
+   "shirt_stripe": "#2a3f78",
+   "coat": "#7a1f2a",
+   "coat_trim": "#e6b84a",
+   "pants": "#3a3a46",
+   "boots": "#2e1d14",
+   "hat": "#2a2a33",
+   "hat_trim": "#e6b84a",
+   "belt": "#d94a3b"
+  }
+ }
+}
