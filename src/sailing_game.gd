@@ -125,6 +125,10 @@ var _profile := Profile.new()        ## mon or et mes quêtes
 var _quests: QuestLog
 var _dialog: DialogueBox
 var _dialog_ctx: Dictionary = {}     ## le dialogue en cours : {npc, offer, turn_in}
+var _ship_skin: Dictionary = {}      ## couleurs du bateau (ShipSkin)
+static var _restart: Dictionary = {} ## changement de bateau en solo : {ship, profile}, lu au rechargement de la scène
+var _shop_menu: ShopMenu            ## le menu d'achat ouvert chez un boutiquier
+var _shop_defs: Dictionary = {}      ## data/shops.json : id de PNJ -> boutique
 var _npcs: Array = []                ## TownNpc de la ville (boutiquiers et promeneurs)
 var _npc_range := 2.3
 var _interior_nodes: Array = []      ## par intérieur : {root, building}
@@ -164,7 +168,12 @@ func _ready() -> void:
 	_net.status.connect(_set_status)
 	_net.welcomed.connect(_setup_ship)
 	var ship_name := str(_args.get("ship", "brigantin"))
-	if _args.has("host"):
+	if not _restart.is_empty():   # on revient d'un changement de bateau au chantier naval (solo)
+		_profile = _restart["profile"]
+		var next_ship := str(_restart["ship"])
+		_restart = {}
+		_setup_ship(next_ship)
+	elif _args.has("host"):
 		_start_host(ship_name)
 	elif _args.has("join"):
 		_start_join(str(_args["join"]))
@@ -194,6 +203,17 @@ func _setup_ship(ship_name: String) -> void:
 		_ship = null
 		return
 	_world.add_child(_ship)
+	if _args.has("skin"):   # essai : --skin=sail:red,hull:navy,flag:gold
+		for item in str(_args["skin"]).split(","):
+			var kv := item.split(":")
+			if kv.size() == 2:
+				_profile.ship_skin[kv[0]] = kv[1]
+	if not _is_client():
+		_profile.ship = ship_name   # c'est mon bateau (le chantier naval le montre comme tel)
+		_profile.save()
+	if not _is_client():   # le bateau porte les couleurs de son hôte (ou les miennes en solo) ; un client reçoit les siennes
+		_ship_skin = ShipSkin.sanitize(_profile.ship_skin)
+	ShipSkin.apply(_ship, _ship_skin)
 	_sim.configure(_load_stats(ship_name))
 	_sim.yaw = deg_to_rad(float(_args.get("yaw", "0")))
 	if not _args.has("no-port"):
@@ -237,6 +257,7 @@ func _build_menu() -> void:
 	_menu = layer
 	_main_menu = MainMenu.new(_local_look())
 	layer.add_child(_main_menu)
+	_main_menu.set_ships(_profile.ships, _profile.ship)
 	_main_menu.play_solo.connect(func(ship_name: String) -> void: _setup_ship(ship_name))
 	_main_menu.host_game.connect(func(ship_name: String) -> void: _start_host(ship_name))
 	_main_menu.join_game.connect(func(code: String) -> void: _start_join(code))
@@ -761,6 +782,10 @@ func _build_hud() -> void:
 	_dialog = DialogueBox.new()
 	_dialog.closed.connect(_on_dialog_closed)
 	add_child(_dialog)
+	_shop_defs = Shop.load_defs()
+	_shop_menu = ShopMenu.new()
+	_shop_menu.purchased.connect(_on_purchase)
+	add_child(_shop_menu)
 	# fondu au noir des changements d'étage
 	_fade = ColorRect.new()
 	_fade.color = Color(0, 0, 0, 0)
@@ -797,7 +822,7 @@ func _apply_test_args() -> void:
 			_lh = float(_args["lh"])
 	if _args.has("press"):
 		# test : --press=E@2,SPACE@3.5 appuie sur ces touches aux secondes indiquées
-		var codes := {"E": KEY_E, "R": KEY_R, "SPACE": KEY_SPACE}
+		var codes := {"E": KEY_E, "R": KEY_R, "SPACE": KEY_SPACE, "DOWN": KEY_DOWN, "UP": KEY_UP}
 		for item in str(_args["press"]).split(","):
 			var kv := item.split("@")
 			var code: Key = codes.get(kv[0], KEY_E)
@@ -817,6 +842,8 @@ func _apply_test_args() -> void:
 			for i in _ship.cannons.size():
 				_cannon_loaded[i] = true
 				_request("fire", i))
+	if _args.has("gold"):   # essai : --gold=150 donne de l'or
+		_profile.gold = int(_args["gold"])
 	if _args.has("quest"):   # essai : --quest=tonnelet met cette quête en cours
 		_profile.quests[str(_args["quest"])] = "active"
 	if _args.has("water"):
@@ -957,7 +984,7 @@ func _build_town() -> void:
 	_land.load_town(_read_json("res://data/town.json"))
 	TownBuilder.build_levels(_world_fixed, _land)
 	for it: Dictionary in _land.interiors:
-		var root := TownBuilder.build_tavern(it)
+		var root := ShopBuilder.build(it) if it.has("kind") else TownBuilder.build_tavern(it)
 		root.visible = false
 		_world_fixed.add_child(root)
 		var building: Node = _port.find_child(str(it.get("building_node", "")), true, false) if _port != null else null
@@ -1096,6 +1123,38 @@ func _on_dialog_closed(accepted: bool) -> void:
 		var reward := _quests.complete(str(ctx["turn_in"]))
 		if reward > 0:
 			_say("Quête terminée ! +%d pièces d'or" % reward, 4.5)
+	elif _shop_defs.has(npc.id):
+		_shop_menu.open(Shop.new(_profile, _shop_defs[npc.id], _local_look()))
+
+
+## Un achat chez un boutiquier : une nouvelle tenue est appliquée, sauvegardée et envoyée à l'équipage.
+func _on_purchase(result: Dictionary) -> void:
+	if bool(result.get("ship_changed", false)):
+		var next_ship := str(result["ship"])
+		if _ship == null or next_ship == _ship.ship_name:
+			return
+		if _net.active:   # un équipage ne change pas de bateau en pleine partie : ce sera pour la prochaine sortie
+			_say("Tu prendras ce bateau à ta prochaine partie.", 4.5)
+			return
+		_shop_menu.close()
+		_restart = {"ship": next_ship, "profile": _profile}
+		get_tree().reload_current_scene.call_deferred()
+		return
+	if bool(result.get("skin_changed", false)):
+		if _is_client():
+			_say("Ces couleurs seront celles de ton bateau quand tu seras l'hôte.", 4.5)
+		else:
+			_ship_skin = ShipSkin.sanitize(_profile.ship_skin)
+			ShipSkin.apply(_ship, _ship_skin)
+			_net.broadcast_skin()
+		return
+	if not bool(result.get("look_changed", false)):
+		return
+	_my_look = PirateLook.sanitize(_shop_menu.shop.look)
+	if _profile.persistent:   # --fresh (essais) ne touche jamais à la vraie apparence sauvegardée
+		PirateLook.save(_my_look)
+	_sprite.set_look(_my_look)
+	_net.broadcast_look()
 
 
 ## Remet à jour ce qu'on voit des voies d'eau (repères sur la coque, trous dans la cale) quand elles changent.
@@ -1428,7 +1487,7 @@ func _update_player(delta: float) -> void:
 	if _jump_wind > 0.0:
 		return   # accroupi avant de sauter
 	if _loc == Loc.LAND:
-		if move != Vector2.ZERO and not _dialog.is_open():
+		if move != Vector2.ZERO and not _dialog.is_open() and not _shop_menu.is_open():
 			var r := _land.step(_lpos, move.normalized() * WALK_SPEED * delta, _lh)
 			_lpos = Vector2(r.x, r.y)
 			_lh = r.z
@@ -1477,7 +1536,7 @@ func _land_point(w: Vector2, h: float) -> Vector3:
 ## Saut : un temps d'accroupissement, puis une parabole. Possible à terre comme sur le pont.
 func _update_jump(delta: float) -> void:
 	_land_t = maxf(_land_t - delta, 0.0)
-	if _dialog != null and _dialog.is_open():
+	if (_dialog != null and _dialog.is_open()) or (_shop_menu != null and _shop_menu.is_open()):
 		_jump_wind = 0.0
 	if _notice_t > 0.0:
 		_notice_t -= delta
@@ -1818,6 +1877,26 @@ func _local_look() -> Dictionary:
 	return _my_look
 
 
+## Vrai si je suis un client d'une partie en ligne (le bateau n'est pas le mien).
+func _is_client() -> bool:
+	return _net != null and _net.active and not _net.is_host
+
+
+## Les couleurs du bateau, à envoyer à l'équipage (hôte).
+func skin_json() -> String:
+	return JSON.stringify(_ship_skin if not _ship_skin.is_empty() else ShipSkin.sanitize(_profile.ship_skin))
+
+
+## Client : reçoit les couleurs du bateau de l'hôte (avant ou après l'arrivée à bord).
+func apply_ship_skin_json(json: String) -> void:
+	var parsed: Variant = JSON.parse_string(json)
+	if not (parsed is Dictionary):
+		return
+	_ship_skin = ShipSkin.sanitize(parsed)
+	if _ship != null:
+		ShipSkin.apply(_ship, _ship_skin)
+
+
 ## Mon apparence, à envoyer aux autres joueurs.
 func local_look_json() -> String:
 	return PirateLook.key(_local_look())
@@ -1987,6 +2066,9 @@ func _unhandled_input(event: InputEvent) -> void:
 	var key := event as InputEventKey
 	if not key.pressed or key.echo:
 		return
+	if _shop_menu.is_open():   # chez un boutiquier : le menu prend toutes les touches
+		_shop_menu.key(key.physical_keycode)
+		return
 	if _dialog.is_open():   # pendant un dialogue : E continue, R refuse, le reste attend
 		if key.physical_keycode == KEY_E:
 			_dialog.confirm()
@@ -2026,9 +2108,12 @@ func _interact_hold(secondary: bool) -> void:
 			_leave_hold()
 		"rack":
 			if not _carrying:
-				_carrying = true
-				_carry_kind = "plank"
-				_plank_icon.visible = true
+				if _profile.take_supply("plank"):
+					_carrying = true
+					_carry_kind = "plank"
+					_plank_icon.visible = true
+				else:
+					_say("Plus de planches : rachètes-en au Magasin Général", 3.5)
 		"bucket":
 			if _bail_cd <= 0.0 and _hull.water > 0.0:
 				_bail_cd = _hull.bail_cooldown
@@ -2100,9 +2185,12 @@ func _interact(secondary: bool) -> void:
 				_enter_hold()
 		"ammo":
 			if not secondary and not _carrying:
-				_carrying = true
-				_carry_kind = "ball"
-				_ball_icon.visible = true
+				if _profile.take_supply("ball"):
+					_carrying = true
+					_carry_kind = "ball"
+					_ball_icon.visible = true
+				else:
+					_say("Plus de boulets : rachètes-en au Magasin Général", 3.5)
 		"cannon":
 			var i: int = it["index"]
 			if _cannon_loaded[i]:
@@ -2302,9 +2390,9 @@ func _update_hud() -> void:
 		_hud.text += "\nÉquipage : %d / %d%s" % [_remotes.size() + 1, SailingNet.MAX_PLAYERS,
 				"   (barre tenue par un ami)" if _helm_owner != 0 and _helm_owner != _my_id() else ""]
 	_update_gauge()
-	_gold_label.text = "Or : %d" % _profile.gold
+	_gold_label.text = "Or : %d\nBoulets : %d   Planches : %d" % [_profile.gold, _profile.balls, _profile.planks]
 	_quest_label.text = _quests.tracker_text()
-	if _dialog.is_open():
+	if _dialog.is_open() or _shop_menu.is_open():
 		_prompt.text = ""
 		return
 	if _notice_t > 0.0:

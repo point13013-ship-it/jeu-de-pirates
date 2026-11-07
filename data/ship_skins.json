@@ -1,0 +1,40 @@
+{
+  "order": ["sail", "hull", "flag"],
+  "categories": {
+    "sail": {
+      "label": "Voiles",
+      "mats": { "sail": 1.0, "sail_d": 0.89, "sail_p": 1.044 },
+      "variants": [
+        { "id": "natural", "label": "Toile naturelle", "price": 0 },
+        { "id": "white", "label": "Toile blanche", "price": 30, "color": "#ece8dc" },
+        { "id": "red", "label": "Voiles carmin", "price": 50, "color": "#c04848" },
+        { "id": "navy", "label": "Voiles bleu marine", "price": 50, "color": "#4a68a0" },
+        { "id": "green", "label": "Voiles vert mousse", "price": 60, "color": "#5f9a5c" },
+        { "id": "black", "label": "Voiles noires", "price": 90, "color": "#46414e" },
+        { "id": "purple", "label": "Voiles pourpres", "price": 120, "color": "#8a5aa8" }
+      ]
+    },
+    "hull": {
+      "label": "Coque",
+      "mats": { "hull": 1.0, "hull_l": 1.5, "hull_d": 0.68 },
+      "variants": [
+        { "id": "ebony", "label": "Coque d'ébène", "price": 0 },
+        { "id": "navy", "label": "Coque bleu nuit", "price": 70, "color": "#34497a" },
+        { "id": "crimson", "label": "Coque rouge sang", "price": 70, "color": "#8a3232" },
+        { "id": "forest", "label": "Coque vert forêt", "price": 70, "color": "#38683f" },
+        { "id": "ivory", "label": "Coque d'ivoire", "price": 140, "color": "#b9a889" }
+      ]
+    },
+    "flag": {
+      "label": "Pavillon",
+      "mats": { "flag": 1.0 },
+      "variants": [
+        { "id": "black", "label": "Pavillon noir", "price": 0 },
+        { "id": "red", "label": "Pavillon rouge", "price": 25, "color": "#b03232" },
+        { "id": "white", "label": "Pavillon blanc", "price": 25, "color": "#ece8dc" },
+        { "id": "blue", "label": "Pavillon bleu", "price": 25, "color": "#4572b8" },
+        { "id": "gold", "label": "Pavillon doré", "price": 80, "color": "#d8b04a" }
+      ]
+    }
+  }
+}

@@ -211,6 +211,17 @@ func _style_button(b: Button, solid: bool) -> void:
 	b.add_theme_color_override("font_pressed_color", Color.WHITE)
 
 
+## Verrouille les bateaux qu'on ne possède pas encore (à acheter au chantier naval) et choisit `selected`.
+func set_ships(owned: Array, selected: String) -> void:
+	for s: Array in SHIPS:
+		var b := _ship_buttons[s[0]] as Button
+		var has: bool = owned.has(s[0])
+		b.disabled = not has
+		b.text = str(s[1]) if has else "%s (verrouillé)" % s[1]
+		b.tooltip_text = str(s[2]) if has else "À acheter au chantier naval du port"
+	_choose_ship(selected if owned.has(selected) else str(owned[0]))
+
+
 func _choose_ship(name_id: String) -> void:
 	ship = name_id
 	for id: String in _ship_buttons:

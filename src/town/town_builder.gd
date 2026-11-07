@@ -134,45 +134,9 @@ static func _steps(root: Node3D, lvl: Dictionary, x0: float, y0: float, x1: floa
 
 ## L'intérieur de la taverne : un noeud à rendre visible quand le pirate est dedans.
 static func build_tavern(it: Dictionary) -> Node3D:
-	var root := Node3D.new()
-	root.name = "interieur_" + str(it["id"])
-	var fp: Array = it["footprint"]
-	var x0 := float(fp[0])
-	var y0 := float(fp[1])
-	var x1 := float(fp[2])
-	var y1 := float(fp[3])
+	var root := _shell(it)
+	var y1 := float((it["footprint"] as Array)[3])
 	var fh := float(it.get("floor_h", 0.45))
-	var ceil_h := float(it.get("ceiling", 6.6))
-	var cx := (x0 + x1) * 0.5
-	var cy := (y0 + y1) * 0.5
-	var w := x1 - x0
-	var d := y1 - y0
-	var door_x := float(it.get("door_x", cx))
-	var wall_mat := ProcKit.flat(PLASTER)
-	var beam := ProcKit.flat(WOOD_D)
-	# sol de la salle
-	ProcKit.box(root, Vector3(w - 0.3, fh, d - 0.3), ProcKit.w(cx, cy, fh * 0.5), ProcKit.wood(WOOD, Vector2((w - 0.3) * 0.5, (d - 0.3) * 0.5)))
-	# mur du fond, murs des côtés
-	ProcKit.box(root, Vector3(w, ceil_h, 0.3), ProcKit.w(cx, y1 - 0.15, ceil_h * 0.5), wall_mat)
-	ProcKit.box(root, Vector3(0.3, ceil_h, d), ProcKit.w(x0 + 0.15, cy, ceil_h * 0.5), wall_mat)
-	ProcKit.box(root, Vector3(0.3, ceil_h, d), ProcKit.w(x1 - 0.15, cy, ceil_h * 0.5), wall_mat)
-	# colombages sur le mur du fond
-	var bx := x0 + 1.0
-	while bx < x1:
-		ProcKit.box(root, Vector3(0.22, ceil_h, 0.12), ProcKit.w(bx, y1 - 0.34, ceil_h * 0.5), beam)
-		bx += 2.3
-	for hh in [fh + 0.02, 3.3, ceil_h - 0.1]:
-		ProcKit.box(root, Vector3(w, 0.2, 0.14), ProcKit.w(cx, y1 - 0.36, hh), beam)
-	# muret de façade, avec une porte
-	var front_h := 0.95
-	for seg: Array in [[x0, door_x - 0.85], [door_x + 0.85, x1]]:
-		var sa := float(seg[0])
-		var sb := float(seg[1])
-		ProcKit.box(root, Vector3(sb - sa, front_h, 0.3), ProcKit.w((sa + sb) * 0.5, y0 + 0.15, front_h * 0.5), ProcKit.wood(WOOD_D, Vector2((sb - sa) * 0.5, 0.4)))
-		ProcKit.box(root, Vector3(sb - sa, 0.1, 0.4), ProcKit.w((sa + sb) * 0.5, y0 + 0.15, front_h + 0.04), beam)
-	for dx in [-0.85, 0.85]:
-		ProcKit.box(root, Vector3(0.2, 2.5, 0.35), ProcKit.w(door_x + dx, y0 + 0.15, 1.25), beam)
-	ProcKit.box(root, Vector3(1.9, 0.2, 0.35), ProcKit.w(door_x, y0 + 0.15, 2.5), beam)
 	# le bar
 	ProcKit.box(root, Vector3(6.4, 1.0, 1.0), ProcKit.w(-13.6, 31.9, fh + 0.5), ProcKit.wood(WOOD_D, Vector2(3.0, 0.5)))
 	ProcKit.box(root, Vector3(6.7, 0.1, 1.3), ProcKit.w(-13.6, 31.9, fh + 1.05), ProcKit.flat(WOOD_L.darkened(0.15)))
@@ -292,3 +256,54 @@ static func _gallery(root: Node3D, s: Dictionary) -> void:
 	ProcKit.box(root, Vector3(1.0, 0.6, 0.7), ProcKit.w(x1 - 0.9, y1 - 0.5, h + 0.3), ProcKit.wood(WOOD_D, Vector2(1, 1)))
 	ProcKit.box(root, Vector3(1.0, 0.1, 0.72), ProcKit.w(x1 - 0.9, y1 - 0.5, h + 0.65), ProcKit.flat(Color(0.7, 0.55, 0.2)))
 	ProcKit.box(root, Vector3(1.6, 0.35, 0.9), ProcKit.w(x0 + 1.2, y1 - 0.65, h + 0.18), ProcKit.flat(Color(0.55, 0.2, 0.2)))
+
+
+# ------------------------------------------------------------------ coque commune des intérieurs
+
+
+## Sol, mur du fond, murs des côtés, colombages et muret de façade avec sa porte : ce que partagent tous les
+## intérieurs (la taverne comme les boutiques de ShopBuilder). `wall` (facultatif, [r, g, b]) change les murs.
+static func _shell(it: Dictionary) -> Node3D:
+	var root := Node3D.new()
+	root.name = "interieur_" + str(it["id"])
+	var fp: Array = it["footprint"]
+	var x0 := float(fp[0])
+	var y0 := float(fp[1])
+	var x1 := float(fp[2])
+	var y1 := float(fp[3])
+	var fh := float(it.get("floor_h", 0.45))
+	var ceil_h := float(it.get("ceiling", 6.6))
+	var cx := (x0 + x1) * 0.5
+	var cy := (y0 + y1) * 0.5
+	var w := x1 - x0
+	var d := y1 - y0
+	var door_x := float(it.get("door_x", cx))
+	var wc: Array = it.get("wall", [])
+	var wall_mat := ProcKit.flat(Color(float(wc[0]), float(wc[1]), float(wc[2])) if wc.size() == 3 else PLASTER)
+	var beam := ProcKit.flat(WOOD_D)
+	# sol de la salle (la dalle descend un peu sous le sol : sa face du dessus est à la hauteur fh)
+	var top := fh + (0.03 if fh < 0.1 else 0.0)   # au ras du pavé, le plancher se confondrait avec lui
+	var slab := top + 0.04
+	ProcKit.box(root, Vector3(w - 0.3, slab, d - 0.3), ProcKit.w(cx, cy, slab * 0.5 - 0.04), ProcKit.wood(WOOD, Vector2((w - 0.3) * 0.5, (d - 0.3) * 0.5)))
+	# mur du fond, murs des côtés
+	ProcKit.box(root, Vector3(w, ceil_h, 0.3), ProcKit.w(cx, y1 - 0.15, ceil_h * 0.5), wall_mat)
+	ProcKit.box(root, Vector3(0.3, ceil_h, d), ProcKit.w(x0 + 0.15, cy, ceil_h * 0.5), wall_mat)
+	ProcKit.box(root, Vector3(0.3, ceil_h, d), ProcKit.w(x1 - 0.15, cy, ceil_h * 0.5), wall_mat)
+	# colombages sur le mur du fond
+	var bx := x0 + 1.0
+	while bx < x1:
+		ProcKit.box(root, Vector3(0.22, ceil_h, 0.12), ProcKit.w(bx, y1 - 0.34, ceil_h * 0.5), beam)
+		bx += 2.3
+	for hh in [fh + 0.02, minf(3.3, ceil_h * 0.55), ceil_h - 0.1]:
+		ProcKit.box(root, Vector3(w, 0.2, 0.14), ProcKit.w(cx, y1 - 0.36, hh), beam)
+	# muret de façade, avec une porte
+	var front_h := 0.95
+	for seg: Array in [[x0, door_x - 0.85], [door_x + 0.85, x1]]:
+		var sa := float(seg[0])
+		var sb := float(seg[1])
+		ProcKit.box(root, Vector3(sb - sa, front_h, 0.3), ProcKit.w((sa + sb) * 0.5, y0 + 0.15, front_h * 0.5), ProcKit.wood(WOOD_D, Vector2((sb - sa) * 0.5, 0.4)))
+		ProcKit.box(root, Vector3(sb - sa, 0.1, 0.4), ProcKit.w((sa + sb) * 0.5, y0 + 0.15, front_h + 0.04), beam)
+	for dx in [-0.85, 0.85]:
+		ProcKit.box(root, Vector3(0.2, 2.5, 0.35), ProcKit.w(door_x + dx, y0 + 0.15, 1.25), beam)
+	ProcKit.box(root, Vector3(1.9, 0.2, 0.35), ProcKit.w(door_x, y0 + 0.15, 2.5), beam)
+	return root

@@ -18,7 +18,7 @@ const PORT := 7777
 const MAX_PLAYERS := 4
 const SHIP_RATE := 30.0
 const PLAYER_RATE := 20.0
-const PROTOCOL := 3
+const PROTOCOL := 4
 
 var game: Node
 var active := false
@@ -111,6 +111,7 @@ func local_address() -> String:
 func _on_peer_connected(id: int) -> void:
 	if is_host:
 		_welcome.rpc_id(id, PROTOCOL, ship_name)
+		_skin.rpc_id(id, game.skin_json())
 	_look.rpc_id(id, game.local_look_json())
 	game.on_peers_changed()
 
@@ -159,6 +160,24 @@ func _player_state(pos: Vector2, carrying: bool, loc: int, pz: float, lh: float)
 @rpc("any_peer", "call_remote", "reliable")
 func _look(json: String) -> void:
 	game.apply_remote_look(multiplayer.get_remote_sender_id(), json)
+
+
+## L'hôte dit à l'équipage de quelles couleurs est le bateau (voiles, coque, pavillon : son skin).
+@rpc("authority", "call_remote", "reliable")
+func _skin(json: String) -> void:
+	game.apply_ship_skin_json(json)
+
+
+## Hôte : renvoie le skin du bateau à tout l'équipage (après un achat à la voilerie).
+func broadcast_skin() -> void:
+	if active and is_host and multiplayer.multiplayer_peer != null and not multiplayer.get_peers().is_empty():
+		_skin.rpc(game.skin_json())
+
+
+## Renvoie mon apparence à tout l'équipage (après un achat chez le tailleur).
+func broadcast_look() -> void:
+	if active and multiplayer.multiplayer_peer != null and not multiplayer.get_peers().is_empty():
+		_look.rpc(game.local_look_json())
 
 
 ## Client : demande une action à l'hôte (barre, voiles, ancre, canons).

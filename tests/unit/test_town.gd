@@ -12,6 +12,7 @@ func _initialize() -> void:
 	_test_walk(land)
 	_test_npcs(land)
 	_test_quests()
+	_test_buying()
 	print("RÉSULTAT : %s" % ("tout passe" if _failed == 0 else "%d échec(s)" % _failed))
 	quit(1 if _failed > 0 else 0)
 
@@ -83,6 +84,7 @@ func _test_walk(land: Land) -> void:
 	var bar := _walk(land, Vector3(-13.0, 29.8, 0.45), Vector2(-13.0, 33.0))
 	_check_true("le comptoir arrête", bar.y < 31.5)
 	_test_relief(land)
+	_test_shops(land)
 	# marches de côté
 	var west := _walk(land, Vector3(-20.5, 22.4, 0.0), Vector2(-17.0, 22.4))
 	_check_near("marches de l'ouest : on monte", west.z, 0.45)
@@ -176,6 +178,115 @@ func _check_near(name: String, got: float, want: float) -> void:
 	else:
 		_failed += 1
 		print("ÉCHEC %s : obtenu %f, attendu %f" % [name, got, want])
+
+
+## Les achats : provisions du Magasin Général, tenues du tailleur, réserves du profil.
+func _test_buying() -> void:
+	var defs := Shop.load_defs()
+	var npc_ids := {}
+	for d: Dictionary in _json("res://data/npcs.json")["npcs"]:
+		npc_ids[d["id"]] = true
+	for id: String in defs:
+		_check_true("boutique %s : son vendeur existe" % id, npc_ids.has(id))
+	for it: Dictionary in defs["gaspard"]["items"]:
+		_check_true("tailleur : %s/%s existe dans le catalogue" % [it["cat"], it["variant"]], PirateLook.variants(str(it["cat"])).has(str(it["variant"])))
+	var profile := Profile.new()
+	profile.persistent = false
+	profile.gold = 100
+	var store := Shop.new(profile, defs["petronille"], PirateLook.default_look())
+	_check_true("une planche s'achète", bool(store.activate(0)["ok"]))
+	_check_eq("planches en réserve", profile.planks, Profile.START_PLANKS + 1)
+	_check_eq("or après la planche", profile.gold, 92)
+	_check_true("une caisse de boulets s'achète", bool(store.activate(3)["ok"]))
+	_check_eq("boulets en réserve", profile.balls, Profile.START_BALLS + 6)
+	_check_eq("or après la caisse", profile.gold, 65)
+	profile.planks = 12
+	var full := store.activate(0)
+	_check_true("pas plus que la cale ne peut porter", not bool(full["ok"]) and profile.gold == 65 and profile.planks == 12)
+	profile.gold = 0
+	_check_true("sans or, rien ne s'achète", not bool(store.activate(2)["ok"]) and profile.balls == Profile.START_BALLS + 6)
+	_check_true("prendre une planche la retire de la réserve", profile.take_supply("plank") and profile.planks == 11)
+	profile.balls = 0
+	_check_true("sans boulet on ne peut pas en prendre", not profile.take_supply("ball"))
+	# tailleur
+	profile.gold = 100
+	var look := PirateLook.default_look()
+	look["parts"]["hat"] = "none"
+	var tailor := Shop.new(profile, defs["gaspard"], look)
+	var idx := {}
+	for i in tailor.items.size():
+		idx["%s:%s" % [tailor.items[i]["cat"], tailor.items[i]["variant"]]] = i
+	var r := tailor.activate(idx["hat:tricorn"])
+	_check_true("le tricorne s'achète et se porte", bool(r["ok"]) and bool(r["look_changed"]) and tailor.look["parts"]["hat"] == "tricorn")
+	_check_eq("or après le tricorne", profile.gold, 40)
+	_check_true("la tenue du joueur d'origine n'a pas bougé", look["parts"]["hat"] == "none")
+	tailor.activate(idx["hat:bandana"])
+	_check_eq("or après le bandana", profile.gold, 20)
+	var again := tailor.activate(idx["hat:tricorn"])
+	_check_true("on remet une pièce possédée gratuitement", bool(again["ok"]) and profile.gold == 20 and tailor.look["parts"]["hat"] == "tricorn")
+	_check_true("on ne rachète pas ce qu'on porte", not bool(tailor.activate(idx["hat:tricorn"])["ok"]))
+	profile.gold = 0
+	_check_true("sans or, pas de tenue", not bool(tailor.activate(idx["hat:straw"])["ok"]) and tailor.look["parts"]["hat"] == "tricorn")
+	# la pièce quittée reste à nous
+	profile.gold = 100
+	var look2 := PirateLook.default_look()
+	look2["parts"]["hat"] = "cap"
+	var tailor2 := Shop.new(profile, defs["gaspard"], look2)
+	tailor2.activate(idx["hat:bicorn"])
+	_check_true("le calot qu'on portait est à nous", profile.owned.has("hat:cap"))
+	# chantier naval : bateaux
+	profile.gold = 200
+	var yard := Shop.new(profile, defs["mathurin"], PirateLook.default_look())
+	_check_eq("on commence avec le sloop", profile.ships, ["sloop"])
+	_check_true("le sloop est déjà le bateau du joueur", not bool(yard.activate(0)["ok"]))
+	_check_true("sans l'or, pas de galion", not bool(yard.activate(2)["ok"]) and profile.ship == "sloop" and profile.gold == 200)
+	var rb := yard.activate(1)
+	_check_true("le brigantin s'achète et devient le bateau", bool(rb["ok"]) and bool(rb["ship_changed"]) and rb["ship"] == "brigantin" and profile.ship == "brigantin")
+	_check_eq("or après le brigantin", profile.gold, 50)
+	_check_true("on reprend le sloop gratuitement", bool(yard.activate(0)["ok"]) and profile.gold == 50 and profile.ship == "sloop")
+	_check_true("et le brigantin sans repayer", bool(yard.activate(1)["ok"]) and profile.gold == 50)
+	for it: Dictionary in defs["mathurin"]["items"]:
+		var f := FileAccess.file_exists("res://assets/models/ship/%s.glb" % it["ship"])
+		_check_true("chantier : le modèle %s existe" % it["ship"], f)
+	# voilerie : skins de bateau
+	var sails := Shop.new(profile, defs["ariane"], PirateLook.default_look())
+	var sidx := {}
+	for i in sails.items.size():
+		sidx["%s:%s" % [sails.items[i]["cat"], sails.items[i]["variant"]]] = i
+	_check_eq("skin d'origine : voiles naturelles", ShipSkin.sanitize(profile.ship_skin)["sail"], "natural")
+	_check_true("d'origine : rien à poser", not bool(sails.activate(sidx["sail:natural"])["ok"]))
+	profile.gold = 60
+	var rs := sails.activate(sidx["sail:red"])
+	_check_true("les voiles carmin s'achètent et se posent", bool(rs["ok"]) and bool(rs["skin_changed"]) and profile.ship_skin["sail"] == "red")
+	_check_eq("or après les voiles", profile.gold, 10)
+	_check_true("on revient à la toile gratuitement", bool(sails.activate(sidx["sail:natural"])["ok"]) and profile.gold == 10)
+	_check_true("et on remet les carmin sans repayer", bool(sails.activate(sidx["sail:red"])["ok"]) and profile.gold == 10)
+	_check_true("sans or, pas de coque neuve", not bool(sails.activate(sidx["hull:navy"])["ok"]) and ShipSkin.sanitize(profile.ship_skin)["hull"] == "ebony")
+	_check_eq("un skin inconnu retombe sur l'origine", ShipSkin.sanitize({"sail": "nimporte"})["sail"], "natural")
+	var ov := ShipSkin.overrides({"sail": "red", "hull": "ebony", "flag": "black"})
+	_check_true("les voiles rouges teintent les trois toiles", ov.has("sail") and ov.has("sail_d") and ov.has("sail_p") and not ov.has("hull"))
+	_check_true("le ton foncé est plus sombre que le principal", (ov["sail_d"] as Color).r < (ov["sail"] as Color).r)
+
+
+## Les boutiques (tailleur, magasin général, voilerie) : on entre par la porte, on est dans l'intérieur de la
+## boutique, le comptoir arrête, on ressort par la porte.
+func _test_shops(land: Land) -> void:
+	# [boutique, abscisse de la porte, y dans la rue, y dedans, abscisse du comptoir, y de sa face avant]
+	for c: Array in [["tailleur", -26.0, 4.5, 10.0, -26.0, 11.6], ["magasin", -12.5, 4.5, 10.0, -12.5, 11.4], ["voilerie", 3.5, 22.5, 27.0, 6.3, 28.4]]:
+		var idx := -1
+		for i in land.interiors.size():
+			if land.interiors[i]["id"] == c[0]:
+				idx = i
+		_check_true("%s : l'intérieur existe" % c[0], idx >= 0)
+		var inside := _walk(land, Vector3(float(c[1]), float(c[2]), 0.0), Vector2(float(c[1]), float(c[3])))
+		_check_true("%s : on entre par la porte" % c[0], inside.y > float(c[3]) - 0.2)
+		_check_eq("%s : on est dans son intérieur" % c[0], land.interior_at(Vector2(inside.x, -inside.y)), idx)
+		_check_near("%s : de plain-pied" % c[0], inside.z, 0.0)
+		var aligned := _walk(land, inside, Vector2(float(c[4]), float(c[3])))
+		var at_counter := _walk(land, aligned, Vector2(float(c[4]), float(c[5]) + 2.5))
+		_check_true("%s : le comptoir arrête" % c[0], at_counter.y < float(c[5]) + 0.1)
+		var out := _walk(land, inside, Vector2(float(c[1]), float(c[2])))
+		_check_true("%s : on ressort par la porte" % c[0], out.y < float(c[3]) - 3.0)
 
 
 ## Le relief du reste de la ville : parvis de la batterie, jardin en terrasses, remparts par les ruelles à escaliers.

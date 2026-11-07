@@ -1,0 +1,42 @@
+{
+  "petronille": {
+    "title": "Le Magasin Général",
+    "kind": "supply",
+    "items": [
+      { "label": "Planche (x1)", "desc": "Bouche une voie d'eau dans la cale", "stock": "planks", "qty": 1, "price": 8, "max": 12 },
+      { "label": "Lot de 3 planches", "desc": "Trois planches pour le prix de deux et demie", "stock": "planks", "qty": 3, "price": 20, "max": 12 },
+      { "label": "Boulet (x1)", "desc": "Un boulet de canon pour le tonneau du pont", "stock": "balls", "qty": 1, "price": 5, "max": 30 },
+      { "label": "Caisse de 6 boulets", "desc": "De quoi tenir un abordage", "stock": "balls", "qty": 6, "price": 27, "max": 30 }
+    ]
+  },
+  "mathurin": {
+    "title": "Chantier naval",
+    "kind": "ships",
+    "items": [
+      { "ship": "sloop", "label": "Sloop", "desc": "2 places - vif et maniable (offert)", "price": 0 },
+      { "ship": "brigantin", "label": "Brigantin", "desc": "3 places - le bon compromis", "price": 150 },
+      { "ship": "galion", "label": "Galion", "desc": "4 places - lourd, puissant", "price": 400 }
+    ]
+  },
+  "ariane": {
+    "title": "La Voilerie",
+    "kind": "skin"
+  },
+  "gaspard": {
+    "title": "Au Fil d'Or",
+    "kind": "wear",
+    "items": [
+      { "cat": "hat", "variant": "bandana", "price": 20 },
+      { "cat": "hat", "variant": "cap", "price": 30 },
+      { "cat": "hat", "variant": "straw", "price": 40 },
+      { "cat": "hat", "variant": "tricorn", "price": 60 },
+      { "cat": "hat", "variant": "bicorn", "price": 80 },
+      { "cat": "coat", "variant": "vest", "price": 40 },
+      { "cat": "coat", "variant": "jacket", "price": 70 },
+      { "cat": "coat", "variant": "captain", "price": 160 },
+      { "cat": "belt", "variant": "sash", "price": 25 },
+      { "cat": "belt", "variant": "baldric", "price": 45 },
+      { "cat": "shirt", "variant": "striped", "price": 30 }
+    ]
+  }
+}

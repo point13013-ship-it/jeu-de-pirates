@@ -63,4 +63,34 @@ Tout dans `data/town.json` (niveaux : `rect`, `h` ou pente `axis/h0/h1`, `solid`
 - **Remparts nord** (2,4 m, tout le long du fond de l'île) : atteints par trois ruelles à escaliers (12 marches) entre les
   bâtiments du fond ; canons, lanternes, bancs ; Hector le Veilleur (quête de la longue-vue, 80 or, livrée à Pétronille).
 - Un test (`tests/unit/test_town.gd`) vérifie qu'on monte et descend par les escaliers et qu'aucun accès ne contourne.
-- À faire : quai bas (débarcadère), passerelles entre niveaux, intérieurs des autres boutiques.
+- À faire : quai bas (débarcadère), passerelles entre niveaux.
+
+### Intérieurs des boutiques (tranche 3, 2026-11-07)
+Trois boutiques de plain-pied, en coupe comme la taverne (`kind` dans `data/town.json`, décor dans `src/town/shop_builder.gd`,
+coque commune `TownBuilder._shell`) : **Au Fil d'Or** (tailleur : tissus, mannequins, portant, miroir ; Gaspard), **Le Magasin
+Général** (provisions, pyramide de boulets, planches, tonneaux ; Mère Pétronille), **La Voilerie** (voiles pendues, table de coupe,
+mât de rechange ; Ariane). Leurs PNJ sont passés de la rue à l'intérieur, derrière le comptoir. Test : `_test_shops` dans
+`tests/unit/test_town.gd`. Captures : `qa/boutiques/`. Le chantier naval reste une halle ouverte sur le quai (pas d'intérieur).
+### Achats (2026-11-07, non commité)
+Parler à un boutiquier (sans quête à proposer ni à rendre) ouvre son menu (`src/ui/shop_menu.gd`, règles dans `src/shop.gd`,
+catalogue dans `data/shops.json`) : Haut/Bas (ou Z/S) choisir, E acheter, R sortir.
+- **Magasin Général** (Pétronille) : planches (8 or, lot de 3 : 20) et boulets (5 or, caisse de 6 : 27), plafonnés (12 / 30).
+  Les réserves sont PERSONNELLES (`Profile.planks`, `balls`, départ 4 et 8) : une prise à l'étagère de la cale ou au tonneau du
+  pont en consomme une ; à zéro, on le dit au joueur. Affichées sous l'or. Choix assumé : pas de stock partagé de l'équipage
+  (pas de changement du protocole réseau).
+- **Tailleur** (Gaspard) : bandana 20, calot 30, paille 40, tricorne 60, bicorne 80, gilet 40, veste 70, manteau de capitaine 160,
+  écharpe 25, baudrier 45, marinière 30. Payée une fois (`Profile.owned`), remise ensuite gratuitement ; la pièce qu'on quitte
+  est gardée. La tenue est sauvegardée et renvoyée à l'équipage (`SailingNet.broadcast_look`).
+- Essais : `--gold=150`, `--press=E@1.5,DOWN@2.5,...` (E, R, SPACE, UP, DOWN). `--fresh` ne sauvegarde ni le profil ni la tenue.
+- **Voilerie** (Ariane) : skins de bateau, catalogue `data/ship_skins.json` (`src/ship_skin.gd`) : voiles (blanche 30, carmin/bleu
+  marine 50, vert mousse 60, noires 90, pourpres 120), coque (bleu nuit/rouge sang/vert forêt 70, ivoire 140), pavillon (rouge/blanc/
+  bleu 25, doré 80). La couleur remplace celle des matières nommées du glb (`sail*`, `hull*`, `flag`). Payé une fois (`Profile.owned`,
+  `Profile.ship_skin`). **Le bateau porte le skin de son hôte** (ou du joueur en solo) : l'hôte l'envoie à l'équipage (protocole 4,
+  `SailingNet._skin`) ; un client qui achète garde ses couleurs pour quand il hébergera. Essai : `--skin=sail:red,hull:navy,flag:gold`.
+- **Chantier naval** (Mathurin, devant sa halle) : sloop offert, brigantin 150 or, galion 400 or (`data/shops.json`, kind `ships`).
+  `Profile.ships` (possédés) et `Profile.ship` (le bateau du joueur, mis à jour à chaque départ). Le menu de départ verrouille les
+  bateaux non possédés (`MainMenu.set_ships`). Prendre un autre bateau en solo recharge la scène (`SailingGame._restart` porte le
+  profil) ; en ligne, le changement vaut pour la prochaine partie. Un profil existant sans `ships` repart avec le sloop seul.
+  Essai : `--ship=sloop --gold=500 --land=17,-2.8`.
+- À faire : la nourriture (pas encore de points de vie), d'autres sources d'or (trésors, butin) — les prix des bateaux
+  (150 / 400) sont à régler quand l'or de trésor existera : les 3 quêtes ne rapportent que 185.
