@@ -5,7 +5,9 @@ extends Node3D
 ## avant mise à l'échelle) ; to_local3() convertit vers la scène Godot.
 
 const SCALE := 1.5            ## mètres de jeu par unité du modèle
-const WALK_RADIUS := 0.28     ## rayon du personnage, en unités du modèle
+const WALK_RADIUS := 0.12     ## rayon du personnage, en unités du modèle
+const RAIL_MARGIN := 0.28      ## distance minimale du pirate au plat-bord
+const MIN_LANE := 0.45        ## demi-largeur minimale du couloir de marche (vers l'étrave)
 
 var ship_name: String = ""
 var meta: Dictionary = {}
@@ -16,6 +18,10 @@ var boxes: Array = []          ## [x0, y0, x1, y1]
 var circles: Array = []        ## [x, y, rayon]
 var cabin: Dictionary = {}
 var cannons: Array = []        ## [x, y, côté, z]
+var ladders: Array = []        ## [x, y du pirate, côté, y de la coque] : échelles de coque
+var nests: Array = []          ## [x, y, z du plancher, hauteur du mât]
+var mast_ladder: Array = []    ## [x, y, z bas, z haut] : échelle du mât le plus haut, vers son nid
+var bow_x := 0.0               ## abscisse la plus avancée où l'on peut se tenir (la pointe)
 
 var _model: Node3D
 var _sails: Array = []         ## {node, top, base: Transform3D}
@@ -40,6 +46,10 @@ func load_ship(p_name: String) -> bool:
 	circles = meta.get("circles", [])
 	cabin = meta.get("cabin", {})
 	cannons = meta.get("cannons", [])
+	ladders = meta.get("ladders", [])
+	nests = meta.get("nests", [])
+	mast_ladder = meta.get("mast_ladder", [])
+	bow_x = float(meta.get("bow_x", length * 0.5 - 0.4))
 	_model = scene.instantiate() as Node3D
 	_model.scale = Vector3.ONE * SCALE
 	add_child(_model)
@@ -95,13 +105,15 @@ func inside_cabin(bp: Vector2) -> bool:
 			and bp.y > float(cabin["y0"]) and bp.y < float(cabin["y1"])
 
 
-## Vrai si un personnage de rayon WALK_RADIUS peut se tenir en bp.
+## Vrai si un personnage de rayon WALK_RADIUS peut se tenir en bp. On peut aller jusqu'à la pointe de
+## l'étrave : le long du plat-bord la marge est de 0,5, mais jamais moins de MIN_LANE de part et d'autre
+## de l'axe, pour que le passage vers l'avant reste ouvert.
 func is_walkable(bp: Vector2) -> bool:
 	var r := WALK_RADIUS
 	var u := (bp.x + length * 0.5) / length
-	if u < 0.03 or u > 0.96:
+	if u < 0.03 or bp.x > bow_x:
 		return false
-	if not inside_cabin(bp) and absf(bp.y) > half_width(bp.x) - 0.5:
+	if not inside_cabin(bp) and absf(bp.y) > maxf(half_width(bp.x) - RAIL_MARGIN, MIN_LANE):
 		return false
 	for b: Array in boxes:
 		if bp.x > float(b[0]) - r and bp.x < float(b[2]) + r and bp.y > float(b[1]) - r and bp.y < float(b[3]) + r:
@@ -112,7 +124,8 @@ func is_walkable(bp: Vector2) -> bool:
 	return true
 
 
-## Déplace `from` de `delta` en glissant le long des obstacles.
+## Déplace `from` de `delta` en glissant le long des obstacles. Un pirate déjà coincé dans un obstacle
+## (au sortir de la barre, par exemple) peut toujours en sortir.
 func move_with_slide(from: Vector2, delta: Vector2) -> Vector2:
 	var target := from + delta
 	if is_walkable(target):
@@ -123,7 +136,47 @@ func move_with_slide(from: Vector2, delta: Vector2) -> Vector2:
 	var try_y := Vector2(from.x, from.y + delta.y)
 	if is_walkable(try_y):
 		return try_y
+	if not is_walkable(from):
+		return target
 	return from
+
+
+## Le point libre le plus proche de bp (recherche en spirale), ou bp si rien à moins de max_dist.
+func nearest_walkable(bp: Vector2, max_dist: float = 3.0) -> Vector2:
+	if is_walkable(bp):
+		return bp
+	var d := 0.1
+	while d <= max_dist:
+		for k in 24:
+			var q := bp + Vector2.from_angle(TAU * k / 24.0) * d
+			if is_walkable(q):
+				return q
+		d += 0.1
+	return bp
+
+
+## Les points de la coque (repère monde, x/z) pour tester la rencontre avec la terre : le contour,
+## du cul à l'étrave, aux deux bords.
+func hull_points_world(sim_pos: Vector2, yaw: float) -> Array:
+	var pts: Array = []
+	var fwd := Vector2(cos(yaw), -sin(yaw))
+	var left := Vector2(-fwd.y, fwd.x) * -1.0    # vers bâbord, en x/z
+	for i in 9:
+		var bx := -length * 0.5 + length * (float(i) / 8.0)
+		var hw := half_width(bx) * SCALE
+		var center := sim_pos + fwd * ((bx + shift) * SCALE)
+		pts.append(center + left * hw)
+		pts.append(center - left * hw)
+		if i == 8:
+			pts.append(center)
+	return pts
+
+
+## Masque les voiles dont le haut dépasse `z` (unités du modèle) : vu d'en haut, elles cachent le pirate
+## perché dans le nid de pie. Passer une valeur très grande les remet toutes.
+func hide_sails_above(z: float) -> void:
+	for entry: Dictionary in _sails:
+		(entry["node"] as Node3D).visible = float(entry["top"]) <= z
 
 
 ## Règle l'ouverture visuelle des voiles (0..1) : elles se resserrent vers leur vergue.

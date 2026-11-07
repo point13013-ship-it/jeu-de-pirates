@@ -94,7 +94,9 @@ func join(text: String) -> Error:
 		active = false
 		status.emit("L'hôte a quitté la partie")
 		game.on_host_left())
-	multiplayer.peer_connected.connect(func(_id: int) -> void: game.on_peers_changed())
+	multiplayer.peer_connected.connect(func(id: int) -> void:
+		_look.rpc_id(id, game.local_look_json())
+		game.on_peers_changed())
 	multiplayer.peer_disconnected.connect(_on_peer_disconnected)
 	status.emit("Connexion à %s…" % address)
 	return OK
@@ -107,7 +109,9 @@ func local_address() -> String:
 
 
 func _on_peer_connected(id: int) -> void:
-	_welcome.rpc_id(id, PROTOCOL, ship_name)
+	if is_host:
+		_welcome.rpc_id(id, PROTOCOL, ship_name)
+	_look.rpc_id(id, game.local_look_json())
 	game.on_peers_changed()
 
 
@@ -133,7 +137,7 @@ func tick(delta: float) -> void:
 	if _player_timer >= 1.0 / PLAYER_RATE:
 		_player_timer = 0.0
 		var p: Dictionary = game.local_player_state()
-		_player_state.rpc(p["pos"], p["flip"], p["carrying"])
+		_player_state.rpc(p["pos"], p["carrying"], p["loc"], p["pz"])
 	if is_host:
 		_ship_timer += delta
 		if _ship_timer >= 1.0 / SHIP_RATE:
@@ -147,8 +151,14 @@ func _ship_state(s: Array) -> void:
 
 
 @rpc("any_peer", "call_remote", "unreliable_ordered")
-func _player_state(pos: Vector2, flip: bool, carrying: bool) -> void:
-	game.apply_remote_player(multiplayer.get_remote_sender_id(), pos, flip, carrying)
+func _player_state(pos: Vector2, carrying: bool, loc: int, pz: float) -> void:
+	game.apply_remote_player(multiplayer.get_remote_sender_id(), pos, carrying, loc, pz)
+
+
+## Chaque joueur envoie son apparence (JSON) à chaque nouvel arrivant, et reçoit la leur.
+@rpc("any_peer", "call_remote", "reliable")
+func _look(json: String) -> void:
+	game.apply_remote_look(multiplayer.get_remote_sender_id(), json)
 
 
 ## Client : demande une action à l'hôte (barre, voiles, ancre, canons).

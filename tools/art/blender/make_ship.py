@@ -241,6 +241,28 @@ for side in (-1, 1):
         cyl("cannon", x, side * (hw - 0.5), dz + 0.34, 0.18, 1.0, "iron", rot=(math.radians(90), 0, 0))
         cyl("cannon_end", x, side * (hw - 0.05), dz + 0.34, 0.22, 0.2, "iron", rot=(math.radians(90), 0, 0))
 
+# échelles de coque (une par bord, entre les deux derniers canons) : on monte à bord depuis le quai
+LADDERS: list = []   # (x, y de la position du pirate sur le pont, côté, y de la coque)
+_nc = CFG["cannons"]
+_ul = 0.22 + 0.5 * (_nc - 1.5) / max(1, _nc - 1)
+for side in (-1, 1):
+    xl, hwl, dzl, _dp = station(_ul)
+    LADDERS.append((xl, side * (hwl - 0.65), side, side * hwl))
+    z_top, z_bot = dzl + 0.62, dzl - 2.3
+    for dxr in (-0.27, 0.27):
+        # les montants suivent la coque (légèrement vers l'intérieur en bas) et dépassent le plat-bord
+        rope((xl + dxr, side * (hwl + 0.06), z_top), (xl + dxr, side * (hwl * 0.88 + 0.04), z_bot), r=0.035, mat="mast")
+    k = 0
+    zr = z_top - 0.25
+    while zr > z_bot + 0.1:
+        f = (z_top - zr) / (z_top - z_bot)
+        yr = side * (hwl + 0.06 - f * (hwl * 0.12 + 0.02))
+        box("ladder_rung", xl, yr, zr, 0.6, 0.06, 0.06, "mast")
+        zr -= 0.32
+    for dxr in (-0.27, 0.27):   # poignées au-dessus du plat-bord
+        cyl("ladder_post", xl + dxr, side * (hwl - 0.08), dzl + 0.72, 0.04, 0.5, "mast")
+    box("ladder_grab", xl, side * (hwl - 0.08), dzl + 0.95, 0.6, 0.05, 0.05, "mast")
+
 # château arrière : la cabine du rez-de-chaussée est creuse (on y entre par une porte), les
 # niveaux au-dessus sont pleins. Les objets nommés « cut_* » sont masqués par le jeu quand le
 # joueur est à l'intérieur (toit, murs tournés vers la caméra) ; « int_* » est le mobilier.
@@ -333,11 +355,12 @@ if CFG["bow_castle"]:
 _hx = 1.6 if L > 11 else 1.2
 _bx = 2.9 if L > 14 else 2.2
 if SHIP != "sloop":
-    OBST_BOXES.append((_hx - 0.62, -0.62, _hx + 0.62, 0.62))
+    # l'écoutille est basse (28 cm) : on marche dessus, elle n'est pas un obstacle
     box("hatch", _hx, 0, 0.14, 1.2, 1.2, 0.28, "hull_l")
     box("hatch_grate", _hx, 0, 0.30, 1.0, 1.0, 0.05, "dark")
 OBST_CIRCLES.append((_bx, 1.0, 0.5))
-OBST_BOXES.append((-0.35, -1.65, 0.55, -0.78))
+_cx = LADDERS[0][0] - 0.85   # la caisse se tient entre le dernier canon et l'échelle, jamais sur un canon
+OBST_BOXES.append((_cx - 0.35, -1.55, _cx + 0.35, -0.9))
 cyl("barrel", _bx, 1.0, 0.42, 0.42, 0.7, "hull_l")
 cyl("barrel_b", _bx, 1.0, 0.45, 0.45, 0.1, "iron")
 for k in range(3):  # boulets empilés sur le tonneau
@@ -346,8 +369,8 @@ ANCHOR = CFG["anchor"]
 cyl("anchor_capstan", ANCHOR[0], ANCHOR[1], 0.45, 0.26, 0.7, "iron")
 cyl("anchor_capstan_top", ANCHOR[0], ANCHOR[1], 0.84, 0.34, 0.08, "gold")
 cyl("anchor_spoke", ANCHOR[0], ANCHOR[1], 0.8, 0.05, 0.9, "mast", rot=(math.radians(90), 0, 0), verts=5)
-box("crate", 0.1, -1.2, 0.32, 0.85, 0.85, 0.64, "deck_l")
-box("crate2", 0.3, -1.3, 0.86, 0.5, 0.5, 0.46, "deck")
+box("crate", _cx, -1.225, 0.32, 0.7, 0.65, 0.64, "deck_l")
+box("crate2", _cx + 0.05, -1.25, 0.86, 0.42, 0.42, 0.46, "deck")
 
 # figure de proue : tête de mort ; beaupré
 x_b, hw_b, dz_b, _ = station(1.0)
@@ -392,17 +415,42 @@ def square_sail(x, z0, z1, width, bulge, emblem):
 
 
 max_top = 0.0
+NESTS: list = []   # (x, y, z du plancher, hauteur du mât)
 for mx, mh, sails in CFG["masts"]:
     OBST_CIRCLES.append((mx, 0.0, 0.38))
     cyl("mast", mx, 0, mh / 2, 0.19 + (0.04 if L > 14 else 0), mh, "mast")
     cyl("mast_band", mx, 0, 1.2, 0.25, 0.35, "gold")
-    cyl("crow", mx, 0, mh - 1.9, 0.6, 0.36, "mast")
+    zn = mh - 2.05                      # plancher du nid de pie
+    cyl("nest_floor", mx, 0, zn, 0.72, 0.1, "deck")
+    cyl("nest_rim", mx, 0, zn - 0.08, 0.76, 0.12, "mast")
+    for q in range(12):                 # lattes du tonneau
+        ang = q * math.pi / 6
+        box("nest_slat", mx + 0.66 * math.cos(ang), 0.66 * math.sin(ang), zn + 0.32, 0.16, 0.1, 0.6, "mast",
+            rot=(0, 0, ang + math.pi / 2))
+    for q in range(12):                 # lisse du haut
+        ang = q * math.pi / 6 + math.pi / 12
+        box("nest_rail", mx + 0.68 * math.cos(ang), 0.68 * math.sin(ang), zn + 0.66, 0.34, 0.09, 0.08, "gold",
+            rot=(0, 0, ang + math.pi / 2))
+    NESTS.append((mx, 0.0, zn + 0.05, mh))
     max_top = max(max_top, mh)
     for (z0, z1, w, b, e) in sails:
         square_sail(mx, z0, z1, w, b, e)
     for side in (-1, 1):
         for k in range(3):
             rope((mx, 0, mh * 0.78), (mx - 0.7 + k * 0.7, side * (hw_s * 0.95), 0.62))
+
+# échelle de mât : sur la face arrière du mât le plus haut, du pont jusqu'au nid de pie
+_tall = max(NESTS, key=lambda n: n[3])
+MAST_LADDER = (_tall[0] - 0.62, 0.0, 0.55, _tall[2] - 0.05)   # x, y, z bas, z haut
+_mlx = _tall[0] - 0.33
+for dy in (-0.17, 0.17):
+    cyl("mladder_rail", _mlx, dy, (MAST_LADDER[2] + MAST_LADDER[3]) / 2, 0.03, MAST_LADDER[3] - MAST_LADDER[2], "mast", verts=6)
+_zr = MAST_LADDER[2] + 0.25
+while _zr < MAST_LADDER[3] - 0.1:
+    box("mladder_rung", _mlx, 0.0, _zr, 0.06, 0.4, 0.06, "mast")
+    _zr += 0.3
+for _dz in (0.9, 1.7):   # accroches du mât, pour que l'échelle ne flotte pas
+    pass
 
 if CFG["jib"]:
     fx, fh = CFG["masts"][0][0], CFG["masts"][0][1]
@@ -456,7 +504,9 @@ if HEADINGS == 0:
         {"shift": shift, "length": L, "beam": WID, "max_height": max(zs),
          "boxes": OBST_BOXES, "circles": OBST_CIRCLES, "cabin": CABIN, "cannons": CANNONS,
          "helm": list(HELM), "ammo": [_bx, 1.0], "anchor": list(ANCHOR),
-         "masts": [[m[0], m[1]] for m in CFG["masts"]]}))
+         "masts": [[m[0], m[1]] for m in CFG["masts"]],
+         "ladders": [list(l) for l in LADDERS], "nests": [list(n) for n in NESTS],
+         "mast_ladder": list(MAST_LADDER), "bow_x": L / 2 - 0.4}))
     print("export termine", SHIP)
     sys.exit(0)
 
