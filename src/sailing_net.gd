@@ -18,7 +18,8 @@ const PORT := 7777
 const MAX_PLAYERS := 4
 const SHIP_RATE := 30.0
 const PLAYER_RATE := 20.0
-const PROTOCOL := 4
+const ISLAND_RATE := 12.0   ## fois par seconde : état des ennemis et des coffres des îles
+const PROTOCOL := 5
 
 var game: Node
 var active := false
@@ -26,6 +27,7 @@ var is_host := false
 var ship_name := ""
 var _ship_timer := 0.0
 var _player_timer := 0.0
+var _island_timer := 0.0
 
 
 ## Code d'invitation à donner aux amis (vide tant qu'il n'est pas connu).
@@ -144,11 +146,52 @@ func tick(delta: float) -> void:
 		if _ship_timer >= 1.0 / SHIP_RATE:
 			_ship_timer = 0.0
 			_ship_state.rpc(game.ship_state())
+		_island_timer += delta
+		if _island_timer >= 1.0 / ISLAND_RATE:
+			_island_timer = 0.0
+			_islands_state.rpc(game.islands_net_state())
 
 
 @rpc("authority", "call_remote", "unreliable_ordered")
 func _ship_state(s: Array) -> void:
 	game.apply_ship_state(s)
+
+
+## Hôte -> tous : ennemis (position, vie, phase) et coffres ouverts des îles.
+@rpc("authority", "call_remote", "unreliable_ordered")
+func _islands_state(s: Array) -> void:
+	game.apply_islands_state(s)
+
+
+## Client -> hôte : un coup de sabre depuis `pos` vers `dir`. L'hôte décide qui est touché.
+func send_swing(pos: Vector2, dir: Vector2) -> void:
+	_swing.rpc_id(1, pos, dir)
+
+
+@rpc("any_peer", "call_remote", "reliable")
+func _swing(pos: Vector2, dir: Vector2) -> void:
+	if is_host:
+		game.apply_swing(multiplayer.get_remote_sender_id(), pos, dir)
+
+
+## Hôte -> un joueur : il vient d'être frappé par un ennemi venu de `from`.
+func send_hurt(peer: int, damage: int, from: Vector2) -> void:
+	_hurt.rpc_id(peer, damage, from)
+
+
+@rpc("authority", "call_remote", "reliable")
+func _hurt(damage: int, from: Vector2) -> void:
+	game.apply_hurt(damage, from)
+
+
+## Hôte -> un joueur : de l'or gagné (ennemi vaincu ou coffre ouvert) en `at`.
+func send_loot(peer: int, gold: int, at: Vector2) -> void:
+	_loot.rpc_id(peer, gold, at)
+
+
+@rpc("authority", "call_remote", "reliable")
+func _loot(gold: int, at: Vector2) -> void:
+	game.apply_loot(gold, at)
 
 
 @rpc("any_peer", "call_remote", "unreliable_ordered")

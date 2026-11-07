@@ -16,6 +16,8 @@ const SHIP_LAND: Array = [
 var walk_rects: Array = []   ## [x0, y0, x1, y1] en (x, y) du fichier
 var obstacles: Array = []
 var circles: Array = []
+var island_height: Callable = Callable()   ## (Vector2 monde) -> hauteur du sol d'une île ; vide : tout est plat
+var island_discs: Array = [] ## terre des îles : [x, z, rayon] en coordonnées du monde (sol à la hauteur 0)
 
 
 func load_meta(meta: Dictionary) -> void:
@@ -37,7 +39,19 @@ func _on_ground(m: Vector2) -> bool:
 	for r: Array in walk_rects:
 		if m.x >= float(r[0]) and m.x <= float(r[2]) and m.y >= float(r[1]) and m.y <= float(r[3]):
 			return true
+	for d: Array in island_discs:
+		if Vector2(float(d[0]), float(d[1])).distance_to(Vector2(m.x, -m.y)) <= float(d[2]):
+			return true
 	return false
+
+
+## Hauteur du sol de base : 0 au port, celle du relief sur une île (plateaux, rampes).
+func _ground_level(m: Vector2) -> float:
+	if island_height.is_valid() and not island_discs.is_empty():
+		for d: Array in island_discs:
+			if Vector2(float(d[0]), float(d[1])).distance_to(Vector2(m.x, -m.y)) <= float(d[2]):
+				return float(island_height.call(Vector2(m.x, -m.y)))
+	return 0.0
 
 
 func _blocked(m: Vector2) -> bool:
@@ -216,7 +230,7 @@ func _surface_h(m: Vector2, cur: float) -> float:
 		elif not _blocked_by(m, s):
 			cands.append(_rect_h(s, m))
 	if base_ok and not carved:
-		cands.append(0.0)
+		cands.append(_ground_level(m))
 	var best := NO_SURFACE
 	var best_d := step_tol + 0.0001
 	for h in cands:

@@ -37,11 +37,11 @@ while _i < len(ARGV):
     else:
         _i += 1
 SS = int(OPT.get("scale", 4))
-FINAL_W, FINAL_H = 48, 64        # taille d'une image dans le jeu
-PPM = 26.0                       # pixels par mètre dans l'image finale
+FINAL_W, FINAL_H = 72, 96        # taille d'une image dans le jeu (1,5 x l'ancienne : 36 pixels par mètre à l'écran)
+PPM = 39.0                       # pixels par mètre dans l'image finale
 ELEVATION = 30.0                 # inclinaison de la caméra
-FEET_ROW = 54                    # ligne des pieds dans l'image finale (origine du personnage)
-FEET_COL = 24
+FEET_ROW = 81                    # ligne des pieds dans l'image finale (origine du personnage)
+FEET_COL = 36
 
 ANIMS = {  # nom -> (nombre d'images, boucle)
     "idle": 4, "walk": 8, "carry_idle": 4, "carry_walk": 8, "helm": 1, "climb": 4, "jump": 3,

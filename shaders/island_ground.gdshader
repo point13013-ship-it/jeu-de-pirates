@@ -1,0 +1,143 @@
+shader_type spatial;
+// Sol des îles, peint en pixel art : herbe en grandes taches de quatre tons, touffes, fleurs, sentiers de terre,
+// sable ondulé avec coquillages, sable mouillé, falaises de roche stratifiée. Tout est calé sur l'île (rien ne glisse)
+// et en aplats nets, sans tramage (le tramage vibre quand l'image défile).
+// Couleur de sommet : r = herbe (0 sable, 1 herbe), g = sable mouillé, b = sentier, a = roche (falaise).
+// Éclairé normalement : il reçoit les ombres des palmiers, des ennemis et des personnages.
+
+uniform vec3 grass_dark = vec3(0.19, 0.38, 0.16);
+uniform vec3 grass_base = vec3(0.29, 0.50, 0.20);
+uniform vec3 grass_light = vec3(0.36, 0.59, 0.24);
+uniform vec3 grass_high = vec3(0.43, 0.63, 0.27);
+uniform vec3 flower_a = vec3(0.98, 0.82, 0.33);
+uniform vec3 flower_b = vec3(0.84, 0.33, 0.36);
+uniform float flowers = 1.0;
+
+varying vec3 op;
+
+float hash(vec2 p) {
+	return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+}
+
+float vn(vec2 p) {
+	vec2 i = floor(p);
+	vec2 f = fract(p);
+	f = f * f * (3.0 - 2.0 * f);
+	return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x), f.y);
+}
+
+float fbm(vec2 p) {
+	return vn(p) * 0.55 + vn(p * 2.1 + 7.3) * 0.30 + vn(p * 4.3 + 1.7) * 0.15;
+}
+
+vec3 srgb(vec3 c) {
+	return pow(c, vec3(2.2));
+}
+
+void vertex() {
+	op = VERTEX;
+}
+
+vec3 grass(vec2 p) {
+	float n = fbm(p * 0.32);
+	vec3 col = grass_base;
+	if (n < 0.34) {
+		col = grass_dark;
+	} else if (n > 0.72) {
+		col = grass_high;
+	} else if (n > 0.58) {
+		col = grass_light;
+	}
+	// petites taches claires et sombres, par pavés de 0,22 m (environ 5 pixels)
+	vec2 cell = floor(p * 6.0);
+	vec2 f = fract(p * 6.0);
+	float h = hash(cell);
+	vec2 s = floor(f * 6.0);
+	// touffe : trois brins, un pixel de large
+	bool blade = (s.x == 2.0 && s.y >= 1.0 && s.y <= 3.0) || (s.x == 1.0 && s.y == 3.0) || (s.x == 3.0 && s.y == 2.0);
+	if (h > 0.80 && blade) {
+		col = h > 0.93 ? grass_high : grass_dark;
+	}
+	// fleurs : rares, groupées par grandes zones
+	vec2 fc = floor(p * 3.6);
+	vec2 ff = floor(fract(p * 3.6) * 10.0);
+	float fh = hash(fc + 31.0);
+	float zone = vn(p * 0.2 + 11.0);
+	if (zone > 0.62 && fh > 1.0 - 0.09 * flowers && ff.x >= 4.0 && ff.x <= 5.0 && ff.y >= 4.0 && ff.y <= 5.0) {
+		col = fh > 1.0 - 0.04 * flowers ? flower_b : flower_a;
+		if (ff.x == 4.0 && ff.y == 4.0) {
+			col = vec3(0.98, 0.95, 0.88);
+		}
+	}
+	return col;
+}
+
+vec3 sand(vec2 p) {
+	vec3 col = vec3(0.86, 0.74, 0.52);
+	// longues ondulations de sable : bandes claires et foncées qui serpentent
+	float w = p.y * 0.55 + sin(p.x * 0.3) * 0.8 + vn(p * 0.3) * 2.2;
+	float band = fract(w);
+	if (band < 0.07) {
+		col = vec3(0.74, 0.62, 0.42);
+	} else if (band > 0.9) {
+		col = vec3(0.94, 0.86, 0.66);
+	}
+	float s = hash(floor(p * 12.0));
+	col = mix(col, vec3(0.74, 0.62, 0.42), step(0.93, s));
+	col = mix(col, vec3(0.94, 0.86, 0.66), step(s, 0.04));
+	// coquillages et petits cailloux
+	vec2 cell = floor(p * 2.25);
+	vec2 f = floor(fract(p * 2.25) * 16.0);
+	float h = hash(cell + 5.0);
+	if (h > 0.93 && f.x >= 7.0 && f.x <= 8.0 && f.y >= 7.0 && f.y <= 8.0) {
+		col = h > 0.97 ? vec3(0.84, 0.33, 0.36) : vec3(0.93, 0.95, 0.9);
+	}
+	return col;
+}
+
+vec3 rock(vec3 o) {
+	// strates horizontales (vues de côté) mêlées à des fissures verticales
+	float layer = floor(o.y * 5.5 + vn(o.xz * 0.6) * 1.2);
+	float h = hash(vec2(layer, 3.0));
+	vec3 col = h < 0.34 ? vec3(0.52, 0.49, 0.50) : (h < 0.7 ? vec3(0.41, 0.38, 0.42) : vec3(0.60, 0.56, 0.52));
+	float crack = step(0.9, hash(vec2(floor((o.x + o.z) * 5.0), layer)));
+	col *= 1.0 - 0.28 * crack;
+	return col;
+}
+
+void fragment() {
+	vec2 p = op.xz;
+	float grass_amt = COLOR.r;
+	float wet = COLOR.g;
+	float path = COLOR.b;
+	float cliff = COLOR.a;
+	vec3 col;
+	if (cliff > 0.5) {
+		col = rock(op);
+	} else if (grass_amt > 0.5) {
+		col = grass(p);
+		// sentier : terre nue, bord rongé par de petites touffes
+		float edge = path + (vn(p * 3.0) - 0.5) * 0.5;
+		if (edge > 0.55) {
+			col = vec3(0.74, 0.62, 0.42);
+			float pebble = hash(floor(p * 10.5));
+			col = mix(col, vec3(0.62, 0.52, 0.36), step(0.9, pebble));
+			col = mix(col, vec3(0.86, 0.74, 0.52), step(pebble, 0.05));
+		}
+	} else {
+		col = sand(p);
+		float edge = path + (vn(p * 3.0) - 0.5) * 0.4;
+		if (edge > 0.7) {
+			col = mix(col, vec3(0.74, 0.62, 0.42), 1.0);
+		}
+		if (wet > 0.5) {
+			col = vec3(0.62, 0.52, 0.36);
+			if (hash(floor(p * 9.0)) > 0.9) {
+				col = vec3(0.74, 0.62, 0.42);
+			}
+		}
+	}
+	ALBEDO = srgb(col);
+	ROUGHNESS = 1.0;
+	SPECULAR = 0.0;
+}

@@ -5,7 +5,7 @@ extends Sprite3D
 ## image selon le déplacement. Toujours de face à la caméra (billboard), pieds sur le point du noeud.
 
 const FPS := {"idle": 3.0, "walk": 9.0, "carry_idle": 3.0, "carry_walk": 9.0, "helm": 1.0, "climb": 5.0, "jump": 1.0}
-const PIXELS_PER_METER := 24.0
+const PIXELS_PER_METER := 36.0
 const SHEET_DIR := "res://assets/art/characters/pirate/"
 
 static var _cache: Dictionary = {}     ## clé (look + animation) -> Texture2D

@@ -16,6 +16,7 @@ var owned: Array = []         ## tenues possédées, « catégorie:variante » (
 var ship_skin: Dictionary = {}   ## skin du bateau (voiles, coque, pavillon) : voir ShipSkin ; vide = modèle d origine
 var ships: Array = ["sloop"]       ## bateaux possédés (le sloop est offert) ; achetés au chantier naval
 var ship := "sloop"                ## le bateau du joueur : celui de sa dernière sortie
+var discovered: Array = []         ## îles repérées (identifiants de data/islands.json) : elles apparaissent sur la carte
 var persistent := true
 
 
@@ -40,6 +41,8 @@ func load_file() -> void:
 		var sh: Variant = d.get("ships", ["sloop"])
 		ships = (sh as Array).duplicate() if sh is Array and not (sh as Array).is_empty() else ["sloop"]
 		ship = str(d.get("ship", "sloop"))
+		var dis: Variant = d.get("discovered", [])
+		discovered = (dis as Array).duplicate() if dis is Array else []
 
 
 func save() -> void:
@@ -47,7 +50,7 @@ func save() -> void:
 		return
 	var f := FileAccess.open(PATH, FileAccess.WRITE)
 	if f != null:
-		f.store_string(JSON.stringify({"gold": gold, "quests": quests, "planks": planks, "balls": balls, "owned": owned, "ship_skin": ship_skin, "ships": ships, "ship": ship}, "\t"))
+		f.store_string(JSON.stringify({"gold": gold, "quests": quests, "planks": planks, "balls": balls, "owned": owned, "ship_skin": ship_skin, "ships": ships, "ship": ship, "discovered": discovered}, "\t"))
 
 
 ## Prend une planche ou un boulet en réserve ; faux s'il n'y en a plus.

@@ -8,8 +8,8 @@ extends Control
 ## Arguments de test (après « -- ») : --ship= --yaw= --player=x,y --walkto=x,y --sail=n --rudder=v
 ## --anchor=1 --helm=1 --fire=1 --shot=chemin --shot-after-secs= --quit-after-secs= --log=1
 
-const PIXELS_PER_METER := 24.0
-const VIEW_SIZE := Vector2i(640, 360)
+const PIXELS_PER_METER := 36.0
+const VIEW_SIZE := Vector2i(960, 540)
 const ELEVATION_DEG := 40.0
 const SEA_Y := -1.45
 const WALK_SPEED := 3.6
@@ -138,6 +138,17 @@ var _ghost_shader_cache: Shader
 var _ghosting := false               ## un bâtiment est rendu transparent devant moi
 var _gold_label: Label
 var _quest_label: Label
+var _islands := IslandWorld.new()    ## les îles : terre, ennemis, coffres (l'hôte fait vivre les ennemis)
+var _chart: SeaChart                 ## la carte des mers, sur la table de la cabine
+var _island_hud: IslandHud           ## cœurs, flèche vers l'île choisie, voile rouge des coups reçus
+var _destination := -1               ## l'île choisie sur la carte, ou -1
+var _hp := 6                         ## mes points de vie (chacun les siens)
+var _hp_max := 6
+var _inv_t := 0.0                    ## s d'invulnérabilité restantes après un coup reçu
+var _atk_cd := 0.0                   ## s avant de pouvoir frapper de nouveau
+var _face := Vector2(0, 1)           ## direction où je regarde à terre (monde x/z)
+var _popups: Array = []              ## textes qui flottent (or gagné) : {node, t}
+var _heal_t := 0.0
 
 
 const SEA_PATH := "res://data/sea.json"
@@ -218,6 +229,7 @@ func _setup_ship(ship_name: String) -> void:
 	_sim.yaw = deg_to_rad(float(_args.get("yaw", "0")))
 	if not _args.has("no-port"):
 		_build_port()
+	_build_islands()
 	_build_blob()
 	_build_player()
 	_build_interactables()
@@ -308,7 +320,7 @@ func _load_stats(ship_name: String) -> Dictionary:
 # ------------------------------------------------------------------ construction de la vue
 
 
-## Choisit un agrandissement ENTIER proche de « 360 lignes de pixels à l'écran », puis donne au
+## Choisit un agrandissement ENTIER proche de « 540 lignes de pixels à l'écran », puis donne au
 ## rendu exactement la taille de la fenêtre divisée par ce facteur : l'image remplit toute la
 ## fenêtre, sans bandes noires, et chaque pixel du jeu fait le même nombre de pixels d'écran.
 func _layout_view() -> void:
@@ -680,8 +692,53 @@ func _make_ball(radius: float, color: Color) -> MeshInstance3D:
 	return mi
 
 
+## Lit les îles, les pose dans le monde (terre, ennemis, coffres) et les rend praticables à pied.
+func _build_islands() -> void:
+	if _args.has("no-islands"):
+		return
+	_islands.setup(IslandWorld.read_json(IslandWorld.ISLANDS_PATH), IslandWorld.read_json(IslandWorld.ENEMIES_PATH))
+	_islands.build(_world_fixed, _land)
+	_hp_max = int(_islands.player_cfg.get("hp", 6))
+	_hp = _hp_max
+	_chart.world = _islands
+	if _args.has("discover"):   # essai : --discover=all (ou une liste d'identifiants) révèle des îles sur la carte
+		for isl: Dictionary in _islands.islands:
+			if str(_args["discover"]) == "all" or str(isl["id"]) in str(_args["discover"]).split(","):
+				if not (isl["id"] in _profile.discovered):
+					_profile.discovered.append(isl["id"])
+
+
+## La table de cartes de la cabine : un parchemin posé dessus, et le point d'interaction.
+func _build_chart_table() -> void:
+	var table_pos := Vector2(-2.1, 0.0)
+	_interactables.append({"kind": "chart", "pos": table_pos})
+	var sheet := MeshInstance3D.new()
+	var quad := QuadMesh.new()
+	quad.size = Vector2(1.0, 0.7)
+	quad.orientation = PlaneMesh.FACE_Y
+	sheet.mesh = quad
+	var m := StandardMaterial3D.new()
+	m.albedo_color = Color(0.9, 0.8, 0.55)
+	m.roughness = 1.0
+	sheet.material_override = m
+	sheet.position = _ship.to_local3(table_pos, 0.0) + Vector3(0, 1.04, 0)
+	sheet.rotation.y = deg_to_rad(8.0)
+	_ship.add_child(sheet)
+	var mark := MeshInstance3D.new()
+	var mq := QuadMesh.new()
+	mq.size = Vector2(0.14, 0.05)
+	mq.orientation = PlaneMesh.FACE_Y
+	mark.mesh = mq
+	var mm := StandardMaterial3D.new()
+	mm.albedo_color = Color(0.75, 0.12, 0.1)
+	mark.material_override = mm
+	mark.position = Vector3(0.12, 0.004, -0.06)
+	sheet.add_child(mark)
+
+
 func _build_interactables() -> void:
 	var meta := _ship.meta
+	_build_chart_table()
 	var helm: Array = meta.get("helm", [0.0, 0.0])
 	_interactables.append({"kind": "helm", "pos": Vector2(float(helm[0]), float(helm[1]))})
 	for m: Array in meta.get("masts", []):
@@ -786,6 +843,11 @@ func _build_hud() -> void:
 	_shop_menu = ShopMenu.new()
 	_shop_menu.purchased.connect(_on_purchase)
 	add_child(_shop_menu)
+	_island_hud = IslandHud.new()
+	add_child(_island_hud)
+	_chart = SeaChart.new()
+	_chart.destination_chosen.connect(func(i: int) -> void: _destination = i)
+	add_child(_chart)
 	# fondu au noir des changements d'étage
 	_fade = ColorRect.new()
 	_fade.color = Color(0, 0, 0, 0)
@@ -822,7 +884,7 @@ func _apply_test_args() -> void:
 			_lh = float(_args["lh"])
 	if _args.has("press"):
 		# test : --press=E@2,SPACE@3.5 appuie sur ces touches aux secondes indiquées
-		var codes := {"E": KEY_E, "R": KEY_R, "SPACE": KEY_SPACE, "DOWN": KEY_DOWN, "UP": KEY_UP}
+		var codes := {"E": KEY_E, "R": KEY_R, "SPACE": KEY_SPACE, "DOWN": KEY_DOWN, "UP": KEY_UP, "F": KEY_F, "ESC": KEY_ESCAPE}
 		for item in str(_args["press"]).split(","):
 			var kv := item.split("@")
 			var code: Key = codes.get(kv[0], KEY_E)
@@ -1355,6 +1417,11 @@ func _touch(pos: Vector2, yaw: float) -> Dictionary:
 		if i >= 0:
 			var info := _ship.contour_hit_info(i)
 			return {"kind": HIT_WALL, "bx": info["bx"], "side": info["side"]}
+	if not _islands.islands.is_empty():
+		var ii := _islands.ship_hit_index(_ship.hull_points_world(pos, yaw))
+		if ii >= 0:
+			var iinfo := _ship.contour_hit_info(ii)
+			return {"kind": HIT_WALL, "bx": iinfo["bx"], "side": iinfo["side"]}
 	if not _rocks.rocks.is_empty():
 		var h := _rocks.hit(_ship.hull_points_dense(pos, yaw))
 		if h.x >= 0:
@@ -1395,6 +1462,183 @@ func sunk_visual() -> void:
 # ------------------------------------------------------------------ boucle
 
 
+## Ouvre la carte des mers (sur la table de la cabine).
+func _open_chart() -> void:
+	_chart.discovered = _profile.discovered
+	_chart.destination = _destination
+	_chart.ship_pos = _sim.position
+	_chart.ship_dir = Vector2(cos(_sim.yaw), -sin(_sim.yaw))
+	_chart.open()
+
+
+# ------------------------------------------------------------------ îles : combat, coffres, repérage
+
+## Les joueurs à terre que les ennemis peuvent viser : [{id, pos}].
+func _land_targets() -> Array:
+	var out: Array = []
+	if _loc == Loc.LAND and _hp > 0:
+		out.append({"id": _my_id(), "pos": _lpos})
+	for id in _remotes:
+		var r: Dictionary = _remotes[id]
+		if int(r["loc"]) == 1:
+			out.append({"id": id, "pos": r["pos"]})
+	return out
+
+
+func _update_islands(delta: float) -> void:
+	if _islands.islands.is_empty():
+		return
+	_atk_cd = maxf(_atk_cd - delta, 0.0)
+	_inv_t = maxf(_inv_t - delta, 0.0)
+	if _is_authority():
+		for ev: Dictionary in _islands.step(delta, _land_targets()):
+			var tid: int = ev["target"]
+			if tid == _my_id():
+				apply_hurt(int(ev["damage"]), ev["from"])
+			elif _net.active:
+				_net.send_hurt(tid, int(ev["damage"]), ev["from"])
+	_islands.update_visuals(delta, _is_authority())
+	# repérage : une île à moins de reveal_range apparaît sur la carte
+	for i in _islands.island_in_sight(_sim.position):
+		var isl: Dictionary = _islands.islands[i]
+		if not (isl["id"] in _profile.discovered):
+			_profile.discovered.append(isl["id"])
+			_profile.save()
+			_say("Terre en vue : %s !" % isl["name"], 4.0)
+	# à bord, on se soigne peu à peu
+	if _loc == Loc.SHIP and _hp < _hp_max:
+		_heal_t += delta
+		if _heal_t >= 3.0:
+			_heal_t = 0.0
+			_hp += 1
+	# textes qui flottent
+	var keep: Array = []
+	for p: Dictionary in _popups:
+		p["t"] = float(p["t"]) + delta
+		var node := p["node"] as Label3D
+		if float(p["t"]) >= 1.3:
+			node.queue_free()
+			continue
+		node.position.y += delta * 0.9
+		node.modulate.a = clampf(2.0 - float(p["t"]) * 1.5, 0.0, 1.0)
+		keep.append(p)
+	_popups = keep
+	_update_island_hud(delta)
+
+
+func _update_island_hud(delta: float) -> void:
+	var h := _island_hud
+	h.hp = _hp
+	h.hp_max = _hp_max
+	h.show_hearts = _loc == Loc.LAND or _hp < _hp_max
+	h.blink = _inv_t > 0.0
+	h.flash = maxf(h.flash - delta * 2.5, 0.0)
+	if _chart.is_open():
+		_chart.ship_pos = _sim.position
+		_chart.ship_dir = Vector2(cos(_sim.yaw), -sin(_sim.yaw))
+	h.dest_visible = _destination >= 0 and _destination < _islands.islands.size() and not _chart.is_open()
+	if h.dest_visible:
+		var target := _chart.shown_pos(_destination)
+		var from := _lpos if _loc == Loc.LAND else _sim.position
+		var d := target - from
+		h.dest_angle = atan2(d.x, -d.y)
+		h.dest_dist = d.length()
+		var known: bool = _islands.islands[_destination]["id"] in _profile.discovered
+		h.dest_name = str(_islands.islands[_destination]["name"]) if known else "Terre inconnue"
+
+
+## Coup de sabre vers `_face` : le croissant s'affiche tout de suite, l'hôte décide qui est touché.
+func _try_attack() -> void:
+	if _loc != Loc.LAND or _atk_cd > 0.0 or _hp <= 0 or _dialog.is_open() or _shop_menu.is_open() or _chart.is_open() or _jump_wind > 0.0:
+		return
+	_atk_cd = float(_islands.player_cfg.get("swing_cooldown", 0.45))
+	_islands.spawn_slash(_lpos, _face)
+	if _is_authority():
+		_resolve_swing(_my_id(), _lpos, _face)
+	else:
+		_net.send_swing(_lpos, _face)
+
+
+## Hôte : le coup de `peer` touche-t-il quelqu'un ? L'or des ennemis vaincus va à celui qui frappe.
+func _resolve_swing(peer: int, pos: Vector2, dir: Vector2) -> void:
+	for hit: Dictionary in _islands.swing(pos, dir.normalized()):
+		if int(hit["gold"]) > 0:
+			_give_loot(peer, int(hit["gold"]), hit["at"])
+
+
+func apply_swing(peer: int, pos: Vector2, dir: Vector2) -> void:
+	_resolve_swing(peer, pos, dir)
+
+
+func _give_loot(peer: int, gold: int, at: Vector2) -> void:
+	if peer == _my_id():
+		apply_loot(gold, at)
+	elif _net.active:
+		_net.send_loot(peer, gold, at)
+
+
+func apply_loot(gold: int, at: Vector2) -> void:
+	_profile.gold += gold
+	_profile.save()
+	_popup("+%d or" % gold, at, Color(1.0, 0.85, 0.3))
+
+
+func _popup(text: String, at: Vector2, color: Color) -> void:
+	var l := Label3D.new()
+	l.text = text
+	l.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	l.font_size = 40
+	l.pixel_size = 0.014
+	l.modulate = color
+	l.outline_size = 10
+	l.outline_modulate = Color(0.1, 0.05, 0.02)
+	l.no_depth_test = true
+	l.position = Vector3(at.x, 1.9, at.y)
+	_world_fixed.add_child(l)
+	_popups.append({"node": l, "t": 0.0})
+
+
+## Un ennemi m'a touché (venu de `from`).
+func apply_hurt(damage: int, from: Vector2) -> void:
+	if _inv_t > 0.0 or _hp <= 0 or _loc != Loc.LAND:
+		return
+	_hp = maxi(_hp - damage, 0)
+	_inv_t = float(_islands.player_cfg.get("invulnerable_secs", 1.0))
+	_island_hud.flash = 1.0
+	_shake_t = 0.3
+	var away := _lpos - from
+	if away.length() > 0.01:
+		var r := _land.step(_lpos, away.normalized() * 0.9, _lh)
+		_lpos = Vector2(r.x, r.y)
+		_lh = r.z
+	if _hp <= 0:
+		_transition(_wake_on_ship, false)
+
+
+## Évanoui : on se réveille sur le pont, soigné.
+func _wake_on_ship() -> void:
+	_loc = Loc.SHIP
+	_mode = Mode.WALK
+	_pz = 0.0
+	_vz = 0.0
+	_lh = 0.0
+	var l: Array = _ship.ladders[0]
+	_ppos = _ship.nearest_walkable(Vector2(float(l[0]), float(l[1])))
+	_hp = _hp_max
+	_inv_t = 2.0
+	_snap_camera()
+	_say("Tu t'es évanoui… tes camarades t'ont ramené à bord", 5.0)
+
+
+func islands_net_state() -> Array:
+	return _islands.net_state()
+
+
+func apply_islands_state(s: Array) -> void:
+	if not _islands.islands.is_empty():
+		_islands.apply_net(s)
+
+
 func _process(delta_raw: float) -> void:
 	var delta := minf(delta_raw, 0.05)
 	if _ship == null:
@@ -1415,6 +1659,7 @@ func _process(delta_raw: float) -> void:
 	_refresh_hull_visuals()
 	if _net.active and not _net.is_host:
 		_correct_from_host(delta)
+	_update_islands(delta)
 	_float_ship()
 	_ship.set_sail_open(_sim.sail_open)
 	_place_pirate()
@@ -1468,6 +1713,8 @@ func _axis(neg: Array, pos: Array) -> float:
 func _update_player(delta: float) -> void:
 	_update_jump(delta)
 	var move := Vector2(_axis([KEY_A, KEY_LEFT], [KEY_D, KEY_RIGHT]), _axis([KEY_W, KEY_UP], [KEY_S, KEY_DOWN]))
+	if _chart.is_open():
+		return   # penché sur la carte : on ne bouge pas
 	if _loc == Loc.CLIMB:
 		_update_climb(delta)
 		return
@@ -1488,6 +1735,7 @@ func _update_player(delta: float) -> void:
 		return   # accroupi avant de sauter
 	if _loc == Loc.LAND:
 		if move != Vector2.ZERO and not _dialog.is_open() and not _shop_menu.is_open():
+			_face = move.normalized()
 			var r := _land.step(_lpos, move.normalized() * WALK_SPEED * delta, _lh)
 			_lpos = Vector2(r.x, r.y)
 			_lh = r.z
@@ -2061,10 +2309,24 @@ func _nearest_interactable() -> Dictionary:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if _ship == null or not (event is InputEventKey):
+	if _ship == null:
+		return
+	if event is InputEventMouseButton:
+		var mb := event as InputEventMouseButton
+		# à terre, le clic gauche frappe vers le pointeur (l'écran est centré sur le pirate)
+		if mb.pressed and mb.button_index == MOUSE_BUTTON_LEFT and _loc == Loc.LAND:
+			var d := mb.position - get_viewport().get_visible_rect().size * 0.5
+			if d.length() > 4.0:
+				_face = Vector2(d.x, d.y / sin(deg_to_rad(ELEVATION_DEG))).normalized()
+			_try_attack()
+		return
+	if not (event is InputEventKey):
 		return
 	var key := event as InputEventKey
 	if not key.pressed or key.echo:
+		return
+	if _chart.is_open():   # la carte déployée prend les touches
+		_chart.key(key.physical_keycode)
 		return
 	if _shop_menu.is_open():   # chez un boutiquier : le menu prend toutes les touches
 		_shop_menu.key(key.physical_keycode)
@@ -2081,6 +2343,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		_interact(true)
 	elif key.physical_keycode == KEY_SPACE:
 		_try_jump()
+	elif key.physical_keycode == KEY_F:
+		_try_attack()
 
 
 ## L'objet de la cale le plus proche : échelle, étagère, seau, ou voie d'eau ouverte.
@@ -2155,7 +2419,11 @@ func _interact(secondary: bool) -> void:
 		if npc != null:
 			_talk(npc)
 		elif not secondary:
-			_try_board()
+			var chest := _islands.nearest_chest(_lpos)
+			if chest >= 0:
+				_request("chest", chest)
+			else:
+				_try_board()
 		return
 	if _mode == Mode.HELM:
 		if not secondary:
@@ -2165,6 +2433,9 @@ func _interact(secondary: bool) -> void:
 	if it.is_empty():
 		return
 	match it["kind"]:
+		"chart":
+			if not secondary:
+				_open_chart()
 		"ladder":
 			if not secondary:
 				_try_disembark(int(it["index"]))
@@ -2216,6 +2487,10 @@ func apply_request(peer: int, kind: String, value: int) -> void:
 	if _ship == null:
 		return
 	match kind:
+		"chest":
+			var gold := _islands.open_chest(value)
+			if gold > 0:
+				_give_loot(peer, gold, (_islands.chests[value] as Dictionary)["pos"])
 		"helm_take":
 			if _helm_owner == 0 or _helm_owner == peer:
 				_helm_owner = peer
@@ -2411,8 +2686,11 @@ func _update_hud() -> void:
 		var near := _nearest_npc()
 		if near != null:
 			_prompt.text = "E : parler à %s" % near.display_name
+		elif _islands.nearest_chest(_lpos) >= 0:
+			_prompt.text = "E : ouvrir le coffre   F / clic : frapper"
 		else:
-			_prompt.text = "E : monter à bord   Espace : sauter" if _nearest_ship_ladder_from_land() >= 0 else "Espace : sauter"
+			var base := "E : monter à bord   Espace : sauter" if _nearest_ship_ladder_from_land() >= 0 else "Espace : sauter"
+			_prompt.text = base + ("   F / clic : frapper" if _islands.island_at(_lpos, 2.0) >= 0 else "")
 		return
 	if _mode == Mode.HELM:
 		_prompt.text = "À la barre : gauche/droite pour virer — E : lâcher la barre"
@@ -2422,6 +2700,8 @@ func _update_hud() -> void:
 		_prompt.text = ""
 		return
 	match it["kind"]:
+		"chart":
+			_prompt.text = "E : consulter la carte des mers"
 		"hatch":
 			var n := _hull.leak_count()
 			_prompt.text = "E : descendre dans la cale" + ("   (%d voie(s) d'eau !)" % n if n > 0 else "")

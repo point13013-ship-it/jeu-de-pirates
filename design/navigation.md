@@ -52,3 +52,28 @@ pleine = le bateau coule (remorqué au port, remis à neuf). L'eau enfonce le ba
 - Réseau : l'hôte décide ; l'état de la coque (masque des voies d'eau, des planches, niveau d'eau) est dans
   l'état du bateau (protocole 2), les chocs et le naufrage sont des événements fiables.
 - Essais : `--hold --hpos=x,z --hit=abscisse,côté,nombre --water=0.4 --send=patch:3,bail:0`.
+
+## Îles, ennemis, trésors et carte (src/islands/, src/ui/sea_chart.gd)
+- `data/islands.json` : 5 îles (Crabes, Naufragé, Squelettes, Fort de la Marine, Capitaine Rouille). Terre = union de
+  disques (`lobes`), sol à la hauteur 0, plage en pente ; le bateau s'arrête à 0,8 m du bord marchable (choc de
+  coque comme un quai). `data/enemies.json` : réglages des ennemis et du joueur (6 cœurs, sabre).
+- À terre : F ou clic gauche = coup de sabre (croissant), E sur un coffre = or. Les ennemis rôdent, poursuivent, arment
+  un coup (reculer l'évite), reviennent à la vie 150 s après, quand l'île est vide ; coffres remplis après 600 s.
+  À 0 cœur : évanoui, réveil sur le pont. Soin sur le bateau (1 cœur / 3 s).
+- Carte : E à la table de la cabine. Îles inconnues = rumeur « ? » ; repérage à 70 m du bord. Clic sur une île = cap
+  (flèche + distance en haut de l'écran), R l'efface. Îles repérées sauvegardées dans le profil.
+- Réseau (protocole 5) : l'hôte fait vivre ennemis et coffres et diffuse l'état à 12 Hz ; coups, coffres et or par requêtes.
+  Non testé à plusieurs fenêtres.
+
+### Rendu des îles (v2)
+Sol peint par `shaders/island_ground.gdshader` (herbe en taches de 4 tons, touffes, fleurs, sentiers, sable ondulé, roche),
+eaux peu profondes + écume animée par `island_shallows.gdshader`, décor assemblé en un maillage par objet
+(`mesh_kit.gd`, `island_decor.gd`) : palmiers, buissons, fougères, mares, arbres morts, rocher-crâne, tours, épave du galion.
+Ambiance par île (`tone` : lush / dead / fort), falaises (`cliffs`), semis (`scatter`) dans `data/islands.json`.
+Les teintes ajoutées sont dans `tools/art/sea_palette.json` (palette du filtre, à régénérer avec make_palette_shader.py).
+
+### Relief des îles
+`plateaus` dans `data/islands.json` : disque surélevé (`h` m) à bord en falaise à pic, accessible seulement par une rampe
+(`ramp` : angle, largeur, longueur). `IslandWorld.height()` donne la hauteur ; Land (`island_height`) la suit à pied,
+les ennemis ne montent pas les falaises, objets et coffres sont posés à la bonne hauteur. Chaque île à danger garde un
+coffre sur son plateau.

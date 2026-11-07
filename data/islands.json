@@ -1,0 +1,900 @@
+{
+  "_commentaire": "Les îles du monde. center = [x, z] dans le monde (le port est au nord, z < 0 ; la mer s'ouvre vers +z). lobes = disques [dx, dz, rayon] relatifs au centre, dont l'union est la terre ferme marchable. Positions des ennemis, coffres et accessoires : [dx, dz] relatifs au centre. danger : 1 à 3 crânes sur la carte.",
+  "reveal_range": 70.0,
+  "islands": [
+    {
+      "id": "crabes",
+      "name": "Île aux Crabes",
+      "blurb": "Une plage tranquille, si l'on oublie les pinces.",
+      "danger": 1,
+      "center": [
+        110,
+        140
+      ],
+      "lobes": [
+        [
+          0,
+          0,
+          15
+        ],
+        [
+          12,
+          6,
+          9
+        ],
+        [
+          -10,
+          -5,
+          8
+        ]
+      ],
+      "palms": 12,
+      "enemies": [
+        {
+          "kind": "crab",
+          "at": [
+            3,
+            3
+          ]
+        },
+        {
+          "kind": "crab",
+          "at": [
+            -4,
+            2
+          ]
+        },
+        {
+          "kind": "crab",
+          "at": [
+            6,
+            -4
+          ]
+        },
+        {
+          "kind": "crab",
+          "at": [
+            14,
+            7
+          ]
+        },
+        {
+          "kind": "crab",
+          "at": [
+            -11,
+            -5
+          ]
+        }
+      ],
+      "chests": [
+        {
+          "at": [
+            13,
+            9
+          ],
+          "gold": 45
+        },
+        {
+          "at": [
+            -11,
+            -6
+          ],
+          "gold": 30
+        }
+      ],
+      "props": [
+        {
+          "kind": "barrel",
+          "at": [
+            -2,
+            7
+          ]
+        },
+        {
+          "kind": "barrel",
+          "at": [
+            -1,
+            7.9
+          ]
+        },
+        {
+          "kind": "bones",
+          "at": [
+            8,
+            1
+          ]
+        },
+        {
+          "kind": "pond",
+          "at": [
+            -8,
+            6
+          ]
+        },
+        {
+          "kind": "sandcastle",
+          "at": [
+            2,
+            14
+          ]
+        },
+        {
+          "kind": "rowboat",
+          "at": [
+            -14,
+            3
+          ],
+          "rot": 100
+        },
+        {
+          "kind": "crate",
+          "at": [
+            -3,
+            8.4
+          ]
+        },
+        {
+          "kind": "arch",
+          "at": [
+            16,
+            -6
+          ],
+          "rot": 20
+        }
+      ],
+      "scatter": {
+        "bush": 16,
+        "fern": 12,
+        "rock": 4,
+        "rock_spire": 2,
+        "driftwood": 3
+      },
+      "cliffs": 0.25,
+      "plateaus": [
+        {
+          "at": [
+            -11,
+            -6
+          ],
+          "r": 4.5,
+          "h": 1.5,
+          "ramp": {
+            "angle": 0,
+            "width": 50,
+            "len": 4.5
+          }
+        }
+      ]
+    },
+    {
+      "id": "naufrage",
+      "name": "Îlot du Naufragé",
+      "blurb": "Un tout petit îlot. Quelqu'un y a planté une croix.",
+      "danger": 0,
+      "center": [
+        -120,
+        115
+      ],
+      "lobes": [
+        [
+          0,
+          0,
+          8
+        ],
+        [
+          5,
+          3,
+          4.5
+        ]
+      ],
+      "palms": 4,
+      "enemies": [],
+      "chests": [
+        {
+          "at": [
+            1,
+            -1
+          ],
+          "gold": 70
+        }
+      ],
+      "props": [
+        {
+          "kind": "xmark",
+          "at": [
+            1,
+            -1
+          ]
+        },
+        {
+          "kind": "tent",
+          "at": [
+            -4,
+            2
+          ]
+        },
+        {
+          "kind": "campfire",
+          "at": [
+            -2,
+            4
+          ]
+        },
+        {
+          "kind": "barrel",
+          "at": [
+            -5.5,
+            0.5
+          ]
+        },
+        {
+          "kind": "rowboat",
+          "at": [
+            1,
+            7.2
+          ],
+          "rot": 0
+        },
+        {
+          "kind": "crate",
+          "at": [
+            -5.3,
+            2.2
+          ]
+        }
+      ],
+      "scatter": {
+        "bush": 5,
+        "fern": 4,
+        "driftwood": 3,
+        "rock": 2
+      },
+      "cliffs": 0.0
+    },
+    {
+      "id": "squelettes",
+      "name": "Île des Squelettes",
+      "blurb": "Un cimetière de pirates qui n'ont jamais voulu partir.",
+      "danger": 2,
+      "center": [
+        -200,
+        300
+      ],
+      "lobes": [
+        [
+          0,
+          0,
+          17
+        ],
+        [
+          -13,
+          8,
+          9
+        ],
+        [
+          11,
+          -9,
+          9
+        ]
+      ],
+      "palms": 4,
+      "enemies": [
+        {
+          "kind": "skeleton",
+          "at": [
+            2,
+            2
+          ]
+        },
+        {
+          "kind": "skeleton",
+          "at": [
+            -5,
+            -3
+          ]
+        },
+        {
+          "kind": "skeleton",
+          "at": [
+            6,
+            5
+          ]
+        },
+        {
+          "kind": "skeleton",
+          "at": [
+            -13,
+            8
+          ]
+        },
+        {
+          "kind": "skeleton",
+          "at": [
+            11,
+            -9
+          ]
+        },
+        {
+          "kind": "skeleton",
+          "at": [
+            0,
+            8
+          ]
+        }
+      ],
+      "chests": [
+        {
+          "at": [
+            -14,
+            9
+          ],
+          "gold": 90
+        },
+        {
+          "at": [
+            12,
+            -10
+          ],
+          "gold": 110
+        }
+      ],
+      "props": [
+        {
+          "kind": "grave",
+          "at": [
+            -3,
+            0
+          ]
+        },
+        {
+          "kind": "grave",
+          "at": [
+            -1,
+            0.6
+          ]
+        },
+        {
+          "kind": "grave",
+          "at": [
+            1,
+            -0.4
+          ]
+        },
+        {
+          "kind": "grave",
+          "at": [
+            3.5,
+            -2
+          ]
+        },
+        {
+          "kind": "grave",
+          "at": [
+            -6,
+            3
+          ]
+        },
+        {
+          "kind": "grave",
+          "at": [
+            4,
+            7
+          ]
+        },
+        {
+          "kind": "bones",
+          "at": [
+            7,
+            2
+          ]
+        },
+        {
+          "kind": "bones",
+          "at": [
+            -9,
+            7
+          ]
+        },
+        {
+          "kind": "flag",
+          "at": [
+            0,
+            -6
+          ],
+          "color": "black"
+        },
+        {
+          "kind": "skull_rock",
+          "at": [
+            0,
+            -13
+          ],
+          "rot": 0
+        },
+        {
+          "kind": "pillar",
+          "at": [
+            -4,
+            -8
+          ]
+        },
+        {
+          "kind": "pillar",
+          "at": [
+            4,
+            -8
+          ]
+        },
+        {
+          "kind": "pillar",
+          "at": [
+            -7,
+            -5
+          ]
+        },
+        {
+          "kind": "pillar",
+          "at": [
+            7,
+            -5
+          ]
+        }
+      ],
+      "scatter": {
+        "dead_tree": 9,
+        "rock_spire": 4,
+        "rock": 6,
+        "bush": 4,
+        "fern": 4,
+        "driftwood": 2
+      },
+      "cliffs": 0.5,
+      "tone": "dead",
+      "plateaus": [
+        {
+          "at": [
+            11,
+            -9
+          ],
+          "r": 5,
+          "h": 1.6,
+          "ramp": {
+            "angle": 180,
+            "width": 50,
+            "len": 4.5
+          }
+        }
+      ]
+    },
+    {
+      "id": "fort",
+      "name": "Fort de la Marine",
+      "blurb": "Un avant-poste de la Marine. Ils n'aiment pas les visiteurs.",
+      "danger": 2,
+      "center": [
+        230,
+        255
+      ],
+      "lobes": [
+        [
+          0,
+          0,
+          18
+        ],
+        [
+          14,
+          9,
+          9
+        ]
+      ],
+      "palms": 4,
+      "enemies": [
+        {
+          "kind": "marine",
+          "at": [
+            -4,
+            0
+          ]
+        },
+        {
+          "kind": "marine",
+          "at": [
+            4,
+            -2
+          ]
+        },
+        {
+          "kind": "marine",
+          "at": [
+            0,
+            5
+          ]
+        },
+        {
+          "kind": "marine",
+          "at": [
+            9,
+            8
+          ]
+        },
+        {
+          "kind": "officer",
+          "at": [
+            1,
+            -7
+          ]
+        }
+      ],
+      "chests": [
+        {
+          "at": [
+            14,
+            10
+          ],
+          "gold": 100
+        },
+        {
+          "at": [
+            1,
+            -10
+          ],
+          "gold": 160
+        }
+      ],
+      "props": [
+        {
+          "kind": "wall",
+          "from": [
+            -8,
+            -4
+          ],
+          "to": [
+            -8,
+            4
+          ]
+        },
+        {
+          "kind": "wall",
+          "from": [
+            -8,
+            -4
+          ],
+          "to": [
+            -2,
+            -4
+          ]
+        },
+        {
+          "kind": "wall",
+          "from": [
+            5,
+            -4
+          ],
+          "to": [
+            11,
+            -4
+          ]
+        },
+        {
+          "kind": "tower",
+          "at": [
+            -9,
+            -6
+          ],
+          "color": "blue"
+        },
+        {
+          "kind": "tower",
+          "at": [
+            12,
+            -6
+          ],
+          "color": "blue"
+        },
+        {
+          "kind": "hut",
+          "at": [
+            -3,
+            11
+          ]
+        },
+        {
+          "kind": "tent",
+          "at": [
+            3,
+            12
+          ]
+        },
+        {
+          "kind": "cannon",
+          "at": [
+            -6,
+            17
+          ],
+          "rot": 0
+        },
+        {
+          "kind": "cannon",
+          "at": [
+            -1,
+            18
+          ],
+          "rot": 0
+        },
+        {
+          "kind": "cannon",
+          "at": [
+            5,
+            17
+          ],
+          "rot": 0
+        },
+        {
+          "kind": "barrel",
+          "at": [
+            6,
+            2
+          ]
+        },
+        {
+          "kind": "barrel",
+          "at": [
+            7,
+            2.9
+          ]
+        },
+        {
+          "kind": "crate",
+          "at": [
+            8.2,
+            2.2
+          ]
+        },
+        {
+          "kind": "crate",
+          "at": [
+            -5.5,
+            9
+          ]
+        },
+        {
+          "kind": "flag",
+          "at": [
+            -8,
+            -4
+          ],
+          "color": "blue"
+        },
+        {
+          "kind": "flag",
+          "at": [
+            11,
+            -4
+          ],
+          "color": "blue"
+        }
+      ],
+      "scatter": {
+        "bush": 7,
+        "fern": 4,
+        "rock": 3,
+        "driftwood": 2
+      },
+      "cliffs": 0.15,
+      "tone": "fort",
+      "plateaus": [
+        {
+          "at": [
+            1,
+            -10
+          ],
+          "r": 5,
+          "h": 1.5,
+          "ramp": {
+            "angle": 90,
+            "width": 50,
+            "len": 4.5
+          }
+        }
+      ]
+    },
+    {
+      "id": "capitaine",
+      "name": "Île du Capitaine Rouille",
+      "blurb": "Le capitaine fantôme garde ici le butin de toute une vie de pillage.",
+      "danger": 3,
+      "center": [
+        20,
+        430
+      ],
+      "lobes": [
+        [
+          0,
+          0,
+          19
+        ],
+        [
+          -14,
+          -8,
+          10
+        ],
+        [
+          13,
+          10,
+          10
+        ]
+      ],
+      "palms": 5,
+      "enemies": [
+        {
+          "kind": "skeleton",
+          "at": [
+            -6,
+            4
+          ]
+        },
+        {
+          "kind": "skeleton",
+          "at": [
+            6,
+            -3
+          ]
+        },
+        {
+          "kind": "skeleton",
+          "at": [
+            -12,
+            -8
+          ]
+        },
+        {
+          "kind": "skeleton",
+          "at": [
+            12,
+            10
+          ]
+        },
+        {
+          "kind": "captain",
+          "at": [
+            0,
+            -2
+          ]
+        }
+      ],
+      "chests": [
+        {
+          "at": [
+            -15,
+            -9
+          ],
+          "gold": 120
+        },
+        {
+          "at": [
+            14,
+            11
+          ],
+          "gold": 140
+        },
+        {
+          "at": [
+            0,
+            -5
+          ],
+          "gold": 320
+        }
+      ],
+      "props": [
+        {
+          "kind": "wreck",
+          "at": [
+            0,
+            12
+          ],
+          "rot": 0,
+          "ship": "galion"
+        },
+        {
+          "kind": "grave",
+          "at": [
+            -4,
+            -6
+          ]
+        },
+        {
+          "kind": "grave",
+          "at": [
+            4,
+            -7
+          ]
+        },
+        {
+          "kind": "bones",
+          "at": [
+            0,
+            6
+          ]
+        },
+        {
+          "kind": "bones",
+          "at": [
+            -8,
+            1
+          ]
+        },
+        {
+          "kind": "flag",
+          "at": [
+            0,
+            -8
+          ],
+          "color": "black"
+        },
+        {
+          "kind": "flag",
+          "at": [
+            -3,
+            -8
+          ],
+          "color": "black"
+        },
+        {
+          "kind": "flag",
+          "at": [
+            3,
+            -8
+          ],
+          "color": "black"
+        },
+        {
+          "kind": "skull_rock",
+          "at": [
+            5,
+            -14
+          ],
+          "rot": 0
+        },
+        {
+          "kind": "pillar",
+          "at": [
+            -9,
+            -1
+          ]
+        },
+        {
+          "kind": "pillar",
+          "at": [
+            9,
+            0
+          ]
+        }
+      ],
+      "scatter": {
+        "dead_tree": 5,
+        "rock_spire": 3,
+        "rock": 6,
+        "bush": 5,
+        "fern": 3,
+        "driftwood": 2
+      },
+      "cliffs": 0.4,
+      "tone": "dead",
+      "plateaus": [
+        {
+          "at": [
+            -14,
+            -8
+          ],
+          "r": 6,
+          "h": 1.8,
+          "ramp": {
+            "angle": 0,
+            "width": 50,
+            "len": 5.0
+          }
+        }
+      ]
+    }
+  ]
+}
