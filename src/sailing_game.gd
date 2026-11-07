@@ -130,7 +130,7 @@ func _setup_ship(ship_name: String) -> void:
 
 
 func _start_host(ship_name: String) -> void:
-	var err := _net.host(ship_name)
+	var err := _net.host(ship_name, not _args.has("no-upnp"))
 	if err != OK:
 		_set_status("Impossible d'héberger (erreur %d) : le port %d est peut-être déjà utilisé" % [err, SailingNet.PORT])
 		return
@@ -181,16 +181,17 @@ func _build_menu() -> void:
 	var row := HBoxContainer.new()
 	box.add_child(row)
 	var ip := LineEdit.new()
-	ip.text = "127.0.0.1"
-	ip.custom_minimum_size = Vector2(200, 0)
-	ip.tooltip_text = "Adresse de l'ami qui héberge"
+	ip.placeholder_text = "Code d'invitation (ex. K7QD-M2XP-9WAB)"
+	ip.custom_minimum_size = Vector2(260, 0)
+	ip.tooltip_text = "Le code affiché chez l'ami qui héberge (ou une adresse, 127.0.0.1 pour un essai sur ce PC)"
 	row.add_child(ip)
 	var join := Button.new()
 	join.text = "Rejoindre"
 	join.pressed.connect(func() -> void: _start_join(ip.text.strip_edges()))
 	row.add_child(join)
 	var hint := Label.new()
-	hint.text = "Pour rejoindre, demande l'adresse affichée chez l'ami qui héberge."
+	hint.text = ("Pour rejoindre, tape le code d'invitation affiché chez l'ami qui héberge.\n"
+			+ "Héberger demande à ta box d'ouvrir le port UDP %d (refermé en quittant)." % SailingNet.PORT)
 	hint.add_theme_font_size_override("font_size", 13)
 	box.add_child(hint)
 

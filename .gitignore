@@ -9,3 +9,6 @@ qa/frames_*/
 
 # Anciennes planches de bateaux pré-rendus (360 caps), remplacées par les modèles 3D
 assets/art/ship/
+
+# Version exportée du jeu (à envoyer aux amis, pas à versionner)
+build/

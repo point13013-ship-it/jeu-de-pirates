@@ -28,8 +28,15 @@ var _ship_timer := 0.0
 var _player_timer := 0.0
 
 
-## Héberge une partie avec le bateau `p_ship`. Renvoie OK ou le code d'erreur d'ENet.
-func host(p_ship: String) -> Error:
+## Code d'invitation à donner aux amis (vide tant qu'il n'est pas connu).
+var invite_code := ""
+var _opener: PortOpener
+
+
+## Héberge une partie avec le bateau `p_ship`. Si `open_box`, demande à la box Internet d'ouvrir le
+## port (UPnP, refermé en quittant) pour que des amis d'ailleurs puissent rejoindre ; le code
+## d'invitation arrive ensuite par `status`. Renvoie OK ou le code d'erreur d'ENet.
+func host(p_ship: String, open_box: bool = true) -> Error:
 	var peer := ENetMultiplayerPeer.new()
 	var err := peer.create_server(PORT, MAX_PLAYERS - 1)
 	if err != OK:
@@ -40,14 +47,41 @@ func host(p_ship: String) -> Error:
 	ship_name = p_ship
 	multiplayer.peer_connected.connect(_on_peer_connected)
 	multiplayer.peer_disconnected.connect(_on_peer_disconnected)
-	status.emit("Partie hébergée — adresse : %s (port %d)" % [local_address(), PORT])
+	var local_code := Invite.encode(local_address(), PORT)
+	if open_box:
+		_opener = PortOpener.new()
+		add_child(_opener)
+		_opener.finished.connect(_on_port_opened)
+		_opener.open(PORT)
+		status.emit("Partie hébergée — recherche de ton adresse sur Internet…\nCode pour un ami chez toi : %s" % local_code)
+	else:
+		invite_code = local_code
+		status.emit("Partie hébergée (box non touchée)\nCode pour un ami chez toi : %s" % local_code)
 	return OK
 
 
-## Rejoint la partie hébergée à `address`. Le bateau est chargé à la réception de l'accueil.
-func join(address: String) -> Error:
+func _on_port_opened(result: Dictionary) -> void:
+	var local_code := Invite.encode(local_address(), PORT)
+	if bool(result["ok"]):
+		invite_code = Invite.encode(String(result["address"]), PORT)
+		DisplayServer.clipboard_set(invite_code)
+		status.emit("Code d'invitation : %s  (copié)\nÀ donner à tes amis, où qu'ils soient" % invite_code)
+	else:
+		invite_code = local_code
+		status.emit("Code pour un ami chez toi : %s\n%s\nPar Internet : ouvre le port UDP %d de ta box, ou utilisez un VPN gratuit (Radmin VPN, ZeroTier)." % [
+				local_code, String(result["why"]), PORT])
+
+
+## Rejoint la partie d'un ami : `text` est son code d'invitation (ou une adresse, « 127.0.0.1 »
+## pour un test). Le bateau est chargé à la réception de l'accueil.
+func join(text: String) -> Error:
+	var target := Invite.parse(text, PORT)
+	if not bool(target["ok"]):
+		status.emit(String(target["why"]))
+		return ERR_INVALID_PARAMETER
+	var address := String(target["address"])
 	var peer := ENetMultiplayerPeer.new()
-	var err := peer.create_client(address, PORT)
+	var err := peer.create_client(address, int(target["port"]))
 	if err != OK:
 		return err
 	multiplayer.multiplayer_peer = peer
@@ -66,12 +100,10 @@ func join(address: String) -> Error:
 	return OK
 
 
-## Adresse IPv4 locale (réseau domestique) à donner aux amis sur le même réseau.
+## Adresse IPv4 locale (réseau domestique ou VPN) à donner aux amis sur le même réseau.
 func local_address() -> String:
-	for a in IP.get_local_addresses():
-		if a.begins_with("192.168.") or a.begins_with("10.") or a.begins_with("172."):
-			return a
-	return "127.0.0.1"
+	var a := PortOpener.local_address()
+	return a if a != "" else "127.0.0.1"
 
 
 func _on_peer_connected(id: int) -> void:
