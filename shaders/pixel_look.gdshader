@@ -7,12 +7,16 @@ shader_type canvas_item;
 
 uniform float outline_threshold = 0.22;
 uniform float outline_strength = 0.30;
+uniform bool use_palette = true;   // faux : couleurs brutes (diagnostic, mesure des tons)
 
 float lum(vec3 c) {
 	return dot(c, vec3(0.299, 0.587, 0.114));
 }
 
 vec3 quantize(vec3 c) {
+	if (!use_palette) {
+		return c;
+	}
 	float best = 1e9;
 	vec3 chosen = PALETTE[0];
 	for (int i = 0; i < PALETTE_SIZE; i++) {

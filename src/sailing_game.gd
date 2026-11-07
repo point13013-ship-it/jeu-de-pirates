@@ -10,7 +10,7 @@ extends Control
 
 const PIXELS_PER_METER := 24.0
 const VIEW_SIZE := Vector2i(640, 360)
-const ELEVATION_DEG := 52.0
+const ELEVATION_DEG := 40.0
 const SEA_Y := -1.45
 const WALK_SPEED := 3.6
 const INTERACT_RANGE := 1.5
@@ -62,6 +62,8 @@ var _status_label: Label
 var _time_offset := 0.0             ## client : décalage pour suivre le temps de la houle de l'hôte
 var _net_target: Dictionary = {}    ## client : dernier état du bateau reçu de l'hôte
 var _rudder_sent := 0.0
+var _port: Node3D
+var _port_meta: Dictionary = {}
 
 const LOOKS := ["pirate_red", "pirate_blue", "pirate_green", "pirate_yellow"]
 
@@ -119,6 +121,8 @@ func _setup_ship(ship_name: String) -> void:
 	_world.add_child(_ship)
 	_sim.configure(_load_stats(ship_name))
 	_sim.yaw = deg_to_rad(float(_args.get("yaw", "0")))
+	if not _args.has("no-port"):
+		_build_port()
 	_build_blob()
 	_build_player()
 	_build_interactables()
@@ -280,6 +284,8 @@ func _build_view() -> void:
 	var mat := ShaderMaterial.new()
 	mat.shader = load("res://shaders/pixel_look.gdshader")
 	_post_rect.material = mat
+	if _args.has("no-palette"):
+		mat.set_shader_parameter("use_palette", false)
 	_post_vp.add_child(_post_rect)
 	resized.connect(_layout_view)
 	_layout_view.call_deferred()
@@ -288,8 +294,9 @@ func _build_view() -> void:
 	env.background_mode = Environment.BG_COLOR
 	env.background_color = Color(0.10, 0.10, 0.22)
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env.ambient_light_color = Color(0.42, 0.40, 0.68)
-	env.ambient_light_energy = 1.25
+	var day := str(_args.get("light", "jour")) == "jour"
+	env.ambient_light_color = Color(0.62, 0.66, 0.78) if day else Color(0.42, 0.40, 0.68)
+	env.ambient_light_energy = 1.05 if day else 1.25
 	env.tonemap_mode = Environment.TONE_MAPPER_LINEAR
 	var world_env := WorldEnvironment.new()
 	world_env.environment = env
@@ -297,10 +304,10 @@ func _build_view() -> void:
 
 	var sun := DirectionalLight3D.new()
 	sun.rotation_degrees = Vector3(-48, -40, 0)
-	sun.light_color = Color(1.0, 0.72, 0.52)
-	sun.light_energy = 1.7
+	sun.light_color = Color(1.0, 0.93, 0.80) if day else Color(1.0, 0.72, 0.52)
+	sun.light_energy = 1.55 if day else 1.7
 	sun.shadow_enabled = true
-	sun.shadow_opacity = 0.5
+	sun.shadow_opacity = 0.4
 	sun.shadow_blur = 1.6
 	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_ORTHOGONAL
 	sun.directional_shadow_max_distance = 70.0
@@ -391,6 +398,62 @@ func _print_bounds() -> void:
 			hi = maxf(hi, aabb.end.y)
 		stack.append_array(n.get_children())
 	print("[hauteurs] coque de %.2f à %.2f m ; bateau y=%.2f ; mer y=%.2f" % [lo, hi, _ship.global_position.y, _sea.global_position.y])
+
+
+## Charge la ville portuaire à l'origine du monde et amarre le bateau le long du ponton principal,
+## étrave vers le large (sud). Les sols sont repeints par shaders/ground.gdshader.
+func _build_port() -> void:
+	var scene := load("res://assets/models/port/port.glb") as PackedScene
+	var f := FileAccess.open("res://assets/models/port/port_meta.json", FileAccess.READ)
+	if scene == null or f == null:
+		return
+	var parsed: Variant = JSON.parse_string(f.get_as_text())
+	_port_meta = parsed if parsed is Dictionary else {}
+	_port = scene.instantiate() as Node3D
+	_world_fixed.add_child(_port)
+	var kinds := {"ground_cobble": 0, "ground_planks": 1, "ground_sand": 2, "ground_grass": 3}
+	# matières peintes : le nom du matériau Blender dit quel motif utiliser (enduit, tuiles, bois, pierre)
+	var surface_kinds := {"pl_": 0, "roof_": 1, "wood": 2, "stone": 3}
+	var ground_shader := load("res://shaders/ground.gdshader") as Shader
+	var surface_shader := load("res://shaders/surface.gdshader") as Shader
+	var stack: Array[Node] = [_port]
+	while not stack.is_empty():
+		var n: Node = stack.pop_back()
+		stack.append_array(n.get_children())
+		if not (n is MeshInstance3D):
+			continue
+		var mi := n as MeshInstance3D
+		var is_ground := false
+		for key: String in kinds:
+			if String(n.name).contains(key):
+				var m := ShaderMaterial.new()
+				m.shader = ground_shader
+				m.set_shader_parameter("kind", kinds[key])
+				mi.material_override = m
+				is_ground = true
+		if is_ground or mi.mesh == null:
+			continue
+		for s in mi.mesh.get_surface_count():
+			var src := mi.mesh.surface_get_material(s) as BaseMaterial3D
+			if src == null:
+				continue
+			for prefix: String in surface_kinds:
+				if src.resource_name.begins_with(prefix):
+					var sm := ShaderMaterial.new()
+					sm.shader = surface_shader
+					sm.set_shader_parameter("kind", surface_kinds[prefix])
+					sm.set_shader_parameter("base", src.albedo_color)
+					mi.set_surface_override_material(s, sm)
+					break
+	# amarrage : coque contre le flanc est du ponton, étrave au sud (+z dans le jeu)
+	if not _args.has("player") and not _args.has("yaw"):
+		var dock: Dictionary = _port_meta.get("dock", {})
+		var half_beam := _ship.beam * ShipModel.SCALE * 0.5
+		var x := float(dock.get("pier_x1", 18.0)) + half_beam + 0.5
+		var z := -float(dock.get("y", -14.0))
+		_sim.yaw = -PI / 2.0
+		# le centre de la coque est décalé du pivot du bateau (beaupré compris) : on le compense
+		_sim.position = Vector2(x, z) - Vector2(cos(_sim.yaw), -sin(_sim.yaw)) * (_ship.shift * ShipModel.SCALE)
 
 
 ## Ombre ronde sous le pirate.
@@ -853,6 +916,9 @@ func _update_camera(delta: float) -> void:
 	_cam_offset = _cam_offset.lerp(Vector3(rel.x, 0.0, rel.z), 1.0 - exp(-delta * 6.0))
 	var el := deg_to_rad(ELEVATION_DEG)
 	var focus_exact := Vector3(_ship.position.x, 1.2, _ship.position.z) + _cam_offset
+	if _args.has("cam-world"):  # diagnostic : regarder un point précis du monde (ex. la ville)
+		var parts := str(_args["cam-world"]).split(",")
+		focus_exact = Vector3(float(parts[0]) - _world_origin.x, 1.2, float(parts[1]) - _world_origin.z)
 	var focus := _snap_ground(focus_exact)
 	_cam_focus = focus
 	_cam.position = focus + Vector3(0, sin(el), cos(el)) * 60.0
