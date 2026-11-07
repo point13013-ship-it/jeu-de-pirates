@@ -30,7 +30,7 @@ goto fin
 
 :rejoindre
 echo.
-set /p IP=Adresse de l'ami qui heberge (affichee en haut a droite chez lui) :
+set /p IP=Code d'invitation de l'ami qui heberge (affiche en haut a droite chez lui) :
 start "" "%GODOT%" --path "%~dp0." scenes/sailing.tscn -- --join=%IP%
 
 :fin
