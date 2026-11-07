@@ -1,0 +1,5 @@
+{
+  "2": { "name": "Sloop", "length": 90, "width": 34, "max_speed": 230, "turn_rate": 1.9, "color": "#c98f4a" },
+  "3": { "name": "Brigantin", "length": 120, "width": 44, "max_speed": 200, "turn_rate": 1.5, "color": "#a5673a" },
+  "4": { "name": "Galion", "length": 150, "width": 56, "max_speed": 170, "turn_rate": 1.1, "color": "#7d4a2a" }
+}

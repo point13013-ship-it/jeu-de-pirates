@@ -1,0 +1,11 @@
+# Cache de Godot (régénéré à l'ouverture du projet)
+.godot/
+
+# Rendus bruts de Blender et fichiers de travail temporaires
+.scratch/
+
+# Séries d'images de diagnostic (vibrations), très lourdes
+qa/frames_*/
+
+# Anciennes planches de bateaux pré-rendus (360 caps), remplacées par les modèles 3D
+assets/art/ship/

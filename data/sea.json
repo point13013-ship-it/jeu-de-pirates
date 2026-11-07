@@ -1,0 +1,12 @@
+{
+  "_comment": "Houle : chaque vague = [amplitude en m, kx, kz (nombre d'onde, rad/m), pulsation rad/s]. Utilisée à la fois par la surface de l'eau et par la flottaison des bateaux.",
+  "waves": [
+    [0.16, 0.21, 0.08, 0.90],
+    [0.10, -0.12, 0.27, 1.25],
+    [0.05, 0.45, -0.31, 1.90],
+    [0.03, -0.62, -0.50, 2.60]
+  ],
+  "buoyancy_follow": 0.6,
+  "pitch_follow": 0.5,
+  "roll_follow": 0.35
+}

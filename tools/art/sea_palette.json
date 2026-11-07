@@ -1,0 +1,8 @@
+{
+  "_comment": "Tons de la mer ajoutés à la palette du filtre pixel art (0-255, sRGB). Doivent correspondre aux uniformes c_* de shaders/water.gdshader ; les versions « ombre » (x0.62) servent sous l'ombre du pont.",
+  "colors": [
+    [18, 61, 92], [28, 92, 117], [61, 145, 158], [148, 212, 204],
+    [102, 140, 191], [255, 217, 153], [238, 246, 240], [200, 226, 222]
+  ],
+  "shadow_factor": 0.62
+}
