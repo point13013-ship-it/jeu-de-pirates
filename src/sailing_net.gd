@@ -19,7 +19,7 @@ const MAX_PLAYERS := 4
 const SHIP_RATE := 30.0
 const PLAYER_RATE := 20.0
 const ISLAND_RATE := 12.0   ## fois par seconde : état des ennemis et des coffres des îles
-const PROTOCOL := 5
+const PROTOCOL := 6
 
 var game: Node
 var active := false
@@ -172,6 +172,38 @@ func send_swing(pos: Vector2, dir: Vector2) -> void:
 func _swing(pos: Vector2, dir: Vector2) -> void:
 	if is_host:
 		game.apply_swing(multiplayer.get_remote_sender_id(), pos, dir)
+
+
+## Client -> hôte : un sort de la baie `berry` (emplacement `slot`) lancé depuis `pos` vers `dir`.
+func send_cast(berry: String, slot: int, pos: Vector2, dir: Vector2) -> void:
+	_cast.rpc_id(1, berry, slot, pos, dir)
+
+
+@rpc("any_peer", "call_remote", "reliable")
+func _cast(berry: String, slot: int, pos: Vector2, dir: Vector2) -> void:
+	if is_host:
+		game.apply_cast(multiplayer.get_remote_sender_id(), berry, slot, pos, dir)
+
+
+## Client -> hôte : je cueille la baie `spot` ; `old` est la baie que je porte déjà (elle tombera en `pos`).
+func send_berry_pick(spot: int, old: String, pos: Vector2) -> void:
+	_berry_pick.rpc_id(1, spot, old, pos)
+
+
+@rpc("any_peer", "call_remote", "reliable")
+func _berry_pick(spot: int, old: String, pos: Vector2) -> void:
+	if is_host:
+		game.apply_berry_pick(multiplayer.get_remote_sender_id(), spot, old, pos)
+
+
+## Hôte -> un joueur : la baie qu'il vient de cueillir.
+func send_berry_got(peer: int, berry: String) -> void:
+	_berry_got.rpc_id(peer, berry)
+
+
+@rpc("authority", "call_remote", "reliable")
+func _berry_got(berry: String) -> void:
+	game.apply_berry_got(berry)
 
 
 ## Hôte -> un joueur : il vient d'être frappé par un ennemi venu de `from`.

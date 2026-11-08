@@ -377,6 +377,32 @@ static func chest(parent: Node3D, p: Vector2) -> Dictionary:
 	return {"root": root, "lid": hinge, "pile": pile, "glint": glint}
 
 
+## Une baie des dieux à cueillir. Posée dans un buisson (cachée : `fruit` n'apparaît que quand on s'approche), ou
+## par terre (baie lâchée : `in_bush` faux, toujours visible). Renvoie {root, fruit, glint}.
+static func berry_spot(parent: Node3D, p: Vector2, color: Color, in_bush: bool, seed_value: int) -> Dictionary:
+	var root := Node3D.new()
+	root.position = Vector3(p.x, 0.0, p.y)
+	parent.add_child(root)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 7700 + seed_value
+	if in_bush:
+		var bush_root := Node3D.new()
+		root.add_child(bush_root)
+		bush(bush_root, rng)
+	var fruit := Node3D.new()
+	fruit.position = Vector3(0, 0.95 if in_bush else 0.22, 0)
+	root.add_child(fruit)
+	ProcKit.ball(fruit, 0.17, Vector3.ZERO, ProcKit.glow(color))
+	var leaves := MeshKit.new()
+	leaves.box(_xf(Vector3(-0.1, 0.17, 0), Vector3(0, 0, 0.6)), Vector3(0.22, 0.03, 0.12), GREENS[2])
+	leaves.box(_xf(Vector3(0.1, 0.17, 0), Vector3(0, 0, -0.6)), Vector3(0.22, 0.03, 0.12), GREENS[0])
+	leaves.instance(fruit)
+	var glint := ProcKit.ball(fruit, 0.06, Vector3(0, 0.55, 0), ProcKit.glow(Color(1.0, 0.97, 0.8)))
+	glint.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	fruit.visible = not in_bush
+	return {"root": root, "fruit": fruit, "glint": glint}
+
+
 # ------------------------------------------------------------------ monuments et décors à thème
 
 static func pond(root: Node3D, rng: RandomNumberGenerator) -> void:

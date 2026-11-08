@@ -12,12 +12,18 @@ const SHALLOW_Y := -1.05     ## hauteur de la nappe (la mer est à -1,45, la hou
 const GRID := 0.4           ## m entre deux sommets du maillage
 const SHIP_MARGIN := 0.8    ## m : un bateau s'arrête à cette distance du bord de la terre marchable
 const CHEST_REACH := 1.5    ## m : portée pour ouvrir un coffre
+const BERRY_REACH := 1.6    ## m : portée pour cueillir une baie
+const BERRY_REVEAL := 5.5   ## m : une baie cachée dans son buisson ne scintille qu'à cette distance
+const BERRY_RESPAWN := 900.0  ## s : une baie cueillie repousse (sauf une baie lâchée, qui reste jusqu'à ce qu'on la ramasse)
 const ISLANDS_PATH := "res://data/islands.json"
 const ENEMIES_PATH := "res://data/enemies.json"
 
 var islands: Array = []
 var enemies: Array[IslandEnemy] = []
 var chests: Array = []
+## Baies des dieux à cueillir : {island, pos, berry, taken, timer, dropped, node, fruit, glint}. Les baies du fichier
+## (cachées dans un buisson) viennent d'abord ; les baies lâchées par un joueur s'ajoutent après. Jamais retirées de la liste.
+var berry_spots: Array = []
 var player_cfg: Dictionary = {}
 var kinds: Dictionary = {}
 var respawn_secs := 150.0
@@ -27,6 +33,7 @@ var reveal_range := 70.0
 var _rng := RandomNumberGenerator.new()
 var _root: Node3D
 var _slashes: Array = []
+var _fx: Array = []          ## effets de sorts en cours : {node, mat, t, dur, from, to}
 var _slash_mesh: ArrayMesh
 var _time := 0.0
 var _opened_this_frame: Array = []
@@ -53,6 +60,7 @@ func setup(islands_cfg: Dictionary, enemies_cfg: Dictionary) -> void:
 	islands.clear()
 	enemies.clear()
 	chests.clear()
+	berry_spots.clear()
 	var list: Array = islands_cfg.get("islands", [])
 	for i in list.size():
 		var d: Dictionary = list[i]
@@ -81,6 +89,9 @@ func setup(islands_cfg: Dictionary, enemies_cfg: Dictionary) -> void:
 					"pile": null, "glint": null, "lid_angle": 0.0}
 			(isl["chests"] as Array).append(chests.size())
 			chests.append(rec)
+		for b: Dictionary in d.get("berries", []):
+			var at := c + Vector2(float(b["at"][0]), float(b["at"][1]))
+			berry_spots.append(_berry_record(i, at, str(b["berry"]), false))
 		_plan_decor(i)
 
 
@@ -328,6 +339,8 @@ func build(parent: Node3D, land: Land) -> void:
 		(made["root"] as Node3D).position.y = height(int(ch["island"]), ch["pos"])
 	for en in enemies:
 		en.build_model(_root)
+	for k in berry_spots.size():
+		_build_berry_node(k)
 	_build_slash_mesh()
 
 
@@ -568,6 +581,19 @@ func update_visuals(delta: float, authority: bool) -> void:
 		(node.material_override as StandardMaterial3D).albedo_color.a = 0.85 * (1.0 - k)
 		keep.append(s)
 	_slashes = keep
+	var fx_keep: Array = []
+	for f: Dictionary in _fx:
+		f["t"] = float(f["t"]) + delta
+		var u := clampf(float(f["t"]) / float(f["dur"]), 0.0, 1.0)
+		var node := f["node"] as MeshInstance3D
+		if u >= 1.0:
+			node.queue_free()
+			continue
+		node.scale = (f["from"] as Vector3).lerp(f["to"], 1.0 - (1.0 - u) * (1.0 - u))
+		var m := f["mat"] as StandardMaterial3D
+		m.albedo_color.a = 0.75 * (1.0 - u)
+		fx_keep.append(f)
+	_fx = fx_keep
 
 
 # ------------------------------------------------------------------ simulation (hôte ou solo)
@@ -656,6 +682,217 @@ func open_chest(k: int) -> int:
 	return int(ch["gold"])
 
 
+# ------------------------------------------------------------------ baies des dieux
+
+func _berry_record(island: int, at: Vector2, berry: String, dropped: bool) -> Dictionary:
+	return {"island": island, "pos": at, "berry": berry, "taken": false, "timer": 0.0, "dropped": dropped,
+			"node": null, "fruit": null, "glint": null}
+
+
+func _build_berry_node(k: int) -> void:
+	var s: Dictionary = berry_spots[k]
+	if _root == null or s["node"] != null or (s["dropped"] and s["taken"]):
+		return
+	var made := IslandDecor.berry_spot(_root, s["pos"], BerryBook.color_of(str(s["berry"])), not s["dropped"], k)
+	(made["root"] as Node3D).position.y = ground_h(s["pos"])
+	s["node"] = made["root"]
+	s["fruit"] = made["fruit"]
+	s["glint"] = made["glint"]
+	(made["fruit"] as Node3D).visible = s["dropped"] and not s["taken"]
+
+
+## La baie cueillable la plus proche de `p` (indice dans berry_spots), ou -1.
+func nearest_berry(p: Vector2) -> int:
+	var best := -1
+	var best_d := BERRY_REACH
+	for k in berry_spots.size():
+		var s: Dictionary = berry_spots[k]
+		if s["taken"]:
+			continue
+		var d := (s["pos"] as Vector2).distance_to(p)
+		if d < best_d:
+			best_d = d
+			best = k
+	return best
+
+
+## Cueille la baie `k` ; renvoie son identifiant, ou « » si elle n'est plus là.
+func take_berry(k: int) -> String:
+	if k < 0 or k >= berry_spots.size():
+		return ""
+	var s: Dictionary = berry_spots[k]
+	if s["taken"]:
+		return ""
+	s["taken"] = true
+	s["timer"] = BERRY_RESPAWN
+	_hide_taken_berry(s)
+	return str(s["berry"])
+
+
+## Une baie lâchée à terre en `pos` (le pirate en a mangé une autre). Renvoie son indice.
+func drop_berry(id: String, pos: Vector2) -> int:
+	# elle tombe à 1,9 m du pirate, sur la terre ferme et hors de portée de cueillette (sinon il la rechangerait aussitôt)
+	var at := pos
+	var i0 := island_at(pos, 2.0)
+	if i0 >= 0:
+		for a in 8:
+			var cand := pos + Vector2.from_angle(TAU * a / 8.0) * (BERRY_REACH + 0.3)
+			if island_at(cand, 0.0) >= 0 and walkable(i0, cand, 0.3):
+				at = cand
+				break
+	var s := _berry_record(island_at(at, 2.0), at, id, true)
+	berry_spots.append(s)
+	_build_berry_node(berry_spots.size() - 1)
+	return berry_spots.size() - 1
+
+
+func _hide_taken_berry(s: Dictionary) -> void:
+	if s["node"] == null:
+		return
+	if s["dropped"]:
+		(s["node"] as Node3D).queue_free()
+		s["node"] = null
+		s["fruit"] = null
+	else:
+		(s["fruit"] as Node3D).visible = false
+
+
+## Chaque image : les baies cachées scintillent quand on s'approche, et (chez l'hôte) repoussent après un moment.
+func update_berries(delta: float, p: Vector2, authority: bool) -> void:
+	for s: Dictionary in berry_spots:
+		if s["taken"]:
+			if authority and not s["dropped"]:
+				s["timer"] = float(s["timer"]) - delta
+				if float(s["timer"]) <= 0.0:
+					s["taken"] = false
+			continue
+		var fruit := s["fruit"] as Node3D
+		if fruit == null:
+			continue
+		if not s["dropped"]:
+			fruit.visible = (s["pos"] as Vector2).distance_to(p) < BERRY_REVEAL
+		if fruit.visible:
+			fruit.rotation.y += delta * 1.4
+			(s["glint"] as Node3D).position.y = 0.55 + sin(_time * 3.0 + (s["pos"] as Vector2).x) * 0.08
+
+
+# ------------------------------------------------------------------ sorts des baies
+
+## Hôte (ou solo) : un sort lancé depuis `origin` vers `dir`. Blesse les ennemis atteints ; renvoie [{gold, at, killed, enemy}]
+## comme `swing`. Les effets sur le lanceur lui-même (soin, bouclier, ruée) sont appliqués chez lui.
+func cast(spell: Dictionary, origin: Vector2, dir: Vector2) -> Array:
+	var out: Array = []
+	var kind := str(spell.get("kind", ""))
+	var dmg := int(spell.get("damage", 0))
+	if dmg <= 0 or not kind in ["bolt", "nova", "cone", "dash", "pull"]:
+		return out
+	var d := dir.normalized() if dir.length() > 0.01 else Vector2.DOWN
+	for en in enemies:
+		if en.is_dead():
+			continue
+		var to: Vector2 = en.pos - origin
+		var body := 0.4 * float(en.cfg["scale"])
+		var power := float(spell.get("knock", 2.0))
+		var hit := false
+		match kind:
+			"bolt":
+				var along := to.dot(d)
+				hit = along > -0.2 and along < float(spell.get("range", 8.0)) + body and absf(to.cross(d)) < float(spell.get("width", 0.6)) * 0.5 + body
+				power = 2.6
+			"nova", "pull":
+				hit = to.length() <= float(spell.get("radius", 3.0)) + body
+			"cone":
+				hit = to.length() <= float(spell.get("range", 4.0)) + body and (to.length() < 0.3 or absf(d.angle_to(to)) <= deg_to_rad(float(spell.get("arc", 100.0)) * 0.5))
+			"dash":
+				var dist := float(spell.get("dist", 4.0))
+				var along2 := clampf(to.dot(d), 0.0, dist)
+				hit = (to - d * along2).length() < 0.9 + body
+				power = 2.0
+		if not hit:
+			continue
+		var killed := en.hurt(dmg, origin, power)
+		var gold := 0
+		if killed:
+			var g: Array = en.cfg["gold"]
+			gold = _rng.randi_range(int(g[0]), int(g[1]))
+			en.timer = respawn_secs
+		out.append({"gold": gold, "at": en.pos, "killed": killed, "enemy": en.id})
+	return out
+
+
+## Effet visuel d'un sort (chez celui qui le lance). Un aplat translucide qui grandit puis s'efface.
+func spawn_fx(spell: Dictionary, origin: Vector2, dir: Vector2, color: Color) -> void:
+	if _root == null:
+		return
+	var kind := str(spell.get("kind", ""))
+	var d := dir.normalized() if dir.length() > 0.01 else Vector2.DOWN
+	var mi := MeshInstance3D.new()
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	mat.albedo_color = Color(color.r, color.g, color.b, 0.75)
+	mi.material_override = mat
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var y := ground_h(origin) + 0.12
+	var from_scale := Vector3.ONE
+	var to_scale := Vector3.ONE
+	var dur := 0.45
+	match kind:
+		"nova", "pull", "heal", "shield":
+			var r := float(spell.get("radius", 1.6 if kind != "shield" else 1.2))
+			var cyl := CylinderMesh.new()
+			cyl.top_radius = 1.0
+			cyl.bottom_radius = 1.0
+			cyl.height = 0.05
+			cyl.radial_segments = 24
+			mi.mesh = cyl
+			mi.position = Vector3(origin.x, y, origin.y)
+			from_scale = Vector3(r, 1, r) * (1.0 if kind == "pull" else 0.2)
+			to_scale = Vector3(r, 1, r) * (0.2 if kind == "pull" else 1.0)
+			if kind == "shield":
+				dur = float(spell.get("secs", 3.0)) * 0.25
+		"cone":
+			mi.mesh = _sector_mesh(float(spell.get("range", 4.0)), deg_to_rad(float(spell.get("arc", 100.0))))
+			mi.position = Vector3(origin.x, y, origin.y)
+			mi.rotation.y = atan2(d.x, d.y)
+			from_scale = Vector3(0.4, 1, 0.4)
+			dur = 0.3
+		"bolt", "dash":
+			var length := float(spell.get("range", spell.get("dist", 5.0)))
+			var box := BoxMesh.new()
+			box.size = Vector3(float(spell.get("width", 1.1)), 0.06, length)
+			mi.mesh = box
+			mi.position = Vector3(origin.x + d.x * length * 0.5, y, origin.y + d.y * length * 0.5)
+			mi.rotation.y = atan2(d.x, d.y)
+			from_scale = Vector3(1, 1, 0.15)
+			dur = 0.28
+		_:
+			mi.queue_free()
+			return
+	mi.scale = from_scale
+	_root.add_child(mi)
+	_fx.append({"node": mi, "mat": mat, "t": 0.0, "dur": dur, "from": from_scale, "to": to_scale})
+
+
+func _sector_mesh(radius: float, arc: float) -> ArrayMesh:
+	var verts := PackedVector3Array([Vector3.ZERO])
+	var steps := 10
+	for i in steps + 1:
+		var a := -arc * 0.5 + arc * float(i) / steps
+		verts.append(Vector3(sin(a), 0.0, cos(a)) * radius)
+	var idx := PackedInt32Array()
+	for i in steps:
+		idx.append_array([0, i + 1, i + 2])
+	var arrays := []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = verts
+	arrays[Mesh.ARRAY_INDEX] = idx
+	var m := ArrayMesh.new()
+	m.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	return m
+
+
 # ------------------------------------------------------------------ réseau
 
 func net_state() -> Array:
@@ -665,7 +902,11 @@ func net_state() -> Array:
 	var c: Array = []
 	for ch: Dictionary in chests:
 		c.append(1 if ch["open"] else 0)
-	return [e, c]
+	var b: Array = []
+	for s: Dictionary in berry_spots:
+		var p: Vector2 = s["pos"]
+		b.append([str(s["berry"]), p.x, p.y, 1 if s["taken"] else 0, 1 if s["dropped"] else 0])
+	return [e, c, b]
 
 
 func apply_net(s: Array, snap: bool = false) -> void:
@@ -675,6 +916,20 @@ func apply_net(s: Array, snap: bool = false) -> void:
 	var c: Array = s[1]
 	for k in mini(c.size(), chests.size()):
 		(chests[k] as Dictionary)["open"] = int(c[k]) == 1
+	if s.size() > 2:
+		var b: Array = s[2]
+		for k in b.size():
+			var r: Array = b[k]
+			if k >= berry_spots.size():   # une baie lâchée par un autre joueur
+				berry_spots.append(_berry_record(island_at(Vector2(float(r[1]), float(r[2])), 2.0), Vector2(float(r[1]), float(r[2])), str(r[0]), int(r[4]) == 1))
+				_build_berry_node(berry_spots.size() - 1)
+			var spot: Dictionary = berry_spots[k]
+			var taken := int(r[3]) == 1
+			if taken and not spot["taken"]:
+				spot["taken"] = true
+				_hide_taken_berry(spot)
+			elif not taken and spot["taken"]:
+				spot["taken"] = false
 
 
 # ------------------------------------------------------------------ informations pour la carte

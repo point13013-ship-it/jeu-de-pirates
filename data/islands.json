@@ -4,6 +4,7 @@
   "islands": [
     {
       "id": "crabes",
+      "berries": [{"berry": "aquilon", "at": [-5, -9]}],
       "name": "Île aux Crabes",
       "blurb": "Une plage tranquille, si l'on oublie les pinces.",
       "danger": 1,
@@ -168,6 +169,7 @@
     },
     {
       "id": "naufrage",
+      "berries": [{"berry": "thalassa", "at": [5, -3]}],
       "name": "Îlot du Naufragé",
       "blurb": "Un tout petit îlot. Quelqu'un y a planté une croix.",
       "danger": 0,
@@ -253,6 +255,7 @@
     },
     {
       "id": "squelettes",
+      "berries": [{"berry": "nyx", "at": [-8, -9]}, {"berry": "gaia", "at": [15, -6]}],
       "name": "Île des Squelettes",
       "blurb": "Un cimetière de pirates qui n'ont jamais voulu partir.",
       "danger": 2,
@@ -468,6 +471,7 @@
     },
     {
       "id": "fort",
+      "berries": [{"berry": "ignis", "at": [-12, 6]}],
       "name": "Fort de la Marine",
       "blurb": "Un avant-poste de la Marine. Ils n'aiment pas les visiteurs.",
       "danger": 2,
@@ -700,6 +704,7 @@
     },
     {
       "id": "capitaine",
+      "berries": [{"berry": "ignis", "at": [-18, -3]}, {"berry": "nyx", "at": [18, 6]}],
       "name": "Île du Capitaine Rouille",
       "blurb": "Le capitaine fantôme garde ici le butin de toute une vie de pillage.",
       "danger": 3,

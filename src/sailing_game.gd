@@ -146,6 +146,8 @@ var _hp := 6                         ## mes points de vie (chacun les siens)
 var _hp_max := 6
 var _inv_t := 0.0                    ## s d'invulnérabilité restantes après un coup reçu
 var _atk_cd := 0.0                   ## s avant de pouvoir frapper de nouveau
+var _spell_cd: Array[float] = [0.0, 0.0, 0.0, 0.0]   ## s avant de pouvoir relancer chacun des 4 sorts de ma baie
+var _spell_cd_max: Array[float] = [1.0, 1.0, 1.0, 1.0]
 var _face := Vector2(0, 1)           ## direction où je regarde à terre (monde x/z)
 var _popups: Array = []              ## textes qui flottent (or gagné) : {node, t}
 var _heal_t := 0.0
@@ -880,11 +882,12 @@ func _apply_test_args() -> void:
 		var lp := str(_args["land"]).split(",")
 		_lpos = Vector2(float(lp[0]), float(lp[1]))
 		_loc = Loc.LAND
+		_lh = _islands.ground_h(_lpos)   # sur le relief d'une île, on pose le pirate à la hauteur du sol
 		if _args.has("lh"):
 			_lh = float(_args["lh"])
 	if _args.has("press"):
 		# test : --press=E@2,SPACE@3.5 appuie sur ces touches aux secondes indiquées
-		var codes := {"E": KEY_E, "R": KEY_R, "SPACE": KEY_SPACE, "DOWN": KEY_DOWN, "UP": KEY_UP, "F": KEY_F, "ESC": KEY_ESCAPE}
+		var codes := {"E": KEY_E, "R": KEY_R, "SPACE": KEY_SPACE, "DOWN": KEY_DOWN, "UP": KEY_UP, "F": KEY_F, "ESC": KEY_ESCAPE, "1": KEY_1, "2": KEY_2, "3": KEY_3, "4": KEY_4}
 		for item in str(_args["press"]).split(","):
 			var kv := item.split("@")
 			var code: Key = codes.get(kv[0], KEY_E)
@@ -904,6 +907,8 @@ func _apply_test_args() -> void:
 			for i in _ship.cannons.size():
 				_cannon_loaded[i] = true
 				_request("fire", i))
+	if _args.has("berry"):   # essai : --berry=ignis donne cette baie
+		_profile.berry = str(_args["berry"])
 	if _args.has("gold"):   # essai : --gold=150 donne de l'or
 		_profile.gold = int(_args["gold"])
 	if _args.has("quest"):   # essai : --quest=tonnelet met cette quête en cours
@@ -1490,6 +1495,8 @@ func _update_islands(delta: float) -> void:
 		return
 	_atk_cd = maxf(_atk_cd - delta, 0.0)
 	_inv_t = maxf(_inv_t - delta, 0.0)
+	for s in BerryBook.SLOTS:
+		_spell_cd[s] = maxf(_spell_cd[s] - delta, 0.0)
 	if _is_authority():
 		for ev: Dictionary in _islands.step(delta, _land_targets()):
 			var tid: int = ev["target"]
@@ -1498,6 +1505,7 @@ func _update_islands(delta: float) -> void:
 			elif _net.active:
 				_net.send_hurt(tid, int(ev["damage"]), ev["from"])
 	_islands.update_visuals(delta, _is_authority())
+	_islands.update_berries(delta, _lpos if _loc == Loc.LAND else Vector2(1.0e6, 1.0e6), _is_authority())
 	# repérage : une île à moins de reveal_range apparaît sur la carte
 	for i in _islands.island_in_sight(_sim.position):
 		var isl: Dictionary = _islands.islands[i]
@@ -1532,6 +1540,16 @@ func _update_island_hud(delta: float) -> void:
 	h.hp_max = _hp_max
 	h.show_hearts = _loc == Loc.LAND or _hp < _hp_max
 	h.blink = _inv_t > 0.0
+	h.show_spells = _loc == Loc.LAND and _profile.berry != ""
+	if h.show_spells:
+		h.berry_name = BerryBook.berry_name(_profile.berry)
+		h.berry_color = BerryBook.color_of(_profile.berry)
+		var slots: Array = []
+		for s in BerryBook.SLOTS:
+			var spell := BerryBook.spell(_profile.berry, s)
+			var known := BerryBook.spell_key(_profile.berry, s) in _profile.known_spells
+			slots.append({"label": str(spell.get("name", "?")) if known else "???", "cd": _spell_cd[s] / maxf(_spell_cd_max[s], 0.01) if _spell_cd[s] > 0.0 else 0.0})
+		h.spells = slots
 	h.flash = maxf(h.flash - delta * 2.5, 0.0)
 	if _chart.is_open():
 		_chart.ship_pos = _sim.position
@@ -1568,6 +1586,98 @@ func _resolve_swing(peer: int, pos: Vector2, dir: Vector2) -> void:
 
 func apply_swing(peer: int, pos: Vector2, dir: Vector2) -> void:
 	_resolve_swing(peer, pos, dir)
+
+
+# ------------------------------------------------------------------ baies des dieux et sorts
+
+## Je lance le sort `slot` (0 à 3) de ma baie vers là où je regarde. Le nom du sort n'est révélé qu'à la première fois.
+func _try_cast(slot: int) -> void:
+	if _profile.berry == "" or _loc != Loc.LAND or _hp <= 0 or _spell_cd[slot] > 0.0 or _dialog.is_open() or _shop_menu.is_open() or _chart.is_open() or _jump_wind > 0.0:
+		return
+	var spell := BerryBook.spell(_profile.berry, slot)
+	if spell.is_empty():
+		return
+	_spell_cd[slot] = float(spell["cd"])
+	_spell_cd_max[slot] = float(spell["cd"])
+	var key := BerryBook.spell_key(_profile.berry, slot)
+	if not (key in _profile.known_spells):
+		_profile.known_spells.append(key)
+		_profile.save()
+		_say("Pouvoir révélé : %s !" % spell["name"], 3.5)
+	var origin := _lpos
+	_islands.spawn_fx(spell, origin, _face, BerryBook.color_of(_profile.berry))
+	match str(spell["kind"]):
+		"heal":
+			var gain := mini(int(spell["amount"]), _hp_max - _hp)
+			_hp += gain
+			_popup("+%d vie" % gain, _lpos, Color(0.5, 1.0, 0.55))
+		"shield":
+			_inv_t = maxf(_inv_t, float(spell["secs"]))
+		"dash":
+			_inv_t = maxf(_inv_t, 0.4)
+			var dir := _face.normalized()
+			var left := float(spell["dist"])
+			while left > 0.0:
+				var stp := minf(left, 0.5)
+				var r := _land.step(_lpos, dir * stp, _lh)
+				var moved := Vector2(r.x, r.y).distance_to(_lpos)
+				_lpos = Vector2(r.x, r.y)
+				_lh = r.z
+				if moved < stp * 0.5:
+					break
+				left -= stp
+	if int(spell.get("damage", 0)) > 0:
+		if _is_authority():
+			_resolve_cast(_my_id(), spell, origin, _face)
+		else:
+			_net.send_cast(_profile.berry, slot, origin, _face)
+
+
+## Hôte : un sort lancé par `peer` touche-t-il quelqu'un ? L'or des ennemis vaincus va au lanceur.
+func _resolve_cast(peer: int, spell: Dictionary, pos: Vector2, dir: Vector2) -> void:
+	for hit: Dictionary in _islands.cast(spell, pos, dir):
+		if int(hit["gold"]) > 0:
+			_give_loot(peer, int(hit["gold"]), hit["at"])
+
+
+func apply_cast(peer: int, berry: String, slot: int, pos: Vector2, dir: Vector2) -> void:
+	var spell := BerryBook.spell(berry, slot)
+	if not spell.is_empty():
+		_resolve_cast(peer, spell, pos, dir)
+
+
+## Je cueille la baie `k` (E).
+func _pick_berry(k: int) -> void:
+	if _is_authority():
+		apply_berry_pick(_my_id(), k, _profile.berry, _lpos)
+	else:
+		_net.send_berry_pick(k, _profile.berry, _lpos)
+
+
+## Hôte (ou solo) : `peer` mange la baie `spot`. Celle qu'il portait (`old`) tombe à ses pieds.
+func apply_berry_pick(peer: int, spot: int, old: String, pos: Vector2) -> void:
+	var id := _islands.take_berry(spot)
+	if id == "":
+		return
+	if old != "" and BerryBook.exists(old):
+		_islands.drop_berry(old, pos)
+	if peer == _my_id():
+		apply_berry_got(id)
+	elif _net.active:
+		_net.send_berry_got(peer, id)
+
+
+## Je viens de manger la baie `id` : elle remplace la mienne, et ses quatre sorts sont à moi (touches 1 à 4).
+func apply_berry_got(id: String) -> void:
+	if not BerryBook.exists(id):
+		return
+	_profile.berry = id
+	_profile.save()
+	for s in BerryBook.SLOTS:
+		_spell_cd[s] = 2.0
+		_spell_cd_max[s] = 2.0
+	_say("Tu manges la %s : quatre pouvoirs s'éveillent (touches 1 à 4)" % BerryBook.berry_name(id), 6.0)
+	_islands.spawn_fx({"kind": "nova", "radius": 2.2}, _lpos, _face, BerryBook.color_of(id))
 
 
 func _give_loot(peer: int, gold: int, at: Vector2) -> void:
@@ -1974,13 +2084,26 @@ func _snap_sprite() -> void:
 	# à terre et dans la cale, le sprite est avancé vers la caméra (sans changer sa place à l'écran) : sinon le bas
 	# du corps s'enfonce dans les marches, les terrasses et le sol qui sont à ses pieds
 	var ashore := _loc == Loc.LAND or _loc == Loc.HOLD
-	_snap_node(_sprite, SPRITE_DEPTH_BIAS if ashore else 0.0)
+	_snap_node(_sprite, (SPRITE_DEPTH_BIAS + (_slope_bias(_lpos) if _loc == Loc.LAND else 0.0)) if ashore else 0.0)
 	for id in _remotes:
 		var rl: int = _remotes[id]["loc"]
 		_snap_node(_remotes[id]["sprite"], SPRITE_DEPTH_BIAS if (rl == 1 or rl == 4) else 0.0)
 	for npc: TownNpc in _npcs:
 		if npc.sprite.visible:
 			_snap_node(npc.sprite, SPRITE_DEPTH_BIAS)
+
+
+## Avance de plus le pirate vers la caméra quand le sol monte devant lui (côté caméra, ou sur les côtés : rampe des
+## plateaux des îles) : sinon la pente lui mange les jambes. Même place à l'écran, mais devant le relief.
+func _slope_bias(p: Vector2) -> float:
+	if _islands.islands.is_empty() or _islands.island_at(p, 0.0) < 0:
+		return 0.0
+	var h0 := _islands.ground_h(p)
+	var rise := 0.0
+	for dx in [-0.6, 0.0, 0.6]:
+		for dz in [0.3, 0.8, 1.4]:
+			rise = maxf(rise, _islands.ground_h(p + Vector2(dx, dz)) - h0)
+	return clampf(rise * 1.6, 0.0, 1.8)
 
 
 func _snap_node(node: Node3D, depth_bias: float = 0.0) -> void:
@@ -2345,6 +2468,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		_try_jump()
 	elif key.physical_keycode == KEY_F:
 		_try_attack()
+	elif key.physical_keycode >= KEY_1 and key.physical_keycode <= KEY_4:
+		_try_cast(key.physical_keycode - KEY_1)
 
 
 ## L'objet de la cale le plus proche : échelle, étagère, seau, ou voie d'eau ouverte.
@@ -2420,8 +2545,11 @@ func _interact(secondary: bool) -> void:
 			_talk(npc)
 		elif not secondary:
 			var chest := _islands.nearest_chest(_lpos)
+			var berry := _islands.nearest_berry(_lpos)
 			if chest >= 0:
 				_request("chest", chest)
+			elif berry >= 0:
+				_pick_berry(berry)
 			else:
 				_try_board()
 		return
@@ -2688,6 +2816,9 @@ func _update_hud() -> void:
 			_prompt.text = "E : parler à %s" % near.display_name
 		elif _islands.nearest_chest(_lpos) >= 0:
 			_prompt.text = "E : ouvrir le coffre   F / clic : frapper"
+		elif _islands.nearest_berry(_lpos) >= 0:
+			var spot: Dictionary = _islands.berry_spots[_islands.nearest_berry(_lpos)]
+			_prompt.text = "E : manger la %s%s" % [BerryBook.berry_name(str(spot["berry"])), " (remplace la tienne)" if _profile.berry != "" else ""]
 		else:
 			var base := "E : monter à bord   Espace : sauter" if _nearest_ship_ladder_from_land() >= 0 else "Espace : sauter"
 			_prompt.text = base + ("   F / clic : frapper" if _islands.island_at(_lpos, 2.0) >= 0 else "")

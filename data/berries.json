@@ -1,0 +1,50 @@
+{
+  "_commentaire": "Les baies des dieux. Un pirate n'en porte qu'une : en manger une autre la remplace (l'ancienne tombe au sol). Chaque baie donne 4 sorts (touches 1 à 4), dont les noms restent « ??? » tant qu'on ne les a pas lancés une première fois. Types de sort : bolt = trait en ligne droite (range, width, damage), nova = onde autour de soi (radius, damage, knock), cone = souffle devant soi (range, arc, damage, knock), dash = ruée vers l'avant en frappant ce qu'on traverse (dist, damage), pull = aspire les ennemis (radius, damage, knock négatif), heal = soigne (amount, en cœurs), shield = invulnérable (secs). cd = recharge en secondes.",
+  "berries": {
+    "aquilon": {
+      "name": "Baie d'Aquilon", "god": "le dieu du vent", "color": "#7fd8e8",
+      "spells": [
+        {"name": "Rafale", "kind": "bolt", "range": 9.0, "width": 0.7, "damage": 2, "cd": 3.0},
+        {"name": "Bourrasque", "kind": "dash", "dist": 5.0, "damage": 1, "cd": 6.0},
+        {"name": "Cyclone", "kind": "nova", "radius": 3.2, "damage": 2, "knock": 3.0, "cd": 9.0},
+        {"name": "Aspiration", "kind": "pull", "radius": 6.0, "damage": 1, "knock": -2.6, "cd": 12.0}
+      ]
+    },
+    "ignis": {
+      "name": "Baie d'Ignis", "god": "le dieu du feu", "color": "#ff8a3d",
+      "spells": [
+        {"name": "Trait de feu", "kind": "bolt", "range": 8.0, "width": 0.6, "damage": 3, "cd": 3.5},
+        {"name": "Souffle ardent", "kind": "cone", "range": 4.0, "arc": 100.0, "damage": 2, "knock": 2.0, "cd": 5.0},
+        {"name": "Anneau de braise", "kind": "nova", "radius": 2.8, "damage": 2, "knock": 2.0, "cd": 8.0},
+        {"name": "Éruption", "kind": "nova", "radius": 5.0, "damage": 5, "knock": 3.4, "cd": 16.0}
+      ]
+    },
+    "thalassa": {
+      "name": "Baie de Thalassa", "god": "la déesse de la mer", "color": "#4d8bff",
+      "spells": [
+        {"name": "Jet d'eau", "kind": "bolt", "range": 10.0, "width": 0.5, "damage": 2, "cd": 2.5},
+        {"name": "Grande vague", "kind": "cone", "range": 5.0, "arc": 140.0, "damage": 2, "knock": 3.4, "cd": 7.0},
+        {"name": "Bulle", "kind": "shield", "secs": 3.5, "cd": 14.0},
+        {"name": "Marée vive", "kind": "heal", "amount": 3, "cd": 18.0}
+      ]
+    },
+    "gaia": {
+      "name": "Baie de Gaïa", "god": "la déesse de la terre", "color": "#7cc255",
+      "spells": [
+        {"name": "Séisme", "kind": "nova", "radius": 4.0, "damage": 3, "knock": 2.6, "cd": 9.0},
+        {"name": "Écorce", "kind": "shield", "secs": 4.0, "cd": 15.0},
+        {"name": "Sève", "kind": "heal", "amount": 2, "cd": 10.0},
+        {"name": "Charge du rhinocéros", "kind": "dash", "dist": 4.0, "damage": 3, "cd": 8.0}
+      ]
+    },
+    "nyx": {
+      "name": "Baie de Nyx", "god": "la déesse de la nuit", "color": "#a56bff",
+      "spells": [
+        {"name": "Lame d'ombre", "kind": "cone", "range": 3.4, "arc": 120.0, "damage": 3, "knock": 1.4, "cd": 4.0},
+        {"name": "Pas d'ombre", "kind": "dash", "dist": 6.0, "damage": 1, "cd": 7.0},
+        {"name": "Voile de nuit", "kind": "shield", "secs": 3.0, "cd": 12.0},
+        {"name": "Siphon", "kind": "pull", "radius": 5.0, "damage": 2, "knock": -2.0, "cd": 11.0}
+      ]
+    }
+  }
+}
