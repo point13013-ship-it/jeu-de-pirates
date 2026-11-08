@@ -4,7 +4,7 @@
 LAYER_COLORS = {
     "pants.cloth": "pants", "pants.skin": "skin",
     "boots.boot": "boots", "boots.skin": "skin",
-    "shirt.skin": "skin", "shirt.cloth": "shirt", "shirt.stripe": "shirt_stripe",
+    "shirt.skin": "skin", "shirt.cloth": "shirt", "shirt.stripe": "shirt_stripe", "shirt.lace": "#d8c8a8",
     "coat.cloth": "coat", "coat.trim": "coat_trim",
     "belt.belt": "belt", "belt.buckle": "#e6b84a",
     "hands.skin": "skin", "head.skin": "skin", "nose.skin": "skin",

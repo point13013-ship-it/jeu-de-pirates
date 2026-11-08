@@ -359,6 +359,7 @@ def captain_trim(cv, view, P):
         line(cv, (32, 32 + dy), (32, 54), 5)
         line(cv, (31, 32 + dy), (31, 57), 5) if False else None
         cv.bmp(27, 31 + dy, ["555.", "..55"], mirror=True)                   # le grand col
+        cv.bmp(24, 32 + dy, ["555", "44."], mirror=True)                     # les épaulettes
         for y in (37, 41, 48, 52):
             cv.px(30, y + (dy if y < 46 else 0), 5)
             cv.px(33, y + (dy if y < 46 else 0), 5)
@@ -416,3 +417,17 @@ def baldric_buckle(cv, view, P):
     dy = P.dy
     if view in ("S", "E"):
         rbox(cv, 31, 37 + dy, 33, 39 + dy, 0.0, flat=5, outline=True)
+
+
+@layer("shirt", "pirate", "lace")
+def pirate_lace(cv, view, P):
+    """Le laçage du col ouvert : deux brins croisés et deux nœuds."""
+    dy = P.dy
+    if view == "S":
+        line(cv, (30.2, 33.2 + dy), (33.8, 36.4 + dy), 4)
+        line(cv, (33.8, 33.2 + dy), (30.2, 36.4 + dy), 4)
+        cv.px(30, 32 + dy, 5)
+        cv.px(33, 32 + dy, 5)
+    elif view == "E":
+        line(cv, (33.4, 33.4 + dy), (35.0, 35.4 + dy), 4)
+        line(cv, (35.0, 33.4 + dy), (33.4, 35.4 + dy), 4)

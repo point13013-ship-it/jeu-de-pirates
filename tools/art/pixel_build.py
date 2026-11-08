@@ -11,6 +11,7 @@ from PIL import Image
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import pixel_parts as parts  # noqa: E402
 import pixel_face  # noqa: E402,F401
+import pixel_details as det  # noqa: E402
 for _m in ('pixel_hair', 'pixel_body'):
     try:
         __import__(_m)
@@ -58,11 +59,13 @@ def draw_layer(lid, view, pose):
         pirate.set_warp(make_warp(view, cat))
         try:
             fn(cv, "S" if view == "SE" else "N", pose)
+            det.apply(lid, cv, "S" if view == "SE" else "N", pose)
         finally:
             pirate.set_warp(None)
             pose.tq = None
     else:
         fn(cv, view, pose)
+        det.apply(lid, cv, view, pose)
     return cv.t
 
 

@@ -327,6 +327,258 @@
     ]
    }
   },
+  "hands": {
+   "label": "Mains",
+   "optional": false,
+   "variants": [
+    "bare"
+   ],
+   "layers": {
+    "bare": [
+     {
+      "id": "hands-bare.skin",
+      "slot": "skin",
+      "color": "skin"
+     }
+    ]
+   }
+  },
+  "pants": {
+   "label": "Pantalon",
+   "optional": false,
+   "variants": [
+    "long",
+    "shorts",
+    "rolled"
+   ],
+   "layers": {
+    "long": [
+     {
+      "id": "pants-long.cloth",
+      "slot": "cloth",
+      "color": "pants"
+     }
+    ],
+    "shorts": [
+     {
+      "id": "pants-shorts.cloth",
+      "slot": "cloth",
+      "color": "pants"
+     },
+     {
+      "id": "pants-shorts.skin",
+      "slot": "skin",
+      "color": "skin"
+     }
+    ],
+    "rolled": [
+     {
+      "id": "pants-rolled.cloth",
+      "slot": "cloth",
+      "color": "pants"
+     },
+     {
+      "id": "pants-rolled.skin",
+      "slot": "skin",
+      "color": "skin"
+     }
+    ]
+   }
+  },
+  "boots": {
+   "label": "Chaussures",
+   "optional": false,
+   "variants": [
+    "high",
+    "shoes",
+    "barefoot",
+    "sandals"
+   ],
+   "layers": {
+    "high": [
+     {
+      "id": "boots-high.boot",
+      "slot": "boot",
+      "color": "boots"
+     }
+    ],
+    "shoes": [
+     {
+      "id": "boots-shoes.boot",
+      "slot": "boot",
+      "color": "boots"
+     }
+    ],
+    "barefoot": [
+     {
+      "id": "boots-barefoot.skin",
+      "slot": "skin",
+      "color": "skin"
+     }
+    ],
+    "sandals": [
+     {
+      "id": "boots-sandals.boot",
+      "slot": "boot",
+      "color": "boots"
+     },
+     {
+      "id": "boots-sandals.skin",
+      "slot": "skin",
+      "color": "skin"
+     }
+    ]
+   }
+  },
+  "shirt": {
+   "label": "Haut",
+   "optional": false,
+   "variants": [
+    "bare",
+    "tee",
+    "pirate",
+    "striped"
+   ],
+   "layers": {
+    "bare": [
+     {
+      "id": "shirt-bare.skin",
+      "slot": "skin",
+      "color": "skin"
+     }
+    ],
+    "tee": [
+     {
+      "id": "shirt-tee.cloth",
+      "slot": "cloth",
+      "color": "shirt"
+     },
+     {
+      "id": "shirt-tee.skin",
+      "slot": "skin",
+      "color": "skin"
+     }
+    ],
+    "pirate": [
+     {
+      "id": "shirt-pirate.cloth",
+      "slot": "cloth",
+      "color": "shirt"
+     },
+     {
+      "id": "shirt-pirate.skin",
+      "slot": "skin",
+      "color": "skin"
+     },
+     {
+      "id": "shirt-pirate.lace",
+      "slot": "lace",
+      "color": "#d8c8a8"
+     }
+    ],
+    "striped": [
+     {
+      "id": "shirt-striped.cloth",
+      "slot": "cloth",
+      "color": "shirt"
+     },
+     {
+      "id": "shirt-striped.stripe",
+      "slot": "stripe",
+      "color": "shirt_stripe"
+     }
+    ]
+   }
+  },
+  "coat": {
+   "label": "Manteau",
+   "optional": true,
+   "variants": [
+    "vest",
+    "jacket",
+    "captain"
+   ],
+   "layers": {
+    "vest": [
+     {
+      "id": "coat-vest.cloth",
+      "slot": "cloth",
+      "color": "coat"
+     },
+     {
+      "id": "coat-vest.trim",
+      "slot": "trim",
+      "color": "coat_trim"
+     }
+    ],
+    "jacket": [
+     {
+      "id": "coat-jacket.cloth",
+      "slot": "cloth",
+      "color": "coat"
+     },
+     {
+      "id": "coat-jacket.trim",
+      "slot": "trim",
+      "color": "coat_trim"
+     }
+    ],
+    "captain": [
+     {
+      "id": "coat-captain.cloth",
+      "slot": "cloth",
+      "color": "coat"
+     },
+     {
+      "id": "coat-captain.trim",
+      "slot": "trim",
+      "color": "coat_trim"
+     }
+    ]
+   }
+  },
+  "belt": {
+   "label": "Ceinture",
+   "optional": true,
+   "variants": [
+    "belt",
+    "sash",
+    "baldric"
+   ],
+   "layers": {
+    "belt": [
+     {
+      "id": "belt-belt.belt",
+      "slot": "belt",
+      "color": "belt"
+     },
+     {
+      "id": "belt-belt.buckle",
+      "slot": "buckle",
+      "color": "#e6b84a"
+     }
+    ],
+    "sash": [
+     {
+      "id": "belt-sash.belt",
+      "slot": "belt",
+      "color": "belt"
+     }
+    ],
+    "baldric": [
+     {
+      "id": "belt-baldric.belt",
+      "slot": "belt",
+      "color": "belt"
+     },
+     {
+      "id": "belt-baldric.buckle",
+      "slot": "buckle",
+      "color": "#e6b84a"
+     }
+    ]
+   }
+  },
   "hair": {
    "label": "Coiffure",
    "optional": true,
@@ -657,253 +909,6 @@
       "id": "hat-headband.hat",
       "slot": "hat",
       "color": "hat"
-     }
-    ]
-   }
-  },
-  "hands": {
-   "label": "Mains",
-   "optional": false,
-   "variants": [
-    "bare"
-   ],
-   "layers": {
-    "bare": [
-     {
-      "id": "hands-bare.skin",
-      "slot": "skin",
-      "color": "skin"
-     }
-    ]
-   }
-  },
-  "pants": {
-   "label": "Pantalon",
-   "optional": false,
-   "variants": [
-    "long",
-    "shorts",
-    "rolled"
-   ],
-   "layers": {
-    "long": [
-     {
-      "id": "pants-long.cloth",
-      "slot": "cloth",
-      "color": "pants"
-     }
-    ],
-    "shorts": [
-     {
-      "id": "pants-shorts.cloth",
-      "slot": "cloth",
-      "color": "pants"
-     },
-     {
-      "id": "pants-shorts.skin",
-      "slot": "skin",
-      "color": "skin"
-     }
-    ],
-    "rolled": [
-     {
-      "id": "pants-rolled.cloth",
-      "slot": "cloth",
-      "color": "pants"
-     },
-     {
-      "id": "pants-rolled.skin",
-      "slot": "skin",
-      "color": "skin"
-     }
-    ]
-   }
-  },
-  "boots": {
-   "label": "Chaussures",
-   "optional": false,
-   "variants": [
-    "high",
-    "shoes",
-    "barefoot",
-    "sandals"
-   ],
-   "layers": {
-    "high": [
-     {
-      "id": "boots-high.boot",
-      "slot": "boot",
-      "color": "boots"
-     }
-    ],
-    "shoes": [
-     {
-      "id": "boots-shoes.boot",
-      "slot": "boot",
-      "color": "boots"
-     }
-    ],
-    "barefoot": [
-     {
-      "id": "boots-barefoot.skin",
-      "slot": "skin",
-      "color": "skin"
-     }
-    ],
-    "sandals": [
-     {
-      "id": "boots-sandals.boot",
-      "slot": "boot",
-      "color": "boots"
-     },
-     {
-      "id": "boots-sandals.skin",
-      "slot": "skin",
-      "color": "skin"
-     }
-    ]
-   }
-  },
-  "shirt": {
-   "label": "Haut",
-   "optional": false,
-   "variants": [
-    "bare",
-    "tee",
-    "pirate",
-    "striped"
-   ],
-   "layers": {
-    "bare": [
-     {
-      "id": "shirt-bare.skin",
-      "slot": "skin",
-      "color": "skin"
-     }
-    ],
-    "tee": [
-     {
-      "id": "shirt-tee.cloth",
-      "slot": "cloth",
-      "color": "shirt"
-     },
-     {
-      "id": "shirt-tee.skin",
-      "slot": "skin",
-      "color": "skin"
-     }
-    ],
-    "pirate": [
-     {
-      "id": "shirt-pirate.cloth",
-      "slot": "cloth",
-      "color": "shirt"
-     },
-     {
-      "id": "shirt-pirate.skin",
-      "slot": "skin",
-      "color": "skin"
-     }
-    ],
-    "striped": [
-     {
-      "id": "shirt-striped.cloth",
-      "slot": "cloth",
-      "color": "shirt"
-     },
-     {
-      "id": "shirt-striped.stripe",
-      "slot": "stripe",
-      "color": "shirt_stripe"
-     }
-    ]
-   }
-  },
-  "coat": {
-   "label": "Manteau",
-   "optional": true,
-   "variants": [
-    "vest",
-    "jacket",
-    "captain"
-   ],
-   "layers": {
-    "vest": [
-     {
-      "id": "coat-vest.cloth",
-      "slot": "cloth",
-      "color": "coat"
-     },
-     {
-      "id": "coat-vest.trim",
-      "slot": "trim",
-      "color": "coat_trim"
-     }
-    ],
-    "jacket": [
-     {
-      "id": "coat-jacket.cloth",
-      "slot": "cloth",
-      "color": "coat"
-     },
-     {
-      "id": "coat-jacket.trim",
-      "slot": "trim",
-      "color": "coat_trim"
-     }
-    ],
-    "captain": [
-     {
-      "id": "coat-captain.cloth",
-      "slot": "cloth",
-      "color": "coat"
-     },
-     {
-      "id": "coat-captain.trim",
-      "slot": "trim",
-      "color": "coat_trim"
-     }
-    ]
-   }
-  },
-  "belt": {
-   "label": "Ceinture",
-   "optional": true,
-   "variants": [
-    "belt",
-    "sash",
-    "baldric"
-   ],
-   "layers": {
-    "belt": [
-     {
-      "id": "belt-belt.belt",
-      "slot": "belt",
-      "color": "belt"
-     },
-     {
-      "id": "belt-belt.buckle",
-      "slot": "buckle",
-      "color": "#e6b84a"
-     }
-    ],
-    "sash": [
-     {
-      "id": "belt-sash.belt",
-      "slot": "belt",
-      "color": "belt"
-     }
-    ],
-    "baldric": [
-     {
-      "id": "belt-baldric.belt",
-      "slot": "belt",
-      "color": "belt"
-     },
-     {
-      "id": "belt-baldric.buckle",
-      "slot": "buckle",
-      "color": "#e6b84a"
      }
     ]
    }
