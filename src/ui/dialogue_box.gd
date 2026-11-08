@@ -8,6 +8,7 @@ signal closed(accepted: bool)
 var _lines: Array = []
 var _index := 0
 var _offer := false
+var _offer_hint := ""
 var _open := false
 var _name: Label
 var _text: Label
@@ -55,13 +56,15 @@ func is_open() -> bool:
 	return _open
 
 
-## Ouvre le dialogue : `lines` dites une à une ; `offer` : une quête est proposée à la fin.
-func start(speaker: String, lines: Array, offer: bool = false) -> void:
+## Ouvre le dialogue : `lines` dites une à une ; `offer` : une proposition (quête, vente) attend à la fin, avec le texte
+## d'aide `offer_hint` (touches E : oui, R : non).
+func start(speaker: String, lines: Array, offer: bool = false, offer_hint: String = "E : accepter la quête     R : refuser") -> void:
 	if lines.is_empty():
 		return
 	_lines = lines
 	_index = 0
 	_offer = offer
+	_offer_hint = offer_hint
 	_open = true
 	_name.text = speaker
 	visible = true
@@ -72,7 +75,7 @@ func _show() -> void:
 	_text.text = str(_lines[_index])
 	var last := _index >= _lines.size() - 1
 	if last and _offer:
-		_hint.text = "E : accepter la quête     R : refuser"
+		_hint.text = _offer_hint
 	else:
 		_hint.text = "E : fermer" if last else "E : suite"
 

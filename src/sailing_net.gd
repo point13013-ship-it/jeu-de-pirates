@@ -19,7 +19,10 @@ const MAX_PLAYERS := 4
 const SHIP_RATE := 30.0
 const PLAYER_RATE := 20.0
 const ISLAND_RATE := 12.0   ## fois par seconde : état des ennemis et des coffres des îles
-const PROTOCOL := 6
+const LOOT_RATE := 6.0      ## fois par seconde : butin du monde
+const FLEET_RATE := 10.0    ## fois par seconde : bateaux ennemis
+const META_RATE := 2.0      ## fois par seconde : coffres, baies, tonneaux, îles générées
+const PROTOCOL := 7
 
 var game: Node
 var active := false
@@ -28,16 +31,42 @@ var ship_name := ""
 var _ship_timer := 0.0
 var _player_timer := 0.0
 var _island_timer := 0.0
+var _loot_timer := 0.0
+var _fleet_timer := 0.0
+var _meta_timer := 0.0
 
 
 ## Code d'invitation à donner aux amis (vide tant qu'il n'est pas connu).
 var invite_code := ""
+## Adresse IP publique de l'hôte (celle qu'un ami tape pour le rejoindre), "" tant qu'elle n'est pas connue.
+var public_address := ""
+## L'adresse de l'hôte sur son réseau (un ami chez lui, ou sur un VPN, utilise celle-ci).
+var local_ip := ""
+## La box a ouvert le port toute seule (UPnP) : un ami d'ailleurs peut rejoindre sans réglage.
+var port_open := false
+## Ce qu'il faut dire à l'hôte sur l'état de l'invitation (recherche en cours, box qui refuse…).
+var invite_note := ""
 var _opener: PortOpener
+var _ip_request: HTTPRequest
+var _client_wired := false
+var _failed_text := ""
+
+const JOIN_TIMEOUT := 12.0   ## secondes avant de dire qu'on n'arrive pas à joindre l'hôte
+const IP_SERVICE := "https://api.ipify.org"
+
+## L'invitation a changé (adresse trouvée, port ouvert…) : le cadre « Inviter un ami » se met à jour.
+signal invite_changed
+
+
+## Ce que le cadre « Inviter un ami » affiche : { ip, port, code, local, port_open, note }.
+func invite_info() -> Dictionary:
+	return {"ip": public_address, "port": PORT, "code": invite_code, "local": local_ip, "port_open": port_open, "note": invite_note}
 
 
 ## Héberge une partie avec le bateau `p_ship`. Si `open_box`, demande à la box Internet d'ouvrir le
-## port (UPnP, refermé en quittant) pour que des amis d'ailleurs puissent rejoindre ; le code
-## d'invitation arrive ensuite par `status`. Renvoie OK ou le code d'erreur d'ENet.
+## port (UPnP, refermé en quittant) pour que des amis d'ailleurs puissent rejoindre. L'adresse IP et le
+## code d'invitation arrivent ensuite par `invite_changed` (et `invite_info`). Renvoie OK ou le code
+## d'erreur d'ENet.
 func host(p_ship: String, open_box: bool = true) -> Error:
 	var peer := ENetMultiplayerPeer.new()
 	var err := peer.create_server(PORT, MAX_PLAYERS - 1)
@@ -49,33 +78,73 @@ func host(p_ship: String, open_box: bool = true) -> Error:
 	ship_name = p_ship
 	multiplayer.peer_connected.connect(_on_peer_connected)
 	multiplayer.peer_disconnected.connect(_on_peer_disconnected)
-	var local_code := Invite.encode(local_address(), PORT)
+	local_ip = local_address()
+	invite_code = Invite.encode(local_ip, PORT)
 	if open_box:
 		_opener = PortOpener.new()
 		add_child(_opener)
 		_opener.finished.connect(_on_port_opened)
 		_opener.open(PORT)
-		status.emit("Partie hébergée — recherche de ton adresse sur Internet…\nCode pour un ami chez toi : %s" % local_code)
+		invite_note = "Recherche de ton adresse sur Internet…"
 	else:
-		invite_code = local_code
-		status.emit("Partie hébergée (box non touchée)\nCode pour un ami chez toi : %s" % local_code)
+		invite_note = "La box n'a pas été touchée : seuls les amis du même réseau peuvent te rejoindre."
+	status.emit("Partie hébergée")
+	invite_changed.emit()
+	if not open_box:
+		_fetch_public_ip()
 	return OK
 
 
 func _on_port_opened(result: Dictionary) -> void:
-	var local_code := Invite.encode(local_address(), PORT)
 	if bool(result["ok"]):
-		invite_code = Invite.encode(String(result["address"]), PORT)
-		DisplayServer.clipboard_set(invite_code)
-		status.emit("Code d'invitation : %s  (copié)\nÀ donner à tes amis, où qu'ils soient" % invite_code)
-	else:
-		invite_code = local_code
-		status.emit("Code pour un ami chez toi : %s\n%s\nPar Internet : ouvre le port UDP %d de ta box, ou utilisez un VPN gratuit (Radmin VPN, ZeroTier)." % [
-				local_code, String(result["why"]), PORT])
+		public_address = String(result["address"])
+		port_open = true
+		invite_code = Invite.encode(public_address, PORT)
+		DisplayServer.clipboard_set(public_address)
+		invite_note = "Port ouvert automatiquement : ton ami peut te rejoindre d'où il veut. L'adresse IP est copiée."
+		invite_changed.emit()
+		return
+	port_open = false
+	if bool(result.get("shared", false)):
+		invite_note = "Ton fournisseur partage une adresse entre plusieurs foyers : il faut un VPN gratuit (Radmin VPN ou ZeroTier) ; ton ami utilise alors l'adresse « même réseau »."
+		invite_changed.emit()
+		return
+	invite_note = "%s Ouvre le port UDP %d de ta box vers ce PC (ou utilisez un VPN) : sans ça, seuls les amis du même réseau peuvent te rejoindre." % [String(result["why"]), PORT]
+	invite_changed.emit()
+	_fetch_public_ip()
 
 
-## Rejoint la partie d'un ami : `text` est son code d'invitation (ou une adresse, « 127.0.0.1 »
-## pour un test). Le bateau est chargé à la réception de l'accueil.
+## Demande son adresse publique à un petit service web : même si la box refuse d'ouvrir le port, l'hôte voit son adresse IP
+## (il pourra ouvrir le port à la main).
+func _fetch_public_ip() -> void:
+	if _ip_request != null:
+		return
+	_ip_request = HTTPRequest.new()
+	_ip_request.timeout = 6.0
+	add_child(_ip_request)
+	_ip_request.request_completed.connect(func(result: int, code: int, _headers: PackedStringArray, body: PackedByteArray) -> void:
+		var ip := body.get_string_from_utf8().strip_edges()
+		if result == HTTPRequest.RESULT_SUCCESS and code == 200 and Invite.encode(ip, PORT) != "" and not port_open and public_address == "":
+			public_address = ip
+			invite_code = Invite.encode(ip, PORT)
+			invite_changed.emit())
+	if _ip_request.request(IP_SERVICE) != OK:
+		_ip_request.queue_free()
+		_ip_request = null
+
+
+## Quitte la partie (hôte ou ami) : coupe le réseau. La box referme le port quand ce nœud disparaît (voir PortOpener).
+func leave() -> void:
+	if multiplayer.multiplayer_peer != null:
+		multiplayer.multiplayer_peer.close()
+		multiplayer.multiplayer_peer = null
+	active = false
+	is_host = false
+	port_open = false
+
+
+## Rejoint la partie d'un ami : `text` est son adresse IP (« 82.12.34.56 »), son code d'invitation, ou une
+## adresse avec port (« 192.168.1.20:7777 »). Le bateau est chargé à la réception de l'accueil.
 func join(text: String) -> Error:
 	var target := Invite.parse(text, PORT)
 	if not bool(target["ok"]):
@@ -85,22 +154,36 @@ func join(text: String) -> Error:
 	var peer := ENetMultiplayerPeer.new()
 	var err := peer.create_client(address, int(target["port"]))
 	if err != OK:
+		status.emit("Impossible de commencer la connexion à %s (erreur %d)." % [address, err])
 		return err
+	if multiplayer.multiplayer_peer != null:
+		multiplayer.multiplayer_peer.close()
 	multiplayer.multiplayer_peer = peer
 	active = true
-	multiplayer.connected_to_server.connect(func() -> void: status.emit("Connecté — chargement du bateau…"))
-	multiplayer.connection_failed.connect(func() -> void:
-		active = false
-		status.emit("Connexion impossible à %s" % address))
-	multiplayer.server_disconnected.connect(func() -> void:
-		active = false
-		status.emit("L'hôte a quitté la partie")
-		game.on_host_left())
-	multiplayer.peer_connected.connect(func(id: int) -> void:
-		_look.rpc_id(id, game.local_look_json())
-		game.on_peers_changed())
-	multiplayer.peer_disconnected.connect(_on_peer_disconnected)
+	var failed := "Impossible de joindre %s. Vérifie l'adresse, que ton ami a bien cliqué sur « Héberger une partie », que vous avez la même version du jeu (lanceur : « Mettre à jour ») et que le port UDP %d est ouvert chez lui." % [address, PORT]
+	_failed_text = failed
+	if not _client_wired:   # une seule fois, même si le joueur réessaie plusieurs fois
+		_client_wired = true
+		multiplayer.connected_to_server.connect(func() -> void: status.emit("Connecté — chargement du bateau…"))
+		multiplayer.connection_failed.connect(func() -> void:
+			active = false
+			status.emit(_failed_text))
+		multiplayer.server_disconnected.connect(func() -> void:
+			active = false
+			status.emit("L'hôte a quitté la partie")
+			game.on_host_left())
+		multiplayer.peer_connected.connect(func(id: int) -> void:
+			_look.rpc_id(id, game.local_look_json())
+			game.on_peers_changed())
+		multiplayer.peer_disconnected.connect(_on_peer_disconnected)
 	status.emit("Connexion à %s…" % address)
+	# ENet met longtemps à renoncer : au bout de quelques secondes on le dit au joueur au lieu de le laisser attendre.
+	get_tree().create_timer(JOIN_TIMEOUT).timeout.connect(func() -> void:
+		if is_instance_valid(self) and multiplayer.multiplayer_peer == peer and peer.get_connection_status() == MultiplayerPeer.CONNECTION_CONNECTING:
+			peer.close()
+			multiplayer.multiplayer_peer = null
+			active = false
+			status.emit(failed))
 	return OK
 
 
@@ -125,7 +208,11 @@ func _on_peer_disconnected(id: int) -> void:
 @rpc("authority", "call_remote", "reliable")
 func _welcome(protocol: int, p_ship: String) -> void:
 	if protocol != PROTOCOL:
-		status.emit("Version différente de celle de l'hôte")
+		status.emit("Ta version du jeu n'est pas la même que celle de l'hôte : mets-la à jour avec le lanceur (bouton « Mettre à jour »), puis réessaie.")
+		if multiplayer.multiplayer_peer != null:
+			multiplayer.multiplayer_peer.close()
+			multiplayer.multiplayer_peer = null
+		active = false
 		return
 	ship_name = p_ship
 	status.emit("À bord !")
@@ -150,6 +237,18 @@ func tick(delta: float) -> void:
 		if _island_timer >= 1.0 / ISLAND_RATE:
 			_island_timer = 0.0
 			_islands_state.rpc(game.islands_net_state())
+		_meta_timer += delta
+		if _meta_timer >= 1.0 / META_RATE:
+			_meta_timer = 0.0
+			_islands_static.rpc(game.islands_static_state())
+		_loot_timer += delta
+		if _loot_timer >= 1.0 / LOOT_RATE:
+			_loot_timer = 0.0
+			_loot_state.rpc(game.loot_net_state())
+		_fleet_timer += delta
+		if _fleet_timer >= 1.0 / FLEET_RATE:
+			_fleet_timer = 0.0
+			_fleet_state.rpc(game.fleet_net_state())
 
 
 @rpc("authority", "call_remote", "unreliable_ordered")
@@ -163,6 +262,35 @@ func _islands_state(s: Array) -> void:
 	game.apply_islands_state(s)
 
 
+## Hôte -> tous : coffres ouverts, baies, tonneaux cassés, îles générées. Fiable (le message dépasse un paquet : ENet le découpe),
+## mais rare.
+@rpc("authority", "call_remote", "reliable")
+func _islands_static(s: Array) -> void:
+	game.apply_islands_static(s)
+
+
+## Hôte -> tous : le butin posé dans le monde (trésors flottants, boulets, planches, bourses).
+@rpc("authority", "call_remote", "unreliable_ordered")
+func _loot_state(s: Array) -> void:
+	game.apply_loot_state(s)
+
+
+## Hôte -> tous : les bateaux ennemis (position, cap, vie, état).
+@rpc("authority", "call_remote", "unreliable_ordered")
+func _fleet_state(s: Array) -> void:
+	game.apply_fleet_state(s)
+
+
+## Hôte -> tous : le canon `idx` de l'ennemi `id` tire un boulet qui part de `start` à la vitesse `vel`.
+func broadcast_enemy_fire(id: int, idx: int, start: Vector3, vel: Vector3) -> void:
+	_enemy_fire_event.rpc(id, idx, start, vel)
+
+
+@rpc("authority", "call_local", "reliable")
+func _enemy_fire_event(id: int, idx: int, start: Vector3, vel: Vector3) -> void:
+	game.apply_enemy_fire(id, idx, start, vel)
+
+
 ## Client -> hôte : un coup de sabre depuis `pos` vers `dir`. L'hôte décide qui est touché.
 func send_swing(pos: Vector2, dir: Vector2) -> void:
 	_swing.rpc_id(1, pos, dir)
@@ -172,6 +300,17 @@ func send_swing(pos: Vector2, dir: Vector2) -> void:
 func _swing(pos: Vector2, dir: Vector2) -> void:
 	if is_host:
 		game.apply_swing(multiplayer.get_remote_sender_id(), pos, dir)
+
+
+## Client -> hôte : un tir de l'arme `weapon` depuis `pos` vers `dir`. L'hôte décide ce qui est touché.
+func send_shot(weapon: String, pos: Vector2, dir: Vector2) -> void:
+	_shot.rpc_id(1, weapon, pos, dir)
+
+
+@rpc("any_peer", "call_remote", "reliable")
+func _shot(weapon: String, pos: Vector2, dir: Vector2) -> void:
+	if is_host:
+		game.apply_shot(multiplayer.get_remote_sender_id(), weapon, pos, dir)
 
 
 ## Client -> hôte : un sort de la baie `berry` (emplacement `slot`) lancé depuis `pos` vers `dir`.
@@ -226,6 +365,16 @@ func _loot(gold: int, at: Vector2) -> void:
 	game.apply_loot(gold, at)
 
 
+## Hôte -> un joueur : un objet qu'il reçoit (trésor « t:<id> », « ball », « plank », bourse « g:<or> »).
+func send_item(peer: int, kind: String) -> void:
+	_item.rpc_id(peer, kind)
+
+
+@rpc("authority", "call_remote", "reliable")
+func _item(kind: String) -> void:
+	game.apply_item_got(kind)
+
+
 @rpc("any_peer", "call_remote", "unreliable_ordered")
 func _player_state(pos: Vector2, carrying: bool, loc: int, pz: float, lh: float) -> void:
 	game.apply_remote_player(multiplayer.get_remote_sender_id(), pos, carrying, loc, pz, lh)
@@ -267,13 +416,13 @@ func _request(kind: String, value: int) -> void:
 
 
 ## Hôte : fait partir le boulet du canon `i` chez tout le monde.
-func broadcast_fire(i: int) -> void:
-	_fire_event.rpc(i)
+func broadcast_fire(i: int, human: bool = false) -> void:
+	_fire_event.rpc(i, human)
 
 
 @rpc("authority", "call_local", "reliable")
-func _fire_event(i: int) -> void:
-	game.fire_visual(i)
+func _fire_event(i: int, human: bool) -> void:
+	game.fire_visual(i, human)
 
 
 ## Hôte : un choc a ouvert des voies d'eau ; chez tout le monde, secousse, éclats de bois et message.
@@ -284,6 +433,17 @@ func broadcast_hit(kind: int, bx: float, side: int, opened: int) -> void:
 @rpc("authority", "call_local", "reliable")
 func _hit_event(kind: int, bx: float, side: int, opened: int) -> void:
 	game.hit_visual(kind, bx, side, opened)
+
+
+## Hôte : un message à afficher chez tout le monde (bateau débloqué, ramené au port…).
+func broadcast_notice(text: String) -> void:
+	if multiplayer.multiplayer_peer != null and not multiplayer.get_peers().is_empty():
+		_notice_event.rpc(text)
+
+
+@rpc("authority", "call_remote", "reliable")
+func _notice_event(text: String) -> void:
+	game.show_notice(text)
 
 
 ## Hôte : le bateau a coulé ; remorqué au port chez tout le monde.

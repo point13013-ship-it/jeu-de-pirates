@@ -53,7 +53,8 @@ func _test_book() -> void:
 
 func _test_spots() -> void:
 	var w := _world()
-	_check(w.berry_spots.size() >= 5, "au moins cinq baies cachées dans le monde")
+	# les baies sont le plus rare des trésors : trois seulement, sur les îles dangereuses (d'autres, très rarement, sur les îles tirées au hasard)
+	_check(w.berry_spots.size() == 3, "trois baies cachées dans le monde du fichier")
 	var seen := {}
 	for s: Dictionary in w.berry_spots:
 		var i := int(s["island"])
@@ -67,15 +68,7 @@ func _test_spots() -> void:
 	var islands_with := {}
 	for s: Dictionary in w.berry_spots:
 		islands_with[s["island"]] = true
-	_check(islands_with.size() >= 3, "des baies sur au moins trois îles")
-	var multi := false
-	for isl: Dictionary in w.islands:
-		var n := 0
-		for s: Dictionary in w.berry_spots:
-			if w.islands[int(s["island"])] == isl:
-				n += 1
-		multi = multi or n >= 2
-	_check(multi, "une île cache plusieurs baies")
+	_check(islands_with.size() == 3, "chaque baie est sur sa propre île")
 
 
 func _test_pick_and_drop() -> void:

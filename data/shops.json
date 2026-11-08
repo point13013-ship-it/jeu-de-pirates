@@ -6,8 +6,14 @@
       { "label": "Planche (x1)", "desc": "Bouche une voie d'eau dans la cale", "stock": "planks", "qty": 1, "price": 8, "max": 12 },
       { "label": "Lot de 3 planches", "desc": "Trois planches pour le prix de deux et demie", "stock": "planks", "qty": 3, "price": 20, "max": 12 },
       { "label": "Boulet (x1)", "desc": "Un boulet de canon pour le tonneau du pont", "stock": "balls", "qty": 1, "price": 5, "max": 30 },
-      { "label": "Caisse de 6 boulets", "desc": "De quoi tenir un abordage", "stock": "balls", "qty": 6, "price": 27, "max": 30 }
+      { "label": "Caisse de 6 boulets", "desc": "De quoi tenir un abordage", "stock": "balls", "qty": 6, "price": 27, "max": 30 },
+      { "label": "Boîte de 10 balles", "desc": "Pour le pistolet et le fusil de précision", "stock": "bullets", "qty": 10, "price": 18, "max": 60 },
+      { "label": "Boîte de 6 cartouches", "desc": "Pour le tromblon", "stock": "shells", "qty": 6, "price": 20, "max": 36 }
     ]
+  },
+  "armand": {
+    "title": "L'Armurerie",
+    "kind": "weapons"
   },
   "mathurin": {
     "title": "Chantier naval",

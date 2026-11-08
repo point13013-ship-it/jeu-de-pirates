@@ -23,6 +23,7 @@ var ship := "brigantin"
 var _ship_buttons: Dictionary = {}
 var _join_row: HBoxContainer
 var _code_edit: LineEdit
+var _message: Label
 var _hint: Label
 var _preview: Sprite2D
 var _stage: Control
@@ -130,7 +131,7 @@ func _build_left() -> Control:
 	_join_row.add_theme_constant_override("separation", 8)
 	box.add_child(_join_row)
 	_code_edit = LineEdit.new()
-	_code_edit.placeholder_text = "Code d'invitation (ex. K7QD-M2XP-9WAB)"
+	_code_edit.placeholder_text = "Adresse IP de ton ami (ex. 82.12.34.56) ou code"
 	_code_edit.custom_minimum_size = Vector2(290, 40)
 	_code_edit.text_submitted.connect(func(t: String) -> void: join_game.emit(t.strip_edges()))
 	_join_row.add_child(_code_edit)
@@ -140,10 +141,17 @@ func _build_left() -> Control:
 	_style_button(go, true)
 	go.pressed.connect(func() -> void: join_game.emit(_code_edit.text.strip_edges()))
 	_join_row.add_child(go)
+	_message = Label.new()
+	_message.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_message.custom_minimum_size = Vector2(430, 0)
+	_message.visible = false
+	_message.add_theme_color_override("font_color", Color(1.0, 0.85, 0.5))
+	_message.add_theme_font_size_override("font_size", 15)
+	box.add_child(_message)
 	box.add_child(_big_button("Mon pirate (apparence)", func() -> void: edit_pirate.emit()))
 	box.add_child(_big_button("Quitter", func() -> void: quit_game.emit()))
 	var tips := Label.new()
-	tips.text = "ZQSD / flèches : marcher   Espace : sauter   E : agir   R : agir autrement"
+	tips.text = "ZQSD / flèches : marcher   Espace : sauter   E : agir   R : agir autrement\nÉchap : menu (retour au menu)   B : boussole   I : invitation (hôte)"
 	tips.add_theme_color_override("font_color", Color(0.8, 0.85, 0.9))
 	tips.add_theme_font_size_override("font_size", 13)
 	box.add_child(tips)
@@ -209,6 +217,23 @@ func _style_button(b: Button, solid: bool) -> void:
 	b.add_theme_color_override("font_color", CREAM)
 	b.add_theme_color_override("font_hover_color", Color.WHITE)
 	b.add_theme_color_override("font_pressed_color", Color.WHITE)
+
+
+## Tous les bateaux du menu (identifiants) : ils sont tous proposés d'emblée, même au tout premier lancement.
+static func ship_ids() -> Array:
+	var out: Array = []
+	for s: Array in SHIPS:
+		out.append(s[0])
+	return out
+
+
+## Un message sous les boutons (connexion en cours, impossible de rejoindre…) : le menu cache le reste du jeu, c'est ici que le
+## joueur doit voir ce qui se passe quand il clique sur « Rejoindre ».
+func set_message(text: String) -> void:
+	if _message == null:
+		return
+	_message.text = text
+	_message.visible = text != ""
 
 
 ## Verrouille les bateaux qu'on ne possède pas encore (à acheter au chantier naval) et choisit `selected`.

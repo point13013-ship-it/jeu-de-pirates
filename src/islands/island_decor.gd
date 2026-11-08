@@ -44,7 +44,7 @@ static func blockers(kind: String, at: Vector2, yaw: float) -> Array:
 
 
 ## Pose un objet de décor de type `kind`.
-static func make(parent: Node3D, kind: String, at: Vector2, yaw: float, seed_value: int, d: Dictionary = {}, y: float = 0.0) -> void:
+static func make(parent: Node3D, kind: String, at: Vector2, yaw: float, seed_value: int, d: Dictionary = {}, y: float = 0.0) -> Node3D:
 	var root := Node3D.new()
 	root.position = Vector3(at.x, y, at.y)
 	root.rotation.y = yaw
@@ -83,6 +83,7 @@ static func make(parent: Node3D, kind: String, at: Vector2, yaw: float, seed_val
 			root.position = Vector3.ZERO
 			root.rotation = Vector3.ZERO
 			wall(root, Vector2(float(d["from"][0]), float(d["from"][1])), Vector2(float(d["to"][0]), float(d["to"][1])))
+	return root
 
 
 static func _xf(pos: Vector3, euler: Vector3 = Vector3.ZERO) -> Transform3D:

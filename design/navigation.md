@@ -77,3 +77,70 @@ Les teintes ajoutées sont dans `tools/art/sea_palette.json` (palette du filtre,
 (`ramp` : angle, largeur, longueur). `IslandWorld.height()` donne la hauteur ; Land (`island_height`) la suit à pied,
 les ennemis ne montent pas les falaises, objets et coffres sont posés à la bonne hauteur. Chaque île à danger garde un
 coffre sur son plateau.
+
+## Session du 8 novembre 2026 — manœuvres, nage, butin, armes, ennemis (code écrit, PAS encore lancé : voir la fin)
+
+### Postes du pont : on vise l'objet en lui faisant face
+`INTERACT_PARAMS` (sailing_game.gd) donne, par poste, une portée, un cône de vue (cosinus de l'angle max. entre le regard et l'objet)
+et la hauteur de la flèche jaune. Le poste visé est celui qui est à portée ET devant le pirate, le mieux placé si plusieurs
+(`_compute_target`) ; une flèche jaune le désigne et le texte du bas dit ce que E ou R feront. La barre a une portée large et
+un cône très ouvert (elle était trop dure à prendre : un canon voisin la masquait).
+
+### Voiles, vergues et vent
+- Vergues : E au mât entre dans le poste de voilure (Q/D tournent les vergues, Z/S hissent/affalent, E ou Espace lâchent), R affale.
+  `ShipSim.sail_trim` (angle, sens de `Vector2.rotated`), `trim_efficiency()` : la poussée d'une voile plate vaut
+  (vent·normale)² · cos(angle) ; le rendement est comparé à l'idéal pour le vent du moment (`optimal_trim()`), plancher 18 %.
+  Vent debout : rien à régler. Hisser depuis des voiles affalées règle d'emblée les vergues au mieux ; ensuite c'est à
+  l'équipage de les suivre (le vent dérive lentement : `drift_wind`, ±45°). Cadran `SailHud` (flèche du vent, vergue crème,
+  repère vert idéal). Réseau : état du bateau (protocole 7) porte vergues, vent, coffre, grappin ; requête `trim`.
+- Voiles transparentes : celles que le rayon pirate -> caméra traverse passent à 30 % (`ShipModel.update_sail_fade`).
+- Zoom : plus loin en mer (`ZOOM_SEA`), un peu plus près à terre, molette pour régler ; `_ppm()` remplace la constante partout.
+
+### Saut, nage, canon humain
+- Espace : on enjambe caisses, tonneau et roue (`ShipModel.low_boxes/low_circles`) et on passe le bastingage (`is_walkable_air`) ;
+  au-dessus de l'eau on tombe (`_fall_floor`, `_touch_down`) : `Loc.SWIM` (buste hors de l'eau : le sprite est enfoncé de
+  `SWIM_DEPTH` et l'eau opaque cache le bas). E près de la coque remonte à bord, une plage ou un quai : on sort en nageant.
+- R devant un canon vide : on s'y glisse (`Mode.CANNON`, Q/D visent, E tire, R/Espace sortent) ; `Loc.FLIGHT` : vol balistique
+  puis pont, terre ou eau. Codes réseau de lieu : 5 nage, 6 vol (position monde, altitude dans `pz`).
+- T deux fois (ou menu Échap) : le bateau est remis sur l'eau libre la plus proche (`_unstick_ship`) ; « Ramener au port » aussi.
+
+### Canons, caisse, trésors, grappin
+- Canons : `ShipCannons` (affût rouge, fût de fonte, frettes de laiton, x1,4, recul au tir, fumée). Les petits canons du glb sont masqués.
+- Caisse de provisions (la pile de caisses du pont) : E prend un boulet / range ce qu'on porte, R prend une planche.
+- Trésors (`data/treasures.json`, `Treasure`) : un coffre d'île donne son or ET un trésor à porter ; on le dépose dans le coffre du
+  capitaine (le coffre de la cabine, `stash`) ; Corbin le receleur rachète le trésor porté, ou tout le coffre quand le bateau est
+  à moins de `FENCE_RANGE` du quai (l'or se partage entre l'équipage).
+- Grappin à l'étrave (E) : cible le butin à flot le plus proche devant, sinon le bord de terre ; butin hissé dans le coffre du
+  capitaine, terre = bateau halé puis amarré (R décroche). `WorldLoot` : butin du monde (trésors, boulets, planches, bourses),
+  ramassé à la nage ou à pied, synchronisé à 6 Hz.
+
+### Îles : plus grandes, tirées au hasard, tonneaux cassables, baies rares
+- Les îles du fichier sont agrandies ×`ISLAND_SCALE` (2) avec plus d'ennemis, de tonneaux et de caisses.
+- `IslandGen` : une case de 520 m sur ~0,55 porte une île dont tout dépend de (graine, case) ; l'hôte les génère une par une autour
+  du bateau, les clients refont la même liste dans le même ordre (`chunk_order` dans l'état réseau).
+- Tonneaux et caisses (`BREAKABLE`) se cassent au sabre, aux balles et aux sorts ; ils lâchent planches, boulets, or (et
+  rarement un trésor) ; ils se reforment au bout de 700 s si l'île est vide.
+- Baies des dieux : trois seulement dans le monde du fichier (îles dangereuses), 4 % des îles tirées au hasard, repousse en 3 h ;
+  elles se cueillent SANS être mangées (sac, touche Tab) ; on mange depuis le sac, l'ancienne baie y retourne.
+
+### Armes et sac
+`data/weapons.json` : sabre, pistolet à silex (balle), tromblon (gerbe de 7 plombs, cartouches), fusil de précision (traverse
+les ennemis, longue portée). F ou clic tire vers où l'on vise ; X change d'arme ; Tab ouvre le sac. Armes chez l'armurier Armand,
+munitions au Magasin Général.
+
+### Bateaux ennemis (`EnemyFleet`)
+Deux au plus, voiles noires : patrouille, chasse dès 150 m, se placent bord à bord à 30-70 m et tirent des volées (les boulets
+n'abîment le bateau des joueurs que si l'hôte les voit toucher). Les boulets des joueurs les abîment (18 points, 70 ou 130 de vie) ;
+coulés, ils laissent flotter 2 à 3 trésors, des planches, des boulets et des bourses d'or pendant 8 minutes.
+
+### État de la vérification (8 novembre 2026)
+Vérifié : les 9 fichiers de `tests/unit` passent (dont `test_sea.gd`, nouveau ; `test_berries` et `test_town` adaptés) ; en jeu,
+captures dans `qa/session2/` : canons visibles et flèche de visée (v2), nage et remontée à bord, saut par-dessus bord, canon humain
+(vol de 30 m puis nage), vergues (dial et rotation visibles, sens cohérent), grappin qui hisse un trésor dans le coffre, trésor
+déposé au coffre du capitaine, sac (Tab), île agrandie, île tirée au hasard, tonneau cassé qui donne un boulet, ennemi qui tire et
+touche, naufrage avec butin flottant, déblocage du bateau (T, T), hôte + client sur deux fenêtres sans erreur.
+Corrigé en route : sprite caché dans le canon (échelle 0,001 et non 0 : la boussole inverse sa base), état réseau des îles trop gros
+pour un paquet (découpé en `net_dynamic`, ennemis proches seulement, et `net_static`, 2 fois par seconde, fiable), pirates distants
+ajoutés à la scène avant `set_look`.
+Pas encore regardé : vente à Corbin au quai, boutique de l'armurier Armand, tir des armes à feu (traînées), ciblage d'un ennemi
+par le tromblon, partie à plusieurs avec un client qui nage ou se fait tirer d'un canon.

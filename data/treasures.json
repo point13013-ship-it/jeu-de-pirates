@@ -1,0 +1,10 @@
+{
+  "_commentaire": "Les trésors à rapporter au receleur (Corbin, sur le quai). weight = fréquence au tirage (plus c'est faible, plus c'est rare), value = or payé, color = teinte de la maquette portée au-dessus de la tête, shape = chest, cup, sack, skull ou crown. Un trésor se porte (une seule chose à la fois), se dépose dans le coffre du capitaine (cabine du bateau) et se vend sur le quai.",
+  "treasures": [
+    { "id": "coffret",  "name": "Coffret de pièces",     "value": 60,  "weight": 40, "color": "#c9a13a", "shape": "chest" },
+    { "id": "calice",   "name": "Calice d'or",           "value": 90,  "weight": 28, "color": "#f0c84a", "shape": "cup" },
+    { "id": "gemmes",   "name": "Sac de gemmes",         "value": 130, "weight": 18, "color": "#5ac8d8", "shape": "sack" },
+    { "id": "crane",    "name": "Crâne de capitaine",    "value": 180, "weight": 10, "color": "#e8e2cc", "shape": "skull" },
+    { "id": "couronne", "name": "Couronne du Kraken",    "value": 320, "weight": 4,  "color": "#e04848", "shape": "crown" }
+  ]
+}

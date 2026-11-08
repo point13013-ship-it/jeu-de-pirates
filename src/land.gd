@@ -35,6 +35,11 @@ func is_walkable(p: Vector2, r: float = 0.22) -> bool:
 	return true
 
 
+## Vrai si le point monde p = (x, z) est en mer (ni sur le port, ni sur une île) : un saut y finit à la nage.
+func is_over_water(p: Vector2) -> bool:
+	return not _on_ground(Vector2(p.x, -p.y))
+
+
 func _on_ground(m: Vector2) -> bool:
 	for r: Array in walk_rects:
 		if m.x >= float(r[0]) and m.x <= float(r[2]) and m.y >= float(r[1]) and m.y <= float(r[3]):

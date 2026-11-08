@@ -14,11 +14,21 @@ const SHIP_MARGIN := 0.8    ## m : un bateau s'arrête à cette distance du bord
 const CHEST_REACH := 1.5    ## m : portée pour ouvrir un coffre
 const BERRY_REACH := 1.6    ## m : portée pour cueillir une baie
 const BERRY_REVEAL := 5.5   ## m : une baie cachée dans son buisson ne scintille qu'à cette distance
-const BERRY_RESPAWN := 900.0  ## s : une baie cueillie repousse (sauf une baie lâchée, qui reste jusqu'à ce qu'on la ramasse)
+const BERRY_RESPAWN := 10800.0  ## s : une baie cueillie ne repousse qu'au bout de trois heures (c'est le plus rare des trésors)
 const ISLANDS_PATH := "res://data/islands.json"
 const ENEMIES_PATH := "res://data/enemies.json"
+const ISLAND_SCALE := 2.0     ## les îles du fichier sont agrandies d'autant (elles étaient trop petites)
+const WORLD_SEED := 20261108  ## graine des îles tirées au hasard : même monde pour tous les joueurs
+const BREAKABLE := {"barrel": 1, "crate": 2}   ## objets qu'on peut casser sur les îles : points de vie
+const BREAK_RESPAWN := 700.0  ## s : un tonneau cassé se reforme (si personne n'est sur l'île)
 
 var islands: Array = []
+## Tonneaux et caisses à casser : {island, kind, pos, hp, broken, timer, node, block: Vector3}. Jamais retirés de la liste.
+var breakables: Array = []
+var generated: Dictionary = {}     ## clés des cases déjà tirées (voir IslandGen)
+var chunk_order: Array = []        ## [[cx, cz], …] : cases qui ont donné une île, dans l'ordre (les clients les refont dans le même ordre)
+var _fixed_avoid: Array = []       ## cercles (x, z, rayon) des îles du fichier : les îles tirées au hasard les évitent
+var _land_ref: Land
 var enemies: Array[IslandEnemy] = []
 var chests: Array = []
 ## Baies des dieux à cueillir : {island, pos, berry, taken, timer, dropped, node, fruit, glint}. Les baies du fichier
@@ -61,38 +71,125 @@ func setup(islands_cfg: Dictionary, enemies_cfg: Dictionary) -> void:
 	enemies.clear()
 	chests.clear()
 	berry_spots.clear()
+	breakables.clear()
+	generated.clear()
+	chunk_order.clear()
+	_fixed_avoid.clear()
 	var list: Array = islands_cfg.get("islands", [])
-	for i in list.size():
-		var d: Dictionary = list[i]
-		var c := Vector2(float(d["center"][0]), float(d["center"][1]))
-		var isl := {
-			"id": str(d["id"]), "name": str(d["name"]), "blurb": str(d.get("blurb", "")), "danger": int(d.get("danger", 1)),
-			"center": c, "lobes": [], "radius": 0.0, "items": [], "props": d.get("props", []),
-			"scatter": _scatter_of(d), "cliffs": float(d.get("cliffs", 0.0)), "tone": str(d.get("tone", "lush")), "plateaus": _plateaus_of(d, c),
-			"blockers_c": [], "blockers_r": [], "chests": [], "enemies": [],
-		}
-		var bound := 0.0
-		for l: Array in d["lobes"]:
-			var lc := c + Vector2(float(l[0]), float(l[1]))
-			(isl["lobes"] as Array).append(Vector3(lc.x, lc.y, float(l[2])))
-			bound = maxf(bound, Vector2(float(l[0]), float(l[1])).length() + float(l[2]))
-		isl["radius"] = bound
-		islands.append(isl)
-		for e: Dictionary in d.get("enemies", []):
-			var at := c + Vector2(float(e["at"][0]), float(e["at"][1]))
-			var en := IslandEnemy.create(enemies.size(), str(e["kind"]), i, at, kinds[str(e["kind"])])
-			enemies.append(en)
-			(isl["enemies"] as Array).append(en.id)
-		for ch: Dictionary in d.get("chests", []):
-			var at := c + Vector2(float(ch["at"][0]), float(ch["at"][1]))
-			var rec := {"island": i, "pos": at, "gold": int(ch["gold"]), "open": false, "timer": 0.0, "node": null, "lid": null,
-					"pile": null, "glint": null, "lid_angle": 0.0}
-			(isl["chests"] as Array).append(chests.size())
-			chests.append(rec)
-		for b: Dictionary in d.get("berries", []):
-			var at := c + Vector2(float(b["at"][0]), float(b["at"][1]))
-			berry_spots.append(_berry_record(i, at, str(b["berry"]), false))
-		_plan_decor(i)
+	for d: Dictionary in list:
+		var i := _register_island(_scaled_island(d, ISLAND_SCALE), false)
+		var isl: Dictionary = islands[i]
+		_fixed_avoid.append(Vector3((isl["center"] as Vector2).x, (isl["center"] as Vector2).y, float(isl["radius"])))
+
+
+## Ajoute l'île décrite par `d` (format de data/islands.json, coordonnées déjà à l'échelle) : terre, ennemis, coffres, baies,
+## décor prévu. Renvoie son indice. `proc` : tirée au hasard sur la route (voir IslandGen).
+func _register_island(d: Dictionary, proc: bool) -> int:
+	var i := islands.size()
+	var c := Vector2(float(d["center"][0]), float(d["center"][1]))
+	var isl := {
+		"id": str(d["id"]), "name": str(d["name"]), "blurb": str(d.get("blurb", "")), "danger": int(d.get("danger", 1)),
+		"center": c, "lobes": [], "radius": 0.0, "items": [], "props": d.get("props", []),
+		"scatter": _scatter_of(d), "cliffs": float(d.get("cliffs", 0.0)), "tone": str(d.get("tone", "lush")), "plateaus": _plateaus_of(d, c),
+		"blockers_c": [], "blockers_r": [], "chests": [], "enemies": [], "proc": proc, "node": null, "breakable_ids": [],
+	}
+	var bound := 0.0
+	for l: Array in d["lobes"]:
+		var lc := c + Vector2(float(l[0]), float(l[1]))
+		(isl["lobes"] as Array).append(Vector3(lc.x, lc.y, float(l[2])))
+		bound = maxf(bound, Vector2(float(l[0]), float(l[1])).length() + float(l[2]))
+	isl["radius"] = bound
+	islands.append(isl)
+	for e: Dictionary in d.get("enemies", []):
+		var at := c + Vector2(float(e["at"][0]), float(e["at"][1]))
+		var en := IslandEnemy.create(enemies.size(), str(e["kind"]), i, at, kinds[str(e["kind"])])
+		enemies.append(en)
+		(isl["enemies"] as Array).append(en.id)
+	for ch: Dictionary in d.get("chests", []):
+		var at := c + Vector2(float(ch["at"][0]), float(ch["at"][1]))
+		var rec := {"island": i, "pos": at, "gold": int(ch["gold"]), "open": false, "timer": 0.0, "node": null, "lid": null,
+				"pile": null, "glint": null, "lid_angle": 0.0}
+		(isl["chests"] as Array).append(chests.size())
+		chests.append(rec)
+	for b: Dictionary in d.get("berries", []):
+		var at := c + Vector2(float(b["at"][0]), float(b["at"][1]))
+		berry_spots.append(_berry_record(i, at, str(b["berry"]), false))
+	_plan_decor(i)
+	return i
+
+
+## Les îles du fichier, agrandies de `s` (elles étaient trop petites : un tour à pied ne durait que quelques secondes) :
+## terre, relief et positions sont multipliés ; les semis de décor suivent la surface ; on ajoute des ennemis, des tonneaux
+## et des caisses pour que la terre agrandie ne paraisse pas vide. Les objets eux-mêmes gardent leur taille.
+static func _scaled_island(d: Dictionary, s: float) -> Dictionary:
+	if is_equal_approx(s, 1.0):
+		return d
+	var out := d.duplicate(true)
+	var lobes: Array = []
+	for l: Array in d["lobes"]:
+		lobes.append([float(l[0]) * s, float(l[1]) * s, float(l[2]) * s])
+	out["lobes"] = lobes
+	var placed: Array = []
+	for key in ["enemies", "chests", "berries"]:
+		for e: Dictionary in out.get(key, []):
+			e["at"] = [float(e["at"][0]) * s, float(e["at"][1]) * s]
+			placed.append([Vector2(float(e["at"][0]), float(e["at"][1])), 3.0])
+	for p: Dictionary in out.get("props", []):
+		if p.has("at"):
+			p["at"] = [float(p["at"][0]) * s, float(p["at"][1]) * s]
+			placed.append([Vector2(float(p["at"][0]), float(p["at"][1])), 3.0])
+		if p.has("from"):
+			p["from"] = [float(p["from"][0]) * s, float(p["from"][1]) * s]
+			p["to"] = [float(p["to"][0]) * s, float(p["to"][1]) * s]
+			# un mur occupe sa ligne : on y pose des repères pour ne rien placer dedans
+			var wa := Vector2(float(p["from"][0]), float(p["from"][1]))
+			var wb := Vector2(float(p["to"][0]), float(p["to"][1]))
+			var steps := int(wa.distance_to(wb) / 2.0) + 1
+			for k in steps + 1:
+				placed.append([wa.lerp(wb, float(k) / float(steps)), 2.4])
+	for pl: Dictionary in out.get("plateaus", []):
+		pl["at"] = [float(pl["at"][0]) * s, float(pl["at"][1]) * s]
+		pl["r"] = float(pl["r"]) * s
+		if pl.has("ramp"):
+			(pl["ramp"] as Dictionary)["len"] = float((pl["ramp"] as Dictionary).get("len", 0.0)) * s
+		# ni ennemi, ni coffre, ni tonneau sur un plateau ou sa rampe
+		placed.append([Vector2(float(pl["at"][0]), float(pl["at"][1])), float(pl["r"]) + float((pl.get("ramp", {}) as Dictionary).get("len", 0.0)) + 2.0])
+	var sc: Dictionary = out.get("scatter", {})
+	for k: String in sc:
+		sc[k] = int(round(float(sc[k]) * s * s * 0.8))
+	out["scatter"] = sc
+	if out.has("palms"):
+		out["palms"] = int(round(float(out["palms"]) * s * s * 0.8))
+	# plus de monde sur la terre agrandie
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash(str(d["id"]) + "/extra")
+	var enemy_list: Array = out.get("enemies", [])
+	if not enemy_list.is_empty():
+		var enemy_kinds: Array = []
+		for e: Dictionary in enemy_list:
+			if not str(e["kind"]) in enemy_kinds and str(e["kind"]) != "captain":
+				enemy_kinds.append(str(e["kind"]))
+		for k in int(round(enemy_list.size() * 0.7)):
+			var ep := IslandGen._free_point(lobes, rng, 3.0, placed, 3.0)
+			if ep != Vector2.INF and not enemy_kinds.is_empty():
+				enemy_list.append({"kind": enemy_kinds[rng.randi() % enemy_kinds.size()], "at": [ep.x, ep.y]})
+				placed.append([ep, 2.5])
+		out["enemies"] = enemy_list
+	if int(d.get("danger", 1)) >= 2:
+		var chest_list: Array = out.get("chests", [])
+		var cp := IslandGen._free_point(lobes, rng, 3.5, placed, 4.0)
+		if cp != Vector2.INF:
+			chest_list.append({"at": [cp.x, cp.y], "gold": 55 + 25 * int(d.get("danger", 1))})
+			placed.append([cp, 3.0])
+		out["chests"] = chest_list
+	var prop_list: Array = out.get("props", [])
+	for k in int(round(lobes.size() * 2.0 + 3.0)):
+		var bp := IslandGen._free_point(lobes, rng, 2.0, placed, 1.6)
+		if bp != Vector2.INF:
+			prop_list.append({"kind": "barrel" if rng.randf() < 0.5 else "crate", "at": [snappedf(bp.x, 0.1), snappedf(bp.y, 0.1)]})
+			placed.append([bp, 1.6])
+	out["props"] = prop_list
+	return out
 
 
 ## Règles de semis du décor : [sdf mini, sdf maxi, espacement, rayon bloquant (0 = on traverse)].
@@ -131,8 +228,15 @@ func _plan_decor(i: int) -> void:
 		var at := c + Vector2(float(p["at"][0]), float(p["at"][1]))
 		var yaw := IslandDecor.prop_yaw(p, i * 100 + n)
 		keep_clear.append([at, 4.0 if kind in ["wreck", "tower", "hut", "skull_rock", "arch"] else 1.6])
-		cb.append_array(IslandDecor.blockers(kind, at, yaw))
-		items.append({"kind": kind, "pos": at, "yaw": yaw, "seed": i * 100 + n, "data": p})
+		var blocks := IslandDecor.blockers(kind, at, yaw)
+		cb.append_array(blocks)
+		var item := {"kind": kind, "pos": at, "yaw": yaw, "seed": i * 100 + n, "data": p}
+		if BREAKABLE.has(kind):   # tonneau ou caisse : on peut le casser (et il ne bloque plus quand il est cassé)
+			item["breakable"] = breakables.size()
+			(isl["breakable_ids"] as Array).append(breakables.size())
+			breakables.append({"island": i, "kind": kind, "pos": at, "hp": int(BREAKABLE[kind]), "broken": false, "timer": 0.0,
+					"node": null, "block": blocks[0] if not blocks.is_empty() else Vector3.INF})
+		items.append(item)
 	for ch_id: int in isl["chests"]:
 		var cp: Vector2 = (chests[ch_id] as Dictionary)["pos"]
 		cb.append(Vector3(cp.x, cp.y, 0.5))
@@ -295,53 +399,111 @@ func build(parent: Node3D, land: Land) -> void:
 	_root = Node3D.new()
 	_root.name = "Islands"
 	parent.add_child(_root)
+	_land_ref = land
 	land.island_discs = walk_discs()
 	land.island_height = ground_h
-	var shader := load("res://shaders/island_ground.gdshader") as Shader
-	var mat := ShaderMaterial.new()
-	mat.shader = shader
+	_ground_mat = ShaderMaterial.new()
+	_ground_mat.shader = load("res://shaders/island_ground.gdshader") as Shader
 	for i in islands.size():
-		var isl: Dictionary = islands[i]
-		var c: Vector2 = isl["center"]
-		var node := Node3D.new()
-		node.name = str(isl["id"])
-		node.position = Vector3(c.x, 0.0, c.y)
-		_root.add_child(node)
-		isl["node"] = node
-		var mi := MeshInstance3D.new()
-		mi.mesh = _terrain_mesh(i)
-		mi.material_override = _ground_material(mat, str(isl["tone"]))
-		node.add_child(mi)
-		var sh := MeshInstance3D.new()
-		sh.mesh = _shallows_mesh(i)
-		var sm := ShaderMaterial.new()
-		sm.shader = load("res://shaders/island_shallows.gdshader") as Shader
-		sm.set_shader_parameter("seed", float(i) * 13.7)
-		sh.material_override = sm
-		sh.position = Vector3(0, SHALLOW_Y, 0)
-		sh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		node.add_child(sh)
-		for it: Dictionary in isl["items"]:
-			var d: Dictionary = it["data"]
-			IslandDecor.make(node, str(it["kind"]), (it["pos"] as Vector2) - c, float(it["yaw"]), int(it["seed"]), d, height(i, it["pos"]))
-		# ce qui bloque le passage à pied : mêmes obstacles côté Land (repère du fichier : y = -z)
-		for b: Vector3 in isl["blockers_c"]:
-			land.circles.append([b.x, -b.y, b.z])
-		for rc: Rect2 in isl["blockers_r"]:
-			land.obstacles.append([rc.position.x, -(rc.position.y + rc.size.y), rc.position.x + rc.size.x, -rc.position.y])
-	for ch: Dictionary in chests:
-		var made := IslandDecor.chest(_root, ch["pos"])
-		ch["node"] = made["root"]
-		ch["lid"] = made["lid"]
-		ch["pile"] = made["pile"]
-		ch["glint"] = made["glint"]
-		(made["root"] as Node3D).rotation.y = float(hash(str(ch["pos"])) % 100) / 100.0 * 0.6 - 0.3
-		(made["root"] as Node3D).position.y = height(int(ch["island"]), ch["pos"])
-	for en in enemies:
-		en.build_model(_root)
-	for k in berry_spots.size():
-		_build_berry_node(k)
+		_build_island(i)
 	_build_slash_mesh()
+
+
+var _ground_mat: ShaderMaterial
+
+
+## Pose en 3D l'île `i` : terre, eaux peu profondes, décor, obstacles à pied, coffres, ennemis, baies.
+func _build_island(i: int) -> void:
+	var land := _land_ref
+	var isl: Dictionary = islands[i]
+	if isl["node"] != null:
+		return
+	var c: Vector2 = isl["center"]
+	var node := Node3D.new()
+	node.name = str(isl["id"])
+	node.position = Vector3(c.x, 0.0, c.y)
+	_root.add_child(node)
+	isl["node"] = node
+	var mi := MeshInstance3D.new()
+	mi.mesh = _terrain_mesh(i)
+	mi.material_override = _ground_material(_ground_mat, str(isl["tone"]))
+	node.add_child(mi)
+	var sh := MeshInstance3D.new()
+	sh.mesh = _shallows_mesh(i)
+	var sm := ShaderMaterial.new()
+	sm.shader = load("res://shaders/island_shallows.gdshader") as Shader
+	sm.set_shader_parameter("seed", float(i) * 13.7)
+	sh.material_override = sm
+	sh.position = Vector3(0, SHALLOW_Y, 0)
+	sh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	node.add_child(sh)
+	for it: Dictionary in isl["items"]:
+		var d: Dictionary = it["data"]
+		var made := IslandDecor.make(node, str(it["kind"]), (it["pos"] as Vector2) - c, float(it["yaw"]), int(it["seed"]), d, height(i, it["pos"]))
+		if it.has("breakable"):
+			(breakables[int(it["breakable"])] as Dictionary)["node"] = made
+	if bool(isl["proc"]):
+		for l: Vector3 in isl["lobes"]:
+			land.island_discs.append([l.x, l.y, l.z])
+	# ce qui bloque le passage à pied : mêmes obstacles côté Land (repère du fichier : y = -z)
+	for b: Vector3 in isl["blockers_c"]:
+		land.circles.append([b.x, -b.y, b.z])
+	for rc: Rect2 in isl["blockers_r"]:
+		land.obstacles.append([rc.position.x, -(rc.position.y + rc.size.y), rc.position.x + rc.size.x, -rc.position.y])
+	for ch_id: int in isl["chests"]:
+		var ch: Dictionary = chests[ch_id]
+		var made_chest := IslandDecor.chest(_root, ch["pos"])
+		ch["node"] = made_chest["root"]
+		ch["lid"] = made_chest["lid"]
+		ch["pile"] = made_chest["pile"]
+		ch["glint"] = made_chest["glint"]
+		(made_chest["root"] as Node3D).rotation.y = float(hash(str(ch["pos"])) % 100) / 100.0 * 0.6 - 0.3
+		(made_chest["root"] as Node3D).position.y = height(i, ch["pos"])
+	for en_id: int in isl["enemies"]:
+		enemies[en_id].build_model(_root)
+	for k in berry_spots.size():
+		if int((berry_spots[k] as Dictionary)["island"]) == i:
+			_build_berry_node(k)
+
+
+# ------------------------------------------------------------------ îles tirées au hasard
+
+## Génère (hôte, ou client qui suit la liste de l'hôte) l'île de la case `c` si elle n'existe pas encore. Renvoie son indice, ou -1.
+func ensure_chunk(c: Vector2i) -> int:
+	var key := IslandGen.key_of(c)
+	if generated.has(key):
+		return int(generated[key])
+	var d := IslandGen.generate(c, WORLD_SEED, _fixed_avoid)
+	if d.is_empty():
+		generated[key] = -1
+		return -1
+	var i := _register_island(d, true)
+	generated[key] = i
+	chunk_order.append([c.x, c.y])
+	if _root != null:
+		_build_island(i)
+	return i
+
+
+## Hôte (ou solo) : génère l'île de la case voisine du bateau la plus proche qui n'en a pas encore (une seule par appel :
+## construire une grande île prend un moment, on étale le travail sur plusieurs images). Renvoie son indice, ou -1.
+func ensure_around(p: Vector2) -> int:
+	var here := IslandGen.cell_of(p)
+	var cells: Array[Vector2i] = []
+	for dx in [-1, 0, 1]:
+		for dz in [-1, 0, 1]:
+			cells.append(here + Vector2i(dx, dz))
+	cells.sort_custom(func(a: Vector2i, b: Vector2i) -> bool:
+		var ca := (Vector2(a) + Vector2(0.5, 0.5)) * IslandGen.CELL
+		var cb := (Vector2(b) + Vector2(0.5, 0.5)) * IslandGen.CELL
+		return ca.distance_squared_to(p) < cb.distance_squared_to(p))
+	for c in cells:
+		if generated.has(IslandGen.key_of(c)):
+			continue
+		var i := ensure_chunk(c)
+		if i >= 0:
+			return i
+	return -1
 
 
 ## Chemins de terre : de la plage où l'on aborde (côté du port) au centre, puis jusqu'à chaque coffre.
@@ -397,7 +559,9 @@ func _terrain_mesh(i: int) -> ArrayMesh:
 	var isl: Dictionary = islands[i]
 	var c: Vector2 = isl["center"]
 	var ext: float = float(isl["radius"]) + SLOPE + 1.0
-	var n := int(ceil(ext * 2.0 / GRID)) + 1
+	# les grandes îles (agrandies) ont un maillage un peu plus lâche : sinon le calcul au lancement serait trop long
+	var grid := GRID * clampf(ext / 40.0, 1.0, 2.0)
+	var n := int(ceil(ext * 2.0 / grid)) + 1
 	var verts := PackedVector3Array()
 	var norms := PackedVector3Array()
 	var cols := PackedColorArray()
@@ -409,8 +573,8 @@ func _terrain_mesh(i: int) -> ArrayMesh:
 	var segs := _path_segments(i)
 	for iz in n:
 		for ix in n:
-			var lx := -ext + ix * GRID
-			var lz := -ext + iz * GRID
+			var lx := -ext + ix * grid
+			var lz := -ext + iz * grid
 			var wp := c + Vector2(lx, lz)
 			var s := sdf(i, wp)
 			var cl := _cliff_amount(i, wp)
@@ -433,7 +597,7 @@ func _terrain_mesh(i: int) -> ArrayMesh:
 			var hr := (verts[iz * n + mini(ix + 1, n - 1)] as Vector3).y
 			var hu := (verts[maxi(iz - 1, 0) * n + ix] as Vector3).y
 			var hd := (verts[mini(iz + 1, n - 1) * n + ix] as Vector3).y
-			norms[iz * n + ix] = Vector3(hl - hr, 2.0 * GRID, hu - hd).normalized()
+			norms[iz * n + ix] = Vector3(hl - hr, 2.0 * grid, hu - hd).normalized()
 	# falaises des plateaux : les sommets au bord d'une marche haute prennent la couleur de la roche
 	for iz in range(1, n - 1):
 		for ix in range(1, n - 1):
@@ -627,6 +791,12 @@ func step(delta: float, players: Array) -> Array:
 				ch["timer"] = float(ch["timer"]) - delta
 				if float(ch["timer"]) <= 0.0 and near.is_empty():
 					ch["open"] = false
+		for k: int in isl["breakable_ids"]:
+			var b: Dictionary = breakables[k]
+			if b["broken"]:
+				b["timer"] = float(b["timer"]) - delta
+				if float(b["timer"]) <= 0.0 and near.is_empty():
+					_restore(k)
 	return events
 
 
@@ -653,7 +823,199 @@ func swing(origin: Vector2, dir: Vector2) -> Array:
 			gold = _rng.randi_range(int(g[0]), int(g[1]))
 			en.timer = respawn_secs
 		out.append({"gold": gold, "at": en.pos, "killed": killed, "enemy": en.id})
+	for br: Dictionary in hit_breakables(origin, dir, reach, half_arc, dmg):
+		out.append({"gold": 0, "at": br["pos"], "killed": false, "enemy": -1, "prop": true, "kind": br["kind"]})
 	return out
+
+
+## Un tir d'arme à feu depuis `origin` vers `dir` (définition `w` de data/weapons.json). Chaque projectile suit sa ligne : il touche
+## le premier ennemi (ou tous, si la balle traverse) et le premier tonneau ou caisse de son chemin. Renvoie comme `swing`
+## [{gold, at, killed, enemy}] et, pour les objets cassés, [{prop, kind, at}].
+func shoot(origin: Vector2, dir: Vector2, w: Dictionary) -> Array:
+	var out: Array = []
+	var pellets := int(w.get("pellets", 1))
+	var spread := float(w.get("spread", 0.0))
+	var reach := float(w.get("range", 10.0))
+	var dmg := int(w.get("damage", 1))
+	var power := float(w.get("knock", 2.0))
+	var pierce := bool(w.get("pierce", false))
+	for p in pellets:
+		var d := dir.rotated(_rng.randf_range(-spread, spread)) if spread > 0.0 else dir
+		var stop := reach   # distance où le projectile s'arrête (premier obstacle touché)
+		# les ennemis le long de la ligne, du plus proche au plus lointain
+		var cands: Array = []
+		for en in enemies:
+			if en.is_dead():
+				continue
+			var to := en.pos - origin
+			var along := to.dot(d)
+			if along < 0.0 or along > reach:
+				continue
+			if absf(to.cross(d)) < 0.4 * float(en.cfg["scale"]) + 0.2:
+				cands.append([along, en])
+		cands.sort_custom(func(a: Array, b: Array) -> bool: return float(a[0]) < float(b[0]))
+		for c: Array in cands:
+			if float(c[0]) > stop:
+				break
+			var en2: IslandEnemy = c[1]
+			var killed := en2.hurt(dmg, origin, power)
+			var gold := 0
+			if killed:
+				var g: Array = en2.cfg["gold"]
+				gold = _rng.randi_range(int(g[0]), int(g[1]))
+				en2.timer = respawn_secs
+			out.append({"gold": gold, "at": en2.pos, "killed": killed, "enemy": en2.id})
+			if not pierce:
+				stop = float(c[0])
+				break
+		# le premier tonneau ou la première caisse touché(e) avant `stop`
+		var best_k := -1
+		var best_along := stop
+		for k in breakables.size():
+			var b: Dictionary = breakables[k]
+			if b["broken"]:
+				continue
+			var tb: Vector2 = (b["pos"] as Vector2) - origin
+			var al := tb.dot(d)
+			if al < 0.0 or al > best_along:
+				continue
+			if absf(tb.cross(d)) < 0.5:
+				best_along = al
+				best_k = k
+		if best_k >= 0:
+			var bb: Dictionary = breakables[best_k]
+			bb["hp"] = int(bb["hp"]) - dmg
+			if int(bb["hp"]) <= 0:
+				_break(best_k)
+				out.append({"gold": 0, "at": bb["pos"], "killed": false, "enemy": -1, "prop": true, "kind": bb["kind"]})
+			else:
+				_wobble(best_k)
+	return out
+
+
+# ------------------------------------------------------------------ tonneaux et caisses
+
+## Un coup depuis `origin` vers `dir` (portée `reach`, demi-ouverture `half_arc` en rad, PI = tout autour) abîme les tonneaux et
+## caisses à portée. Renvoie [{pos, kind}] de ceux qui cèdent. À appeler chez l'hôte (ou en solo).
+func hit_breakables(origin: Vector2, dir: Vector2, reach: float, half_arc: float, dmg: int = 1) -> Array:
+	var out: Array = []
+	for k in breakables.size():
+		var b: Dictionary = breakables[k]
+		if b["broken"]:
+			continue
+		var to: Vector2 = (b["pos"] as Vector2) - origin
+		var d := to.length()
+		if d > reach + 0.45:
+			continue
+		if d > 0.6 and half_arc < PI and absf(dir.angle_to(to)) > half_arc:
+			continue
+		b["hp"] = int(b["hp"]) - dmg
+		if int(b["hp"]) <= 0:
+			_break(k)
+			out.append({"pos": b["pos"], "kind": b["kind"]})
+		else:
+			_wobble(k)
+	return out
+
+
+## Ce que lâche un tonneau ou une caisse brisé : liste de genres de butin (voir WorldLoot) : « plank », « ball », « g:<or> »,
+## « t:<trésor> » (une caisse rarement). Il y a toujours au moins une planche ou un boulet.
+func prop_loot(kind: String) -> Array:
+	var out: Array = []
+	var crate := kind == "crate"
+	if _rng.randf() < (0.8 if crate else 0.55):
+		for n in _rng.randi_range(1, 3 if crate else 2):
+			out.append("plank")
+	if _rng.randf() < (0.7 if crate else 0.5):
+		for n in _rng.randi_range(1, 3 if crate else 2):
+			out.append("ball")
+	if _rng.randf() < (0.35 if crate else 0.2):
+		out.append("g:%d" % (_rng.randi_range(8, 20) if crate else _rng.randi_range(3, 9)))
+	if crate and _rng.randf() < 0.06:
+		out.append("t:" + Treasure.roll(_rng, 0.8))
+	if out.is_empty():
+		out.append("plank" if _rng.randf() < 0.5 else "ball")
+	return out
+
+
+func _break(k: int) -> void:
+	var b: Dictionary = breakables[k]
+	b["broken"] = true
+	b["timer"] = BREAK_RESPAWN
+	_set_block(k, false)
+	_break_visual(k)
+
+
+func _restore(k: int) -> void:
+	var b: Dictionary = breakables[k]
+	b["broken"] = false
+	b["hp"] = int(BREAKABLE[str(b["kind"])])
+	b["timer"] = 0.0
+	_set_block(k, true)
+	if b["node"] != null:
+		(b["node"] as Node3D).visible = true
+
+
+## Un objet cassé ne bloque plus le passage (chez l'hôte comme chez les clients), et bloque de nouveau quand il se reforme.
+func _set_block(k: int, on: bool) -> void:
+	var b: Dictionary = breakables[k]
+	var blk: Vector3 = b["block"]
+	if blk == Vector3.INF:
+		return
+	var arr: Array = (islands[int(b["island"])] as Dictionary)["blockers_c"]
+	var entry := [blk.x, -blk.y, blk.z]
+	if on:
+		if not arr.has(blk):
+			arr.append(blk)
+		if _land_ref != null and not _land_ref.circles.has(entry):
+			_land_ref.circles.append(entry)
+	else:
+		arr.erase(blk)
+		if _land_ref != null:
+			_land_ref.circles.erase(entry)
+
+
+## Un petit tremblement quand le coup ne suffit pas (la caisse tient encore).
+func _wobble(k: int) -> void:
+	var n := (breakables[k] as Dictionary)["node"] as Node3D
+	if n == null:
+		return
+	var tw := n.create_tween()
+	tw.tween_property(n, "scale", Vector3(1.12, 0.9, 1.12), 0.06)
+	tw.tween_property(n, "scale", Vector3.ONE, 0.12)
+
+
+## Éclats de bois : l'objet disparaît, des planchettes giclent et retombent.
+func _break_visual(k: int) -> void:
+	var b: Dictionary = breakables[k]
+	var n := b["node"] as Node3D
+	if n != null:
+		n.visible = false
+	if _root == null:
+		return
+	var at: Vector2 = b["pos"]
+	var y := ground_h(at)
+	for c in 10:
+		var chip := MeshInstance3D.new()
+		var bm := BoxMesh.new()
+		bm.size = Vector3(0.28, 0.05, 0.08)
+		chip.mesh = bm
+		var m := StandardMaterial3D.new()
+		m.albedo_color = IslandDecor.WOOD if c % 2 == 0 else IslandDecor.WOOD_D
+		chip.material_override = m
+		chip.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		_root.add_child(chip)
+		chip.position = Vector3(at.x, y + 0.5, at.y)
+		chip.rotation = Vector3(randf() * TAU, randf() * TAU, randf() * TAU)
+		var dir := Vector3(randf_range(-1.0, 1.0), 0.0, randf_range(-1.0, 1.0)).normalized() * randf_range(0.7, 1.9)
+		var tw := chip.create_tween()
+		tw.set_parallel(true)
+		tw.tween_property(chip, "position:x", at.x + dir.x, 0.5)
+		tw.tween_property(chip, "position:z", at.y + dir.z, 0.5)
+		tw.tween_property(chip, "position:y", y + randf_range(1.0, 1.7), 0.22).set_ease(Tween.EASE_OUT)
+		tw.chain().tween_property(chip, "position:y", y + 0.05, 0.28).set_ease(Tween.EASE_IN)
+		tw.chain().tween_interval(0.6)
+		tw.chain().tween_callback(chip.queue_free)
 
 
 func nearest_chest(p: Vector2) -> int:
@@ -817,6 +1179,23 @@ func cast(spell: Dictionary, origin: Vector2, dir: Vector2) -> Array:
 			gold = _rng.randi_range(int(g[0]), int(g[1]))
 			en.timer = respawn_secs
 		out.append({"gold": gold, "at": en.pos, "killed": killed, "enemy": en.id})
+	# les sorts brisent aussi les tonneaux et les caisses sur leur passage
+	var reach := 0.0
+	var arc := PI
+	match kind:
+		"nova", "pull":
+			reach = float(spell.get("radius", 3.0))
+		"cone":
+			reach = float(spell.get("range", 4.0))
+			arc = deg_to_rad(float(spell.get("arc", 100.0)) * 0.5)
+		"bolt":
+			reach = float(spell.get("range", 8.0))
+			arc = 0.12
+		"dash":
+			reach = float(spell.get("dist", 4.0))
+			arc = 0.3
+	for br: Dictionary in hit_breakables(origin, d, reach, arc, 2):
+		out.append({"gold": 0, "at": br["pos"], "killed": false, "enemy": -1, "prop": true, "kind": br["kind"]})
 	return out
 
 
@@ -895,10 +1274,33 @@ func _sector_mesh(radius: float, arc: float) -> ArrayMesh:
 
 # ------------------------------------------------------------------ réseau
 
-func net_state() -> Array:
+## L'état complet [e, c, b, br, chunks] (essais, premier envoi) : voir net_dynamic et net_static.
+func net_state(interest: Array = []) -> Array:
+	return [net_dynamic(interest)] + net_static()
+
+
+## Ce qui bouge vite : les ennemis, sous forme de paires [indice, état]. `interest` : points du monde (le bateau, les joueurs à
+## terre) ; seuls les ennemis des îles proches d'un de ces points sont envoyés (le message resterait sinon trop gros pour un
+## paquet quand le monde grandit). Vide : tous.
+func net_dynamic(interest: Array = []) -> Array:
 	var e: Array = []
-	for en in enemies:
-		e.append(en.net_state())
+	for i in islands.size():
+		var isl: Dictionary = islands[i]
+		if not interest.is_empty():
+			var near := false
+			for p: Vector2 in interest:
+				if p.distance_to(isl["center"]) <= float(isl["radius"]) + active_range + 80.0:
+					near = true
+					break
+			if not near:
+				continue
+		for en_id: int in isl["enemies"]:
+			e.append([en_id, enemies[en_id].net_state()])
+	return e
+
+
+## Ce qui change rarement : coffres ouverts, baies, tonneaux cassés, et les cases d'îles tirées au hasard déjà générées.
+func net_static() -> Array:
 	var c: Array = []
 	for ch: Dictionary in chests:
 		c.append(1 if ch["open"] else 0)
@@ -906,18 +1308,46 @@ func net_state() -> Array:
 	for s: Dictionary in berry_spots:
 		var p: Vector2 = s["pos"]
 		b.append([str(s["berry"]), p.x, p.y, 1 if s["taken"] else 0, 1 if s["dropped"] else 0])
-	return [e, c, b]
+	var br: Array = []
+	for bk: Dictionary in breakables:
+		br.append(1 if bk["broken"] else 0)
+	return [c, b, br, chunk_order.duplicate(true)]
 
 
 func apply_net(s: Array, snap: bool = false) -> void:
-	var e: Array = s[0]
-	for k in mini(e.size(), enemies.size()):
-		enemies[k].apply_net(e[k], snap)
-	var c: Array = s[1]
+	apply_static(s.slice(1))
+	apply_dynamic(s[0], snap)
+
+
+## Client : les ennemis envoyés par l'hôte (paires [indice, état]) ; un indice inconnu (île pas encore refaite) est ignoré.
+func apply_dynamic(e: Array, snap: bool = false) -> void:
+	for pair: Array in e:
+		var k := int(pair[0])
+		if k >= 0 and k < enemies.size():
+			enemies[k].apply_net(pair[1], snap)
+
+
+## Client : coffres, baies, tonneaux et îles générées, tels que l'hôte les a. `s` = [c, b, br, chunks].
+func apply_static(s: Array) -> void:
+	if s.size() > 3:   # les îles tirées au hasard que l'hôte a déjà générées : on les refait, dans le même ordre
+		for ck: Array in s[3]:
+			ensure_chunk(Vector2i(int(ck[0]), int(ck[1])))
+	var c: Array = s[0]
 	for k in mini(c.size(), chests.size()):
 		(chests[k] as Dictionary)["open"] = int(c[k]) == 1
 	if s.size() > 2:
-		var b: Array = s[2]
+		var br: Array = s[2]
+		for k in mini(br.size(), breakables.size()):
+			var bk: Dictionary = breakables[k]
+			var gone := int(br[k]) == 1
+			if gone and not bk["broken"]:
+				bk["broken"] = true
+				_set_block(k, false)
+				_break_visual(k)
+			elif not gone and bk["broken"]:
+				_restore(k)
+	if s.size() > 1:
+		var b: Array = s[1]
 		for k in b.size():
 			var r: Array = b[k]
 			if k >= berry_spots.size():   # une baie lâchée par un autre joueur

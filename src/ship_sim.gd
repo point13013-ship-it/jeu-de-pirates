@@ -17,6 +17,15 @@ var sail_level: int = 0          ## 0..3 : niveau demandé par l'équipage
 var sail_open: float = 0.0       ## 0..1 : ouverture réelle des voiles (elles se hissent en quelques secondes)
 var anchored: bool = false
 var wind_dir := Vector2(1.0, 0.0)  ## direction vers laquelle le vent souffle (vecteur unitaire monde)
+var wind_angle := 0.0            ## le même vent en angle (rad, Vector2.angle) ; il dérive lentement (voir drift_wind)
+var sail_trim := 0.0             ## orientation réelle des vergues (rad, sens de Vector2.rotated) : 0 = perpendiculaires à la coque
+var sail_trim_target := 0.0
+var trim_input := 0.0            ## -1..1 : quelqu'un tourne les vergues au mât
+var auto_trim_pending := true    ## voiles affalées : au prochain hissage, l'équipage les règle d'emblée au mieux
+
+const MAX_TRIM := 1.13           ## rad (65°)
+const TRIM_SPEED := 0.55         ## rad/s : vitesse à laquelle les vergues tournent
+const TRIM_FLOOR := 0.18         ## rendement d'une voile très mal réglée (elle ne tire presque plus)
 
 var max_speed: float = 8.0       ## m/s, toutes voiles dehors, vent arrière
 var turn_rate: float = 0.55      ## rad/s à pleine barre et pleine vitesse
@@ -48,11 +57,68 @@ func wind_factor() -> float:
 	return 0.12 + 0.88 * pow(clampf((wind_alignment() + 1.0) * 0.5, 0.0, 1.0), 0.6)
 
 
+## Angle du vent par rapport à l'étrave (rad, -PI..PI) : 0 = vent arrière, ±PI/2 = de travers, ±PI = vent debout.
+func wind_relative() -> float:
+	return forward().angle_to(wind_dir)
+
+
+## Poussée d'une voile plate dont la normale est tournée de `theta` par rapport à l'axe du bateau, quand le vent souffle
+## sous l'angle `delta` : la pression est proportionnelle à (vent·normale)², et seule sa part le long de la coque avance.
+static func sail_thrust(delta: float, theta: float) -> float:
+	var c := cos(delta - theta)
+	return c * absf(c) * cos(theta)
+
+
+## L'orientation de vergue qui donne la meilleure poussée pour ce vent (rad, même sens que sail_trim).
+func optimal_trim() -> float:
+	var d := wind_relative()
+	var best := -INF
+	var best_t := 0.0
+	for k in 53:
+		var t := lerpf(-MAX_TRIM, MAX_TRIM, float(k) / 52.0)
+		var v := sail_thrust(d, t)
+		if v > best + 0.0001:
+			best = v
+			best_t = t
+	return best_t
+
+
+## Rendement du réglage des voiles, de TRIM_FLOOR (mal réglées) à 1 (au mieux). Vent debout il n'y a rien à régler.
+func trim_efficiency() -> float:
+	var d := wind_relative()
+	var best := sail_thrust(d, optimal_trim())
+	if best < 0.05:
+		return 1.0
+	var t := sail_thrust(d, sail_trim)
+	return TRIM_FLOOR + (1.0 - TRIM_FLOOR) * clampf(t / best, 0.0, 1.0)
+
+
+## Hisse (+1) ou affale (-1) d'un cran. Quand on hisse depuis des voiles affalées, les matelots règlent d'emblée les
+## vergues au mieux pour le vent du moment ; ensuite c'est à l'équipage de les suivre quand le vent ou le cap change.
+func change_sails(step_levels: int) -> void:
+	if sail_level == 0 and step_levels > 0 and auto_trim_pending:
+		sail_trim_target = optimal_trim()
+		auto_trim_pending = false
+	sail_level = clampi(sail_level + step_levels, 0, SAIL_LEVELS)
+
+
+## Fait varier le vent : il tourne lentement (quelques degrés par dizaine de secondes), toujours dans une bande autour du
+## vent d'origine pour que le port reste jouable. `t` : temps de la partie (s).
+func drift_wind(t: float) -> void:
+	wind_angle = deg_to_rad(28.0 * sin(t * 0.021) + 17.0 * sin(t * 0.047 + 1.3))
+	wind_dir = Vector2.from_angle(wind_angle)
+
+
 ## Fait avancer la simulation de `dt` secondes.
 func step(dt: float) -> void:
 	sail_open = move_toward(sail_open, float(sail_level) / SAIL_LEVELS, sail_speed * dt)
+	if sail_level == 0 and sail_open < 0.02:
+		auto_trim_pending = true
+	if absf(trim_input) > 0.01:
+		sail_trim_target = clampf(sail_trim_target + trim_input * TRIM_SPEED * 1.2 * dt, -MAX_TRIM, MAX_TRIM)
+	sail_trim = move_toward(sail_trim, sail_trim_target, TRIM_SPEED * dt)
 	rudder = move_toward(rudder, rudder_target, 1.6 * dt)
-	var target := 0.0 if anchored else max_speed * sail_open * wind_factor() * drag
+	var target := 0.0 if anchored else max_speed * sail_open * wind_factor() * trim_efficiency() * drag
 	var rate := accel if target > speed else accel * (2.6 if anchored else 0.6)
 	speed = move_toward(speed, target, rate * dt)
 	var steer := MIN_STEER + (1.0 - MIN_STEER) * clampf(speed / (max_speed * 0.6), 0.0, 1.0)

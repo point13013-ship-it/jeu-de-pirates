@@ -1,0 +1,25 @@
+{
+  "_commentaire": "Les armes du pirate. type : melee (le sabre, coup en arc) ou gun (arme à feu : un tir part vers où l'on vise, F ou clic). range en m, damage en cœurs d'ennemi, cooldown en s entre deux coups. Armes à feu : ammo = munition consommée (bullets = balles, shells = cartouches), pellets = nombre de projectiles par tir, spread = dispersion (demi-angle en rad), pierce = traverse les ennemis, knock = recul de l'ennemi touché. price = prix chez l'armurier (0 : on l'a au départ).",
+  "order": ["sabre", "pistolet", "tromblon", "fusil"],
+  "weapons": {
+    "sabre": {
+      "name": "Sabre d'abordage", "type": "melee", "damage": 1, "range": 1.9, "cooldown": 0.45, "price": 0,
+      "desc": "Un coup en arc devant soi. Ne manque jamais de munitions."
+    },
+    "pistolet": {
+      "name": "Pistolet à silex", "type": "gun", "ammo": "bullets", "damage": 2, "range": 15.0, "cooldown": 0.8, "pellets": 1,
+      "spread": 0.02, "pierce": false, "knock": 1.6, "price": 120, "color": "#d8d2c0",
+      "desc": "Un tir précis à moyenne distance. Consomme une balle."
+    },
+    "tromblon": {
+      "name": "Tromblon", "type": "gun", "ammo": "shells", "damage": 1, "range": 7.5, "cooldown": 1.25, "pellets": 7,
+      "spread": 0.42, "pierce": false, "knock": 3.2, "price": 230, "color": "#f0b860",
+      "desc": "Une gerbe de plombs qui cloue les ennemis proches. Consomme une cartouche."
+    },
+    "fusil": {
+      "name": "Fusil de précision", "type": "gun", "ammo": "bullets", "damage": 5, "range": 36.0, "cooldown": 1.9, "pellets": 1,
+      "spread": 0.0, "pierce": true, "knock": 2.0, "price": 440, "color": "#9fd0ff",
+      "desc": "Très longue portée, balle qui traverse les ennemis alignés. Lent à recharger. Consomme une balle."
+    }
+  }
+}

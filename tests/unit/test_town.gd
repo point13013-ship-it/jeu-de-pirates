@@ -99,7 +99,7 @@ func _test_npcs(land: Land) -> void:
 		seen[d["id"]] = true
 		var p := Vector2(float(d["pos"][0]), -float(d["pos"][1]))
 		_check_near("%s : sol praticable à sa hauteur" % d["id"], land.walk_height(p, float(d["h"])), float(d["h"]))
-	_check_eq("les 9 habitants sont là", seen.size(), 9)
+	_check_eq("les 10 habitants sont là (l'armurier s'ajoute)", seen.size(), 10)
 	for w: Dictionary in cfg["wanderers"]:
 		var path: Array = w["path"]
 		var ok := true

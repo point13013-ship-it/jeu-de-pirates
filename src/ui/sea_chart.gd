@@ -99,10 +99,19 @@ func shown_pos(i: int) -> Vector2:
 	return (world.islands[i]["center"] as Vector2) if world.islands[i]["id"] in discovered else rumor_pos(i)
 
 
+## Une île tirée au hasard n'apparaît sur la carte qu'une fois repérée (pas de rumeur : le monde est trop grand) ; celles du
+## fichier sont toujours là, en rumeur tant qu'on ne les a pas vues.
+func _listed(i: int) -> bool:
+	var isl: Dictionary = world.islands[i]
+	return not bool(isl.get("proc", false)) or isl["id"] in discovered
+
+
 func _island_at_screen(sp: Vector2) -> int:
 	var best := -1
 	var best_d := 1e9
 	for i in world.islands.size():
+		if not _listed(i):
+			continue
 		var known: bool = world.islands[i]["id"] in discovered
 		var radius_px := maxf((float(world.islands[i]["radius"]) if known else 40.0) * _scale, 22.0)
 		var d := _to_screen(shown_pos(i)).distance_to(sp)
@@ -119,7 +128,10 @@ func _layout() -> void:
 	# la carte couvre le port et toutes les îles, avec de l'air autour
 	var lo := Vector2(PORT_RECT.position)
 	var hi := PORT_RECT.end
-	for isl: Dictionary in world.islands:
+	for k in world.islands.size():
+		if not _listed(k):
+			continue
+		var isl: Dictionary = world.islands[k]
 		var c: Vector2 = isl["center"]
 		var r: float = float(isl["radius"]) + 54.0
 		lo = Vector2(minf(lo.x, c.x - r), minf(lo.y, c.y - r))
@@ -159,6 +171,8 @@ func _draw() -> void:
 	draw_string(font, pr.position + Vector2(0, pr.size.y * 0.5 + 6), "PORT", HORIZONTAL_ALIGNMENT_CENTER, pr.size.x, 15, INK)
 	# les îles
 	for i in world.islands.size():
+		if not _listed(i):
+			continue
 		if world.islands[i]["id"] in discovered:
 			_draw_island(i, font)
 		else:

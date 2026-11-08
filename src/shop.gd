@@ -24,6 +24,11 @@ func _init(p_profile: Profile, def: Dictionary, p_look: Dictionary) -> void:
 	title = str(def.get("title", "Boutique"))
 	kind = str(def.get("kind", "supply"))
 	items = ShipSkin.items() if kind == "skin" else def.get("items", [])
+	if kind == "weapons":   # tout le catalogue sauf le sabre (offert)
+		items = []
+		for id in Weapons.order():
+			if int(Weapons.get_def(str(id)).get("price", 0)) > 0:
+				items.append({"weapon": str(id), "price": int(Weapons.get_def(str(id))["price"])})
 	look = p_look.duplicate(true)
 
 
@@ -42,6 +47,16 @@ func _worn(item: Dictionary) -> bool:
 ## Une ligne du menu : {label, desc, right (texte à droite), enabled}.
 func row(i: int) -> Dictionary:
 	var it: Dictionary = items[i]
+	if kind == "weapons":
+		var wid := str(it["weapon"])
+		var wdef := Weapons.get_def(wid)
+		var wlabel := str(wdef.get("name", wid))
+		var wdesc := str(wdef.get("desc", ""))
+		if profile.weapon == wid:
+			return {"label": wlabel, "desc": wdesc, "right": "en main", "enabled": false}
+		if profile.weapons.has(wid):
+			return {"label": wlabel, "desc": wdesc, "right": "prendre en main", "enabled": true}
+		return {"label": wlabel, "desc": wdesc, "right": "%d or" % int(it["price"]), "enabled": profile.gold >= int(it["price"])}
 	if kind == "ships":
 		if _worn(it):
 			return {"label": str(it["label"]), "desc": str(it["desc"]), "right": "ton bateau", "enabled": false}
@@ -71,14 +86,18 @@ func row(i: int) -> Dictionary:
 
 ## Réserves affichées en bas du menu.
 func stock_text() -> String:
+	if kind == "weapons":
+		return "Balles : %d   Cartouches : %d" % [profile.bullets, profile.shells]
 	if kind != "supply":
 		return ""
-	return "En réserve : %d planches, %d boulets" % [profile.planks, profile.balls]
+	return "En réserve : %d planches, %d boulets, %d balles, %d cartouches" % [profile.planks, profile.balls, profile.bullets, profile.shells]
 
 
 ## Achète (ou remet) l'article `i`. Renvoie {ok, msg, look_changed}.
 func activate(i: int) -> Dictionary:
 	var it: Dictionary = items[i]
+	if kind == "weapons":
+		return _activate_weapon(it)
 	if kind == "ships":
 		return _activate_ship(it)
 	if kind == "skin":
@@ -94,6 +113,22 @@ func activate(i: int) -> Dictionary:
 	profile.set(stock, int(profile.get(stock)) + int(it["qty"]))
 	profile.save()
 	return {"ok": true, "msg": "Acheté : %s" % str(it["label"]), "look_changed": false}
+
+
+## Armurerie : on paie une arme une fois, on la reprend ensuite gratuitement. Les munitions s'achètent au Magasin Général.
+func _activate_weapon(it: Dictionary) -> Dictionary:
+	var id := str(it["weapon"])
+	var wname := Weapons.weapon_name(id)
+	if profile.weapon == id:
+		return {"ok": false, "msg": "Tu l'as déjà en main.", "look_changed": false}
+	if not profile.weapons.has(id):
+		if profile.gold < int(it["price"]):
+			return {"ok": false, "msg": "Pas assez d'or.", "look_changed": false}
+		profile.gold -= int(it["price"])
+		profile.weapons.append(id)
+	profile.weapon = id
+	profile.save()
+	return {"ok": true, "msg": "En main : %s" % wname, "look_changed": false}
 
 
 ## Chantier naval : on achète un bateau une fois, puis on le prend (ou le reprend) gratuitement. Le jeu change de
