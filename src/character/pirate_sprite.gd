@@ -15,6 +15,26 @@ static var palette_colors: Array[Color] = []
 static var palette_version := 0
 const PALETTE_MAX := 512
 
+## Ombrage « peint » : les feuilles de sprites sont en niveaux de gris (le ton d'ombre de chaque pixel), et la couleur d'une
+## pièce en est tirée ici : les ombres tirent vers le violet froid, les lumières vers le chaud (comme dans Eastward), au lieu
+## d'un simple assombrissement. La même formule est dans SHADE_SHADER et dans tools/art/pixel_build.py (aperçus).
+const SHADOW_TINT := Color(0.10, 0.06, 0.28)
+const LIGHT_TINT := Color(0.07, 0.045, 0.0)
+const SHADE_SHADER := """
+shader_type canvas_item;
+uniform vec3 tint;
+void fragment() {
+	vec4 tex = texture(TEXTURE, UV);
+	float t = tex.r;
+	float s = 1.0 - t;
+	vec3 c = tint * t * 1.12 * (1.0 - s * 0.35) + vec3(0.10, 0.06, 0.28) * s * 0.30
+			+ vec3(0.07, 0.045, 0.0) * max(0.0, t - 0.88) / 0.12;
+	COLOR = vec4(clamp(c, 0.0, 1.0), tex.a);
+}
+"""
+static var _shade_shader: Shader
+static var _shade_materials: Dictionary = {}   ## teinte -> ShaderMaterial
+
 var look: Dictionary = {}
 var anim := "idle"
 var direction := 0
@@ -124,6 +144,26 @@ static func texture_for(p_look: Dictionary, a: String) -> Texture2D:
 	return tex
 
 
+## La couleur d'un pixel de ton `t` (gris de la feuille, 0..1) pour une pièce de teinte `tint`.
+static func shade(tint: Color, t: float) -> Color:
+	var s := 1.0 - t
+	var c := Color(tint.r, tint.g, tint.b) * t * 1.12 * (1.0 - s * 0.35) + SHADOW_TINT * s * 0.30 			+ LIGHT_TINT * (maxf(0.0, t - 0.88) / 0.12)
+	return Color(clampf(c.r, 0.0, 1.0), clampf(c.g, 0.0, 1.0), clampf(c.b, 0.0, 1.0), 1.0)
+
+
+static func _shade_material(tint: Color) -> ShaderMaterial:
+	var key := tint.to_html(false)
+	if not _shade_materials.has(key):
+		if _shade_shader == null:
+			_shade_shader = Shader.new()
+			_shade_shader.code = SHADE_SHADER
+		var m := ShaderMaterial.new()
+		m.shader = _shade_shader
+		m.set_shader_parameter("tint", Vector3(tint.r, tint.g, tint.b))
+		_shade_materials[key] = m
+	return _shade_materials[key]
+
+
 ## Ajoute à la palette « pirates » les couleurs qu'un look produit : chaque teinte × chacun des tons de gris.
 static func register_colors(p_look: Dictionary) -> void:
 	var cat := PirateLook.catalog()
@@ -135,8 +175,7 @@ static func register_colors(p_look: Dictionary) -> void:
 			var spec: String = lay["color"]
 			var tint := Color.html(spec if spec.begins_with("#") else p_look["colors"][spec])
 			for t in tones:
-				var col := Color(roundf(float(t) * 255.0) / 255.0 * tint.r, roundf(float(t) * 255.0) / 255.0 * tint.g,
-						roundf(float(t) * 255.0) / 255.0 * tint.b)
+				var col := shade(tint, roundf(float(t) * 255.0) / 255.0)
 				col = Color.from_rgba8(col.r8, col.g8, col.b8)
 				if palette_colors.size() < PALETTE_MAX and not palette_colors.has(col):
 					palette_colors.append(col)
@@ -175,7 +214,7 @@ static func _compose(p_look: Dictionary, a: String) -> Texture2D:
 			var rect := TextureRect.new()
 			rect.texture = load(path)
 			rect.stretch_mode = TextureRect.STRETCH_KEEP
-			rect.modulate = Color.html(color_spec if color_spec.begins_with("#") else p_look["colors"][color_spec])
+			rect.material = _shade_material(Color.html(color_spec if color_spec.begins_with("#") else p_look["colors"][color_spec]))
 			vp.add_child(rect)
 	var tree := Engine.get_main_loop() as SceneTree
 	tree.root.add_child.call_deferred(vp)
@@ -195,7 +234,7 @@ static func _compose(p_look: Dictionary, a: String) -> Texture2D:
 ## droite selon la direction du pirate ; masquée quand les mains sont prises (tonneau, barre, échelle, saut).
 const COMPASS_W := 13
 const COMPASS_H := 10
-const COMPASS_HAND_Y := 21.0    ## px au-dessus des pieds
+const COMPASS_HAND_Y := 23.0    ## px au-dessus des pieds
 ## par direction (0 = vers la caméra, puis vers la droite de l'écran) : [décalage x en px, devant le corps ?]
 const COMPASS_SIDE := [[-9.0, true], [-8.0, true], [-3.0, true], [6.0, false], [9.0, false], [8.0, false], [3.0, false], [-6.0, true]]
 const COMPASS_ELEVATION := 40.0     ## degrés : inclinaison de la caméra

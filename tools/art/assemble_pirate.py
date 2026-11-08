@@ -13,13 +13,18 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
-ROOT = Path(__file__).resolve().parents[2]
+import os
+ROOT = Path(os.environ["PIRATE_ROOT"]).resolve() if os.environ.get("PIRATE_ROOT") else Path(__file__).resolve().parents[2]  # PIRATE_ROOT : essais hors du jeu
 RAW = Path(sys.argv[1]).resolve()
 manifest = json.loads((RAW / "manifest.json").read_text(encoding="utf-8"))
 FW, FH = manifest["frame"]
-THRESH = 0.4
-TONES = (0.62, 0.76, 0.88, 1.0)          # gris des quatre tons
-TONE_EDGES = (0.72, 0.84, 0.94)          # seuils entre les tons (valeurs brutes du rendu)
+THRESH = 0.33                            # couverture mini d'un pixel pour qu'il existe (plus bas : les détails fins survivent)
+TONES = (0.30, 0.56, 0.74, 0.88, 1.0)    # le 1er ton ne sert qu'au CONTOUR (la couleur de la pièce, très foncée) ; les 4 autres ombrent
+TONE_EDGES = (0.70, 0.83, 0.93)          # seuils entre les 4 tons d'ombrage (valeurs brutes du rendu)
+# Pièces entourées d'un fin contour (façon Eastward) : chacune se détache de ce qu'elle recouvre (barbe sur le visage,
+# cheveux sur le front, manteau sur le pantalon...). Pas les traits du visage ni les petits ornements.
+OUTLINE_CATS = {"head", "hands", "hair", "beard", "hat", "shirt", "coat", "belt", "pants", "boots"}
+OUTLINE_SLOTS = {"skin", "hair", "hat", "cloth", "boot", "belt"}
 
 # Couleur d'une couche : (catégorie, emplacement) -> canal de couleur du joueur, ou « #rrggbb » fixe.
 LAYER_COLORS = {
@@ -31,6 +36,7 @@ LAYER_COLORS = {
     "hands.skin": "skin", "head.skin": "skin", "nose.skin": "skin",
     "mark.patch": "#15101a", "mark.scar": "scar", "mark.frame": "#e6b84a",
     "eyes.white": "#f6f1e6", "eyes.iris": "eyes", "brows.hair": "hair", "mouth.mouth": "#6a1f2a",
+    "mouth.teeth": "#f6f1e6", "mouth.pipe": "#6b4423",
     "beard.hair": "hair", "mustache.hair": "hair", "hair.hair": "hair",
     "hat.hat": "hat", "hat.trim": "hat_trim",
 }
@@ -63,18 +69,20 @@ PART_LABELS = {  # catégorie -> (libellé, peut-être absente)
 VARIANT_LABELS = {
     "head": {"round": "Rond"},
     "hands": {"bare": "Nues"},
-    "nose": {"small": "Petit", "big": "Gros", "pointy": "Pointu"},
+    "nose": {"small": "Petit", "big": "Gros", "pointy": "Pointu", "round": "Rond", "flat": "Épaté"},
     "eyes": {"round": "Ronds", "narrow": "Fins", "angry": "Méchants", "wide": "Grands", "sleepy": "Endormis"},
     "brows": {"normal": "Normaux", "thick": "Épais", "angry": "Froncés", "raised": "Levés"},
-    "mouth": {"smile": "Sourire", "neutral": "Neutre", "grin": "Grand sourire", "frown": "Boudeuse"},
-    "mark": {"patch_l": "Cache-œil gauche", "patch_r": "Cache-œil droit", "scar": "Cicatrice", "monocle": "Monocle"},
+    "mouth": {"smile": "Sourire", "neutral": "Neutre", "grin": "Grand sourire", "frown": "Boudeuse", "open": "Qui crie", "pipe": "Pipe"},
+    "mark": {"patch_l": "Cache-œil gauche", "patch_r": "Cache-œil droit", "scar": "Cicatrice", "monocle": "Monocle", "earrings": "Boucles d'oreille"},
     "hair": {"short": "Courts", "buzz": "Ras", "long": "Longs", "ponytail": "Queue de cheval", "bun": "Chignon",
-             "mohawk": "Crête", "afro": "Afro", "pigtails": "Couettes"},
+             "mohawk": "Crête", "afro": "Afro", "pigtails": "Couettes", "pompadour": "Banane", "dreads": "Dreadlocks",
+             "bob": "Carré", "curly": "Bouclés"},
     "beard": {"stubble": "Barbe de trois jours", "goatee": "Bouc", "full": "Barbe pleine", "long": "Longue barbe",
-              "braid": "Barbe tressée", "chinstrap": "Favoris"},
-    "mustache": {"thin": "Fine", "handlebar": "Guidon", "walrus": "Morse"},
+              "braid": "Barbe tressée", "chinstrap": "Favoris", "twin": "Deux nattes", "forked": "Barbe fourchue",
+              "chops": "Pattes", "bushy": "Broussaille"},
+    "mustache": {"thin": "Fine", "handlebar": "Guidon", "walrus": "Morse", "chevron": "Chevron"},
     "hat": {"tricorn": "Tricorne", "bicorn": "Bicorne", "bandana": "Bandana", "straw": "Chapeau de paille",
-            "cap": "Calot"},
+            "cap": "Calot", "tophat": "Haut-de-forme", "turban": "Turban", "headband": "Bandeau"},
     "shirt": {"bare": "Torse nu", "tee": "T-shirt", "pirate": "Chemise de pirate", "striped": "Marinière"},
     "coat": {"vest": "Gilet", "jacket": "Veste", "captain": "Manteau de capitaine"},
     "belt": {"belt": "Ceinture", "sash": "Écharpe", "baldric": "Baudrier"},
@@ -92,7 +100,7 @@ DEFAULT_LOOK = {
 }
 
 
-def reduce(path: Path) -> np.ndarray:
+def reduce(path: Path, outline: bool = False) -> np.ndarray:
     """Image 4x -> image finale 48x64 (moyenne pondérée par l'alpha, alpha en tout-ou-rien)."""
     im = np.asarray(Image.open(path).convert("RGBA"), dtype=np.float64) / 255.0
     ss = im.shape[1] // FW
@@ -105,10 +113,20 @@ def reduce(path: Path) -> np.ndarray:
     # Teintes de gris en 4 paliers : un aplat par ton, comme du pixel art, et peu de couleurs distinctes
     # (le filtre « palette » du jeu laisse intactes les couleurs exactes des pirates, voir pixel_look.gdshader).
     v = rgb.mean(axis=-1)
-    tone = np.where(v < TONE_EDGES[0], TONES[0], np.where(v < TONE_EDGES[1], TONES[1],
-                    np.where(v < TONE_EDGES[2], TONES[2], TONES[3])))
+    tone = np.where(v < TONE_EDGES[0], TONES[1], np.where(v < TONE_EDGES[1], TONES[2],
+                    np.where(v < TONE_EDGES[2], TONES[3], TONES[4])))
     out[..., :3] = np.clip(tone[..., None] * 255.0 + 0.5, 0, 255).astype(np.uint8)
-    out[..., 3] = np.where(aa[..., 0] >= THRESH, 255, 0)
+    solid = aa[..., 0] >= THRESH
+    out[..., 3] = np.where(solid, 255, 0)
+    if outline:
+        grown = solid.copy()
+        grown[1:, :] |= solid[:-1, :]
+        grown[:-1, :] |= solid[1:, :]
+        grown[:, 1:] |= solid[:, :-1]
+        grown[:, :-1] |= solid[:, 1:]
+        ring = grown & ~solid
+        out[ring, :3] = int(TONES[0] * 255.0 + 0.5)
+        out[ring, 3] = 255
     return out
 
 
@@ -129,7 +147,8 @@ def build():
             sheet = np.zeros((8 * FH, nf * FW, 4), np.uint8)
             for p in layer_dir.glob("f*_d*.png"):
                 f, d = p.stem[1:].split("_d")
-                img = reduce(p)
+                info = manifest["layers"][lid]
+                img = reduce(p, info["category"] in OUTLINE_CATS and info["slot"] in OUTLINE_SLOTS)
                 sheet[int(d) * FH:(int(d) + 1) * FH, int(f) * FW:(int(f) + 1) * FW] = img
             if sheet[..., 3].max() == 0:
                 continue
@@ -240,4 +259,5 @@ def gallery(anim="walk"):
 
 
 if "--gallery" in sys.argv:
-    gallery()
+    _anims = [d.name for d in (RAW / "raw").iterdir()]
+    gallery("idle" if "idle" in _anims else _anims[0])

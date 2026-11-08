@@ -14,6 +14,12 @@ const CHANNEL_ORDER := ["skin", "hair", "eyes", "scar", "hat", "hat_trim", "shir
 var look: Dictionary
 var _preview: Sprite2D
 var _stage: Control
+## Les pièces du visage : en les changeant, l'aperçu se met de face et zoome sur la tête (à 48x64 pixels, le détail est petit).
+const FACE_PARTS := ["hair", "beard", "mustache", "eyes", "brows", "nose", "mouth", "mark", "hat"]
+const HEAD_FROM_FEET := 46.0     ## px : hauteur du centre de la tête au-dessus des pieds, dans une image du pirate
+
+var _zoom_head := false
+var _zoom_button: Button
 var _anim := "walk"
 var _spin := true
 var _dir := 0
@@ -55,9 +61,18 @@ func _process(delta: float) -> void:
 	var tex: Texture2D = _textures.get(_anim)
 	if tex == null:
 		return
-	var px := clampi(int(_stage.size.y / 90.0), 3, 9)
-	_preview.scale = Vector2(px, px)
-	_preview.position = Vector2(_stage.size.x * 0.5, _stage.size.y * 0.5 + 8.0 * px)
+	var px := clampi(int(_stage.size.y / 72.0), 3, 9)
+	if _zoom_head:
+		# gros plan : la tête au centre, deux fois plus grosse
+		var feet: Array = PirateLook.catalog().get("feet", [24, 58])
+		var frame: Array = PirateLook.catalog().get("frame", [48, 64])
+		var head_row := float(feet[1]) - HEAD_FROM_FEET
+		var zoom := px * 2.0
+		_preview.scale = Vector2(zoom, zoom)
+		_preview.position = Vector2(_stage.size.x * 0.5, _stage.size.y * 0.5 + (float(frame[1]) * 0.5 - head_row) * zoom)
+	else:
+		_preview.scale = Vector2(px, px)
+		_preview.position = Vector2(_stage.size.x * 0.5, _stage.size.y * 0.5 + 8.0 * px)
 	var frames: int = int(PirateLook.catalog()["anims"][_anim])
 	_preview.texture = tex
 	_preview.hframes = frames
@@ -99,6 +114,12 @@ func _build_preview_side() -> Control:
 	spin.text = "Tourne tout seul"
 	spin.pressed.connect(func() -> void: _spin = true)
 	row.add_child(spin)
+	var zoom_button := Button.new()
+	zoom_button.text = "Gros plan"
+	zoom_button.toggle_mode = true
+	zoom_button.toggled.connect(func(on: bool) -> void: _zoom_head = on)
+	row.add_child(zoom_button)
+	_zoom_button = zoom_button
 	var anims := HBoxContainer.new()
 	box.add_child(anims)
 	for entry in [["Repos", "idle"], ["Marche", "walk"], ["Porte un boulet", "carry_walk"], ["À la barre", "helm"]]:
@@ -209,6 +230,15 @@ func _step(category: String, delta: int) -> void:
 	var options := PirateLook.variants(category)
 	var i := options.find(look["parts"][category])
 	look["parts"][category] = options[posmod(i + delta, options.size())]
+	# un changement du visage : l'aperçu se met de face, immobile, en gros plan ; un vêtement : retour au corps entier
+	var face := category in FACE_PARTS
+	_zoom_head = face
+	if face:
+		_spin = false
+		_dir = 0
+		_anim = "idle"
+	if _zoom_button != null:
+		_zoom_button.set_pressed_no_signal(face)
 	_refresh()
 
 

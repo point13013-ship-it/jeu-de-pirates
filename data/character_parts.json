@@ -1,11 +1,11 @@
 {
  "frame": [
-  48,
-  64
+  64,
+  72
  ],
  "feet": [
-  24,
-  54
+  32,
+  68
  ],
  "directions": 8,
  "anims": {
@@ -36,22 +36,6 @@
   "hat"
  ],
  "parts": {
-  "hands": {
-   "label": "Mains",
-   "optional": false,
-   "variants": [
-    "bare"
-   ],
-   "layers": {
-    "bare": [
-     {
-      "id": "hands-bare.skin",
-      "slot": "skin",
-      "color": "skin"
-     }
-    ]
-   }
-  },
   "head": {
    "label": "Visage",
    "optional": false,
@@ -62,38 +46,6 @@
     "round": [
      {
       "id": "head-round.skin",
-      "slot": "skin",
-      "color": "skin"
-     }
-    ]
-   }
-  },
-  "nose": {
-   "label": "Nez",
-   "optional": false,
-   "variants": [
-    "small",
-    "big",
-    "pointy"
-   ],
-   "layers": {
-    "small": [
-     {
-      "id": "nose-small.skin",
-      "slot": "skin",
-      "color": "skin"
-     }
-    ],
-    "big": [
-     {
-      "id": "nose-big.skin",
-      "slot": "skin",
-      "color": "skin"
-     }
-    ],
-    "pointy": [
-     {
-      "id": "nose-pointy.skin",
       "slot": "skin",
       "color": "skin"
      }
@@ -161,11 +113,6 @@
     ],
     "sleepy": [
      {
-      "id": "eyes-sleepy.white",
-      "slot": "white",
-      "color": "#f6f1e6"
-     },
-     {
       "id": "eyes-sleepy.iris",
       "slot": "iris",
       "color": "eyes"
@@ -213,6 +160,54 @@
     ]
    }
   },
+  "nose": {
+   "label": "Nez",
+   "optional": false,
+   "variants": [
+    "small",
+    "big",
+    "pointy",
+    "round",
+    "flat"
+   ],
+   "layers": {
+    "small": [
+     {
+      "id": "nose-small.skin",
+      "slot": "skin",
+      "color": "skin"
+     }
+    ],
+    "big": [
+     {
+      "id": "nose-big.skin",
+      "slot": "skin",
+      "color": "skin"
+     }
+    ],
+    "pointy": [
+     {
+      "id": "nose-pointy.skin",
+      "slot": "skin",
+      "color": "skin"
+     }
+    ],
+    "round": [
+     {
+      "id": "nose-round.skin",
+      "slot": "skin",
+      "color": "skin"
+     }
+    ],
+    "flat": [
+     {
+      "id": "nose-flat.skin",
+      "slot": "skin",
+      "color": "skin"
+     }
+    ]
+   }
+  },
   "mouth": {
    "label": "Bouche",
    "optional": false,
@@ -220,7 +215,9 @@
     "smile",
     "neutral",
     "grin",
-    "frown"
+    "frown",
+    "open",
+    "pipe"
    ],
    "layers": {
     "smile": [
@@ -242,6 +239,11 @@
       "id": "mouth-grin.mouth",
       "slot": "mouth",
       "color": "#6a1f2a"
+     },
+     {
+      "id": "mouth-grin.teeth",
+      "slot": "teeth",
+      "color": "#f6f1e6"
      }
     ],
     "frown": [
@@ -249,6 +251,30 @@
       "id": "mouth-frown.mouth",
       "slot": "mouth",
       "color": "#6a1f2a"
+     }
+    ],
+    "open": [
+     {
+      "id": "mouth-open.mouth",
+      "slot": "mouth",
+      "color": "#6a1f2a"
+     },
+     {
+      "id": "mouth-open.teeth",
+      "slot": "teeth",
+      "color": "#f6f1e6"
+     }
+    ],
+    "pipe": [
+     {
+      "id": "mouth-pipe.mouth",
+      "slot": "mouth",
+      "color": "#6a1f2a"
+     },
+     {
+      "id": "mouth-pipe.pipe",
+      "slot": "pipe",
+      "color": "#6b4423"
      }
     ]
    }
@@ -260,7 +286,8 @@
     "patch_l",
     "patch_r",
     "scar",
-    "monocle"
+    "monocle",
+    "earrings"
    ],
    "layers": {
     "patch_l": [
@@ -290,6 +317,13 @@
       "slot": "frame",
       "color": "#e6b84a"
      }
+    ],
+    "earrings": [
+     {
+      "id": "mark-earrings.frame",
+      "slot": "frame",
+      "color": "#e6b84a"
+     }
     ]
    }
   },
@@ -304,7 +338,11 @@
     "bun",
     "mohawk",
     "afro",
-    "pigtails"
+    "pigtails",
+    "pompadour",
+    "dreads",
+    "bob",
+    "curly"
    ],
    "layers": {
     "short": [
@@ -362,6 +400,34 @@
       "slot": "hair",
       "color": "hair"
      }
+    ],
+    "pompadour": [
+     {
+      "id": "hair-pompadour.hair",
+      "slot": "hair",
+      "color": "hair"
+     }
+    ],
+    "dreads": [
+     {
+      "id": "hair-dreads.hair",
+      "slot": "hair",
+      "color": "hair"
+     }
+    ],
+    "bob": [
+     {
+      "id": "hair-bob.hair",
+      "slot": "hair",
+      "color": "hair"
+     }
+    ],
+    "curly": [
+     {
+      "id": "hair-curly.hair",
+      "slot": "hair",
+      "color": "hair"
+     }
     ]
    }
   },
@@ -374,7 +440,11 @@
     "full",
     "long",
     "braid",
-    "chinstrap"
+    "twin",
+    "forked",
+    "chinstrap",
+    "chops",
+    "bushy"
    ],
    "layers": {
     "stubble": [
@@ -412,9 +482,37 @@
       "color": "hair"
      }
     ],
+    "twin": [
+     {
+      "id": "beard-twin.hair",
+      "slot": "hair",
+      "color": "hair"
+     }
+    ],
+    "forked": [
+     {
+      "id": "beard-forked.hair",
+      "slot": "hair",
+      "color": "hair"
+     }
+    ],
     "chinstrap": [
      {
       "id": "beard-chinstrap.hair",
+      "slot": "hair",
+      "color": "hair"
+     }
+    ],
+    "chops": [
+     {
+      "id": "beard-chops.hair",
+      "slot": "hair",
+      "color": "hair"
+     }
+    ],
+    "bushy": [
+     {
+      "id": "beard-bushy.hair",
       "slot": "hair",
       "color": "hair"
      }
@@ -427,7 +525,8 @@
    "variants": [
     "thin",
     "handlebar",
-    "walrus"
+    "walrus",
+    "chevron"
    ],
    "layers": {
     "thin": [
@@ -450,6 +549,13 @@
       "slot": "hair",
       "color": "hair"
      }
+    ],
+    "chevron": [
+     {
+      "id": "mustache-chevron.hair",
+      "slot": "hair",
+      "color": "hair"
+     }
     ]
    }
   },
@@ -461,7 +567,10 @@
     "bicorn",
     "bandana",
     "straw",
-    "cap"
+    "cap",
+    "plume",
+    "turban",
+    "headband"
    ],
    "layers": {
     "tricorn": [
@@ -517,6 +626,140 @@
       "id": "hat-cap.trim",
       "slot": "trim",
       "color": "hat_trim"
+     }
+    ],
+    "plume": [
+     {
+      "id": "hat-plume.hat",
+      "slot": "hat",
+      "color": "hat"
+     },
+     {
+      "id": "hat-plume.trim",
+      "slot": "trim",
+      "color": "hat_trim"
+     }
+    ],
+    "turban": [
+     {
+      "id": "hat-turban.hat",
+      "slot": "hat",
+      "color": "hat"
+     },
+     {
+      "id": "hat-turban.trim",
+      "slot": "trim",
+      "color": "hat_trim"
+     }
+    ],
+    "headband": [
+     {
+      "id": "hat-headband.hat",
+      "slot": "hat",
+      "color": "hat"
+     }
+    ]
+   }
+  },
+  "hands": {
+   "label": "Mains",
+   "optional": false,
+   "variants": [
+    "bare"
+   ],
+   "layers": {
+    "bare": [
+     {
+      "id": "hands-bare.skin",
+      "slot": "skin",
+      "color": "skin"
+     }
+    ]
+   }
+  },
+  "pants": {
+   "label": "Pantalon",
+   "optional": false,
+   "variants": [
+    "long",
+    "shorts",
+    "rolled"
+   ],
+   "layers": {
+    "long": [
+     {
+      "id": "pants-long.cloth",
+      "slot": "cloth",
+      "color": "pants"
+     }
+    ],
+    "shorts": [
+     {
+      "id": "pants-shorts.cloth",
+      "slot": "cloth",
+      "color": "pants"
+     },
+     {
+      "id": "pants-shorts.skin",
+      "slot": "skin",
+      "color": "skin"
+     }
+    ],
+    "rolled": [
+     {
+      "id": "pants-rolled.cloth",
+      "slot": "cloth",
+      "color": "pants"
+     },
+     {
+      "id": "pants-rolled.skin",
+      "slot": "skin",
+      "color": "skin"
+     }
+    ]
+   }
+  },
+  "boots": {
+   "label": "Chaussures",
+   "optional": false,
+   "variants": [
+    "high",
+    "shoes",
+    "barefoot",
+    "sandals"
+   ],
+   "layers": {
+    "high": [
+     {
+      "id": "boots-high.boot",
+      "slot": "boot",
+      "color": "boots"
+     }
+    ],
+    "shoes": [
+     {
+      "id": "boots-shoes.boot",
+      "slot": "boot",
+      "color": "boots"
+     }
+    ],
+    "barefoot": [
+     {
+      "id": "boots-barefoot.skin",
+      "slot": "skin",
+      "color": "skin"
+     }
+    ],
+    "sandals": [
+     {
+      "id": "boots-sandals.boot",
+      "slot": "boot",
+      "color": "boots"
+     },
+     {
+      "id": "boots-sandals.skin",
+      "slot": "skin",
+      "color": "skin"
      }
     ]
    }
@@ -664,93 +907,6 @@
      }
     ]
    }
-  },
-  "pants": {
-   "label": "Pantalon",
-   "optional": false,
-   "variants": [
-    "long",
-    "shorts",
-    "rolled"
-   ],
-   "layers": {
-    "long": [
-     {
-      "id": "pants-long.cloth",
-      "slot": "cloth",
-      "color": "pants"
-     }
-    ],
-    "shorts": [
-     {
-      "id": "pants-shorts.cloth",
-      "slot": "cloth",
-      "color": "pants"
-     },
-     {
-      "id": "pants-shorts.skin",
-      "slot": "skin",
-      "color": "skin"
-     }
-    ],
-    "rolled": [
-     {
-      "id": "pants-rolled.cloth",
-      "slot": "cloth",
-      "color": "pants"
-     },
-     {
-      "id": "pants-rolled.skin",
-      "slot": "skin",
-      "color": "skin"
-     }
-    ]
-   }
-  },
-  "boots": {
-   "label": "Chaussures",
-   "optional": false,
-   "variants": [
-    "high",
-    "shoes",
-    "barefoot",
-    "sandals"
-   ],
-   "layers": {
-    "high": [
-     {
-      "id": "boots-high.boot",
-      "slot": "boot",
-      "color": "boots"
-     }
-    ],
-    "shoes": [
-     {
-      "id": "boots-shoes.boot",
-      "slot": "boot",
-      "color": "boots"
-     }
-    ],
-    "barefoot": [
-     {
-      "id": "boots-barefoot.skin",
-      "slot": "skin",
-      "color": "skin"
-     }
-    ],
-    "sandals": [
-     {
-      "id": "boots-sandals.boot",
-      "slot": "boot",
-      "color": "boots"
-     },
-     {
-      "id": "boots-sandals.skin",
-      "slot": "skin",
-      "color": "skin"
-     }
-    ]
-   }
   }
  },
  "channels": {
@@ -763,8 +919,7 @@
     "#bf8458",
     "#946039",
     "#6b4128",
-    "#4a2c1c",
-    "#e8c0d0"
+    "#4a2c1c"
    ]
   },
   "hair": {
@@ -772,16 +927,13 @@
    "palette": [
     "#1b1410",
     "#3a2416",
-    "#6b4423",
-    "#a8692f",
-    "#d8a64a",
-    "#e8d9a8",
-    "#a8281f",
-    "#d6d6d6",
-    "#2d4d8f",
-    "#2f7a4a",
-    "#8a4fa8",
-    "#e86aa0"
+    "#5a3a22",
+    "#8a5a2e",
+    "#b8823c",
+    "#d8b86a",
+    "#e8e0c8",
+    "#a8402a",
+    "#8a8a90"
    ]
   },
   "eyes": {
@@ -875,13 +1027,14 @@
   "hat": {
    "label": "Chapeau",
    "palette": [
+    "#33261c",
     "#2a2a33",
     "#7a1f2a",
     "#223a66",
-    "#d8b45a",
-    "#d94a3b",
-    "#f2ead8",
-    "#2f5a3a"
+    "#a8803a",
+    "#8a3a2a",
+    "#2f5a3a",
+    "#5a4a3a"
    ]
   },
   "hat_trim": {
@@ -907,8 +1060,10 @@
   }
  },
  "tones": [
-  0.62,
-  0.76,
+  0.3,
+  0.46,
+  0.6,
+  0.74,
   0.88,
   1.0
  ],
@@ -922,7 +1077,9 @@
   "nose": {
    "small": "Petit",
    "big": "Gros",
-   "pointy": "Pointu"
+   "pointy": "Pointu",
+   "round": "Rond",
+   "flat": "Épaté"
   },
   "eyes": {
    "round": "Ronds",
@@ -941,13 +1098,16 @@
    "smile": "Sourire",
    "neutral": "Neutre",
    "grin": "Grand sourire",
-   "frown": "Boudeuse"
+   "frown": "Boudeuse",
+   "open": "Qui crie",
+   "pipe": "Pipe"
   },
   "mark": {
    "patch_l": "Cache-œil gauche",
    "patch_r": "Cache-œil droit",
    "scar": "Cicatrice",
-   "monocle": "Monocle"
+   "monocle": "Monocle",
+   "earrings": "Boucles d'oreille"
   },
   "hair": {
    "short": "Courts",
@@ -957,7 +1117,11 @@
    "bun": "Chignon",
    "mohawk": "Crête",
    "afro": "Afro",
-   "pigtails": "Couettes"
+   "pigtails": "Couettes",
+   "pompadour": "Banane",
+   "dreads": "Dreadlocks",
+   "bob": "Carré",
+   "curly": "Bouclés"
   },
   "beard": {
    "stubble": "Barbe de trois jours",
@@ -965,19 +1129,27 @@
    "full": "Barbe pleine",
    "long": "Longue barbe",
    "braid": "Barbe tressée",
-   "chinstrap": "Favoris"
+   "chinstrap": "Favoris",
+   "twin": "Deux nattes",
+   "forked": "Barbe fourchue",
+   "chops": "Pattes",
+   "bushy": "Broussaille"
   },
   "mustache": {
    "thin": "Fine",
    "handlebar": "Guidon",
-   "walrus": "Morse"
+   "walrus": "Morse",
+   "chevron": "Chevron"
   },
   "hat": {
    "tricorn": "Tricorne",
    "bicorn": "Bicorne",
    "bandana": "Bandana",
    "straw": "Chapeau de paille",
-   "cap": "Calot"
+   "cap": "Calot",
+   "plume": "Chapeau à plume",
+   "turban": "Turban",
+   "headband": "Bandeau"
   },
   "shirt": {
    "bare": "Torse nu",
@@ -1037,9 +1209,9 @@
    "coat_trim": "#e6b84a",
    "pants": "#3a3a46",
    "boots": "#2e1d14",
-   "hat": "#2a2a33",
+   "hat": "#33261c",
    "hat_trim": "#e6b84a",
-   "belt": "#d94a3b"
+   "belt": "#8a3a2a"
   }
  }
 }

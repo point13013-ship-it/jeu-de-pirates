@@ -37,11 +37,11 @@ while _i < len(ARGV):
     else:
         _i += 1
 SS = int(OPT.get("scale", 4))
-FINAL_W, FINAL_H = 72, 96        # taille d'une image dans le jeu (1,5 x l'ancienne : 36 pixels par mètre à l'écran)
-PPM = 39.0                       # pixels par mètre dans l'image finale
+FINAL_W, FINAL_H = 48, 64        # taille d une image dans le jeu (le pirate fait ~54 px à l écran : ne pas l agrandir)
+PPM = 24.0                       # pixels par mètre dans l image finale (23,5 et non 26 : la tête est agrandie, le haut du crâne reste à la même hauteur qu avant)
 ELEVATION = 30.0                 # inclinaison de la caméra
-FEET_ROW = 81                    # ligne des pieds dans l'image finale (origine du personnage)
-FEET_COL = 36
+FEET_ROW = 58                    # ligne des pieds dans l image finale (origine du personnage)
+FEET_COL = 24
 
 ANIMS = {  # nom -> (nombre d'images, boucle)
     "idle": 4, "walk": 8, "carry_idle": 4, "carry_walk": 8, "helm": 1, "climb": 4, "jump": 3,
@@ -112,6 +112,16 @@ for _n in ["root", "hips", "chest", "neck", "shL", "shR", "elL", "elR", "hipL", 
         _e.location = Vector(_pos)
     PIVOTS[_n] = _e
 
+# Tête plus grosse (proportions de pixel art : le visage doit se lire en ~13 pixels) : tout ce qui est accroché au cou
+# (crâne, visage, cheveux, barbes, chapeaux) grandit autour du cou. Le corps reste à la même taille.
+HEAD_K = float(OPT.get("head", 1.58))     # taille finale de la tête par rapport au modèle de base
+BODY_K = float(OPT.get("body", 0.86))     # torse et bras
+LEG_K = float(OPT.get("legs", 0.76))      # jambes : courtes (silhouette ramassée, tête très lisible)
+PIVOTS["hips"].scale = (LEG_K, LEG_K, LEG_K)
+PIVOTS["chest"].scale = (BODY_K / LEG_K,) * 3
+PIVOTS["neck"].scale = (HEAD_K / BODY_K,) * 3
+PIVOTS["neck"].location.z += 0.09     # la tête monte : de face, le visage est vu plus bas qu'il n'est (caméra à 30°) et le col des manteaux lui mangeait la bouche
+
 
 class Mesh:
     """Assemble plusieurs primitives en un seul objet."""
@@ -121,8 +131,19 @@ class Mesh:
         self.col = self.bm.loops.layers.color.new("Col")
 
     def add(self, kind, size, loc=(0, 0, 0), rot=(0, 0, 0), tone=1.0, smooth=False, seg=10,
-            taper=1.0, clip=None, caps=True):
+            taper=1.0, clip=None, caps=True, on_head=None):
         bm = self.bm
+        if on_head is not None:
+            # Posé SUR le crâne (ellipsoïde 0.40 x 0.38 x 0.40 centré en z=1.68) à la hauteur et à la largeur données,
+            # à `on_head` mètres de sa surface, tourné pour épouser la courbure : rien ne dépasse de la silhouette de
+            # la tête, donc rien ne se voit « à travers » quand on regarde de dos ou de biais.
+            x, z = loc[0], loc[2]
+            q = max(0.0, 1.0 - (x / 0.2) ** 2 - ((z - 1.68) / 0.2) ** 2)
+            r = 0.19 * math.sqrt(q)
+            yaw = math.degrees(math.atan2(x / 0.04, r / 0.0361 + 1e-6)) if q > 0 else 70.0
+            loc = (x, -(r + on_head), z)
+            rot = (rot[0], rot[1], rot[2] + yaw)
+        before = set(bm.faces)
         if kind == "box":
             res = bmesh.ops.create_cube(bm, size=1.0)
         elif kind == "sphere":
@@ -133,12 +154,18 @@ class Mesh:
         else:
             raise ValueError(kind)
         verts = res["verts"]
+        rounded = kind == "box" and min(size) >= 0.10
         m = Matrix.Translation(Vector(loc)) @ Euler([math.radians(a) for a in rot], "XYZ").to_matrix().to_4x4() \
             @ Matrix.Diagonal(Vector((size[0], size[1], size[2], 1.0)))
         bmesh.ops.transform(bm, matrix=m, verts=verts)
-        faces = {f for v in verts for f in v.link_faces}
+        if rounded:
+            edges = list({e for v in verts for e in v.link_edges})
+            bmesh.ops.bevel(bm, geom=edges, offset=min(0.045, min(size) * 0.32), segments=2, profile=0.62,
+                            affect="EDGES")
+        faces = [f for f in bm.faces if f not in before]
+        verts = list({v for f in faces for v in f.verts})
         for f in faces:
-            f.smooth = smooth
+            f.smooth = smooth or rounded
             for lp in f.loops:
                 lp[self.col] = (tone, tone, tone, 1.0)
         if clip is not None:
@@ -232,58 +259,88 @@ def build_body_skin():
 
 
 def build_face():
+    # Tout est volontairement GROS : à 48x64 pixels, un détail de moins de ~1,3 pixel (5 cm) disparaît à la réduction.
     # yeux : blanc fixe + iris teinté ; 5 formes
     shapes = {
-        "round": dict(w=0.085, h=0.085, tilt=0, brow=(0.09, 0.02, 0.0)),
-        "narrow": dict(w=0.095, h=0.045, tilt=0, brow=(0.09, 0.02, 0.0)),
-        "angry": dict(w=0.085, h=0.06, tilt=-14, brow=(0.10, 0.03, -20)),
-        "wide": dict(w=0.10, h=0.10, tilt=0, brow=(0.09, 0.03, 8)),
-        "sleepy": dict(w=0.09, h=0.05, tilt=6, brow=(0.09, 0.0, 10)),
+        "round": dict(w=0.095, h=0.095, tilt=0, ix=0.60, iy=0.90),
+        "narrow": dict(w=0.115, h=0.055, tilt=0, ix=0.50, iy=1.0),
+        "angry": dict(w=0.100, h=0.070, tilt=-18, ix=0.58, iy=1.0),
+        "wide": dict(w=0.108, h=0.120, tilt=0, ix=0.55, iy=0.82),
+        "sleepy": dict(w=0.108, h=0.055, tilt=8, ix=0.66, iy=0.9),
     }
     for name, s in shapes.items():
         mw = Mesh()
         mi = Mesh()
-        for sx, sgn in ((0.095, 1), (-0.095, -1)):
-            mw.add("box", (s["w"], 0.03, s["h"]), (sx, -0.172, 1.70), (0, s["tilt"] * sgn, 0), tone=1.0)
-            mi.add("box", (s["w"] * 0.6, 0.032, s["h"] * 0.9), (sx - 0.005 * sgn, -0.178, 1.70),
-                   (0, s["tilt"] * sgn, 0), tone=0.9)
+        for sx, sgn in ((0.100, 1), (-0.100, -1)):
+            mw.add("box", (s["w"] * 0.80, 0.016, s["h"] * 0.95), (sx, 0, 1.705), (0, s["tilt"] * sgn, 0), tone=1.0, on_head=0.005)
+            # l'iris regarde un peu vers le centre
+            mi.add("box", (s["w"] * 0.80 * s["ix"], 0.016, s["h"] * 0.95 * s["iy"]), (sx - 0.012 * sgn, 0, 1.705),
+                   (0, s["tilt"] * sgn, 0), tone=0.9, on_head=0.011)
         add_part("eyes", name, "white", "neck", mw, hold=["head"])
         add_part("eyes", name, "iris", "neck", mi, hold=["head"])
-    # sourcils : 4 formes, teinte des cheveux
-    for name, (w, th, ang) in {"normal": (0.10, 0.025, 0), "thick": (0.11, 0.045, 0), "angry": (0.11, 0.04, -22),
-                               "raised": (0.10, 0.03, 12)}.items():
+    # sourcils : épais et nets, teinte des cheveux
+    for name, (w, th, ang, z) in {"normal": (0.13, 0.055, 0, 1.790), "thick": (0.145, 0.085, 0, 1.795),
+                                  "angry": (0.135, 0.065, -26, 1.785), "raised": (0.125, 0.055, 16, 1.815)}.items():
         m = Mesh()
-        for sx, sgn in ((0.095, 1), (-0.095, -1)):
-            m.add("box", (w, 0.03, th), (sx, -0.176, 1.77), (0, ang * sgn, 0), tone=0.9)
+        for sx, sgn in ((0.100, 1), (-0.100, -1)):
+            m.add("box", (w, 0.02, th), (sx, 0, z), (0, ang * sgn, 0), tone=0.9, on_head=0.010)
         add_part("brows", name, "hair", "neck", m, hold=["head"])
-    # bouche
+    # nez : de vrais reliefs (les noms de chaque forme se voient de face ET de profil)
+    for name, (w, h, d, dz) in {"small": (0.085, 0.09, 0.09, 0.0), "big": (0.135, 0.17, 0.15, 0.0),
+                                "pointy": (0.075, 0.13, 0.19, 0.0), "round": (0.13, 0.13, 0.13, 0.0),
+                                "flat": (0.15, 0.075, 0.07, 0.0)}.items():
+        m = Mesh().add("sphere", (w, d, h), (0, -0.185 + d * 0.12, 1.655 + dz), smooth=True, seg=8)
+        m.add("sphere", (w * 0.9, d * 0.95, h * 0.38), (0, -0.185 + d * 0.12 + 0.01, 1.655 + dz - h * 0.36), smooth=True, seg=8, tone=0.5)
+        add_part("nose", name, "skin", "neck", m, hold=["head"])
+    # bouche : rouge sombre, avec les dents en blanc pour le grand sourire
     mouths = {
-        "smile": [("box", (0.09, 0.02, 0.018), (0, -0.182, 1.585), (0, 0, 0)),
-                  ("box", (0.02, 0.02, 0.02), (0.05, -0.18, 1.6), (0, 0, 0)),
-                  ("box", (0.02, 0.02, 0.02), (-0.05, -0.18, 1.6), (0, 0, 0))],
-        "neutral": [("box", (0.08, 0.02, 0.016), (0, -0.182, 1.585), (0, 0, 0))],
-        "grin": [("box", (0.12, 0.02, 0.04), (0, -0.182, 1.59), (0, 0, 0))],
-        "frown": [("box", (0.08, 0.02, 0.016), (0, -0.182, 1.585), (0, 0, 0)),
-                  ("box", (0.02, 0.02, 0.02), (0.05, -0.18, 1.57), (0, 0, 0)),
-                  ("box", (0.02, 0.02, 0.02), (-0.05, -0.18, 1.57), (0, 0, 0))],
+        "smile": [("box", (0.11, 0.03, 0.03), (0, 0, 1.553), (0, 0, 0)),
+                  ("box", (0.035, 0.03, 0.04), (0.065, 0, 1.575), (0, 0, 0)),
+                  ("box", (0.035, 0.03, 0.04), (-0.065, 0, 1.575), (0, 0, 0))],
+        "neutral": [("box", (0.10, 0.03, 0.03), (0, 0, 1.553), (0, 0, 0))],
+        "grin": [("box", (0.17, 0.03, 0.075), (0, 0, 1.563), (0, 0, 0))],
+        "frown": [("box", (0.10, 0.03, 0.03), (0, 0, 1.558), (0, 0, 0)),
+                  ("box", (0.035, 0.03, 0.04), (0.065, 0, 1.533), (0, 0, 0)),
+                  ("box", (0.035, 0.03, 0.04), (-0.065, 0, 1.533), (0, 0, 0))],
+        "open": [("box", (0.105, 0.03, 0.105), (0, 0, 1.543), (0, 0, 0))],
+        "pipe": [("box", (0.10, 0.03, 0.03), (0, 0, 1.553), (0, 0, 0))],
     }
     for name, prims in mouths.items():
         m = Mesh()
         for k, sz, loc, rot in prims:
-            m.add(k, sz, loc, rot)
+            m.add(k, sz, loc, rot, on_head=0.004)
         add_part("mouth", name, "mouth", "neck", m, hold=["head"])
-    # signes particuliers : cache-œil (gauche/droit), cicatrice, monocle
-    for name, sx in (("patch_l", 0.095), ("patch_r", -0.095)):
+    # dents (grand sourire) : une bande blanche sur le haut de la bouche
+    m = Mesh().add("box", (0.14, 0.034, 0.03), (0, 0, 1.583), (0, 0, 0), on_head=0.024)
+    add_part("mouth", "grin", "teeth", "neck", m, hold=["head"])
+    m = Mesh().add("box", (0.075, 0.034, 0.03), (0, 0, 1.573), (0, 0, 0), on_head=0.024)
+    add_part("mouth", "open", "teeth", "neck", m, hold=["head"])
+    # pipe : tuyau qui part de la bouche vers l'avant-côté, fourneau au bout
+    m = Mesh()
+    m.add("box", (0.045, 0.19, 0.045), (-0.085, -0.28, 1.563), (0, 0, 28))
+    m.add("cyl", (0.095, 0.095, 0.13), (-0.135, -0.37, 1.608), (0, 0, 0), seg=8)
+    add_part("mouth", "pipe", "pipe", "neck", m, hold=[])
+    # signes particuliers : cache-œil (gauche/droit), cicatrice, monocle, boucle d'oreille
+    for name, sx in (("patch_l", 0.100), ("patch_r", -0.100)):
         m = Mesh()
-        m.add("box", (0.12, 0.035, 0.11), (sx, -0.178, 1.70), (0, 0, 8 if sx > 0 else -8))
-        m.add("cyl", (0.415, 0.395, 0.025), (0, 0, 1.78), (0, 0, 0), seg=14)  # lanière autour du crâne
+        m.add("box", (0.165, 0.045, 0.15), (sx, 0, 1.70), (0, 0, 8 if sx > 0 else -8), on_head=0.02)
+        m.add("cyl", (0.425, 0.405, 0.04), (0, 0, 1.785), (0, 0, 0), seg=14)  # lanière autour du crâne
         add_part("mark", name, "patch", "neck", m, hold=["head"])
     m = Mesh()
-    m.add("box", (0.02, 0.03, 0.17), (0.11, -0.176, 1.69), (0, 0, 18))
+    m.add("box", (0.035, 0.045, 0.27), (0.115, 0, 1.69), (0, 20, 0), on_head=0.016)
     add_part("mark", "scar", "scar", "neck", m, hold=["head"])
     m = Mesh()
-    m.add("cyl", (0.13, 0.03, 0.13), (-0.095, -0.182, 1.70), (90, 0, 0), seg=12)
+    for i in range(10):   # monture du monocle : un anneau de petits blocs (un cylindre vu de face ne montrerait rien)
+        a = math.tau * i / 10
+        m.add("box", (0.05, 0.035, 0.05), (-0.100 + 0.095 * math.cos(a), 0, 1.705 + 0.095 * math.sin(a)), on_head=0.03)
+    m.add("box", (0.022, 0.03, 0.17), (-0.20, -0.17, 1.58), (0, 0, 8))   # la chaîne
     add_part("mark", "monocle", "frame", "neck", m, hold=["head"])
+    m = Mesh()
+    m.add("sphere", (0.07, 0.07, 0.09), (0.222, 0.01, 1.60), smooth=True, seg=8)
+    m.add("sphere", (0.07, 0.07, 0.09), (-0.222, 0.01, 1.60), smooth=True, seg=8)
+    m.add("box", (0.03, 0.03, 0.09), (0.222, 0.01, 1.54))
+    m.add("box", (0.03, 0.03, 0.09), (-0.222, 0.01, 1.54))
+    add_part("mark", "earrings", "frame", "neck", m, hold=[])
 
 
 # ------------------------------------------------------------------ CHEVEUX, BARBES, MOUSTACHES
@@ -339,47 +396,121 @@ def build_hair():
 
 def build_beards():
     HOLDS = ["head", "torso"]
-    # barbes : sous le nez, autour de la mâchoire
+    # Barbes : de GROSSES masses lisibles, car à 48x64 pixels une barbe fine ne change rien à l'image.
     def jaw(m, depth=0.07, width=0.40, drop=0.0, zc=1.55):
-        m.add("sphere", (width, 0.38 + depth, 0.30 + drop), (0, -0.01 - depth * 0.15, zc - drop * 0.45), smooth=True,
-              seg=12, clip=lambda p: p.z > 1.64 or (p.y < 0.0 and 1.55 < p.z < 1.625 and abs(p.x) < 0.075))
+        # 1) une coque collée au crâne (joues et mâchoire, jusqu'aux oreilles), à `ext` mètres de la peau
+        ext = 0.012 + depth * 0.22
+        low = 1.50 - drop * 0.25
+        m.add("sphere", (0.40 + 2 * ext, 0.38 + 2 * ext, 0.40 + 2 * ext), (0, 0.0, 1.68), smooth=True, seg=36,
+              clip=lambda p: p.z > 1.60 or p.z < low or p.y > 0.035 or abs(p.x) > 0.175 or (p.y < 0.0 and 1.555 < p.z < 1.625 and abs(p.x) < 0.07))
+        # 2) le menton : une masse qui prolonge la coque vers le bas, de la largeur de la mâchoire
+        m.add("sphere", (0.25 + depth * 0.8, 0.19 + depth * 0.5, 0.15 + drop * 0.7), (0, -0.115, 1.515 - drop * 0.25), smooth=True,
+              seg=14, clip=lambda p: p.z > 1.56 or (p.y < -0.10 and 1.555 < p.z < 1.625 and abs(p.x) < 0.07))
     m = Mesh()
-    jaw(m, depth=0.012, width=0.405)
+    jaw(m, depth=0.03, width=0.415, drop=0.02)
     add_part("beard", "stubble", "hair", "neck", m, HOLDS)
     m = Mesh()
-    m.add("sphere", (0.14, 0.12, 0.17), (0, -0.165, 1.52), smooth=True, seg=8)
+    m.add("sphere", (0.19, 0.16, 0.24), (0, -0.165, 1.50), smooth=True, seg=8)
     add_part("beard", "goatee", "hair", "neck", m, HOLDS)
     m = Mesh()
-    jaw(m, depth=0.06, width=0.43, drop=0.05)
+    jaw(m, depth=0.10, width=0.47, drop=0.14)
     add_part("beard", "full", "hair", "neck", m, HOLDS)
     m = Mesh()
-    jaw(m, depth=0.08, width=0.44, drop=0.10)
-    m.add("cyl", (0.20, 0.16, 0.42), (0, -0.14, 1.28), (-6, 0, 0), taper=0.55, seg=8)
+    jaw(m, depth=0.11, width=0.48, drop=0.16)
+    m.add("cyl", (0.30, 0.22, 0.66), (0, -0.15, 1.20), (-5, 0, 0), taper=0.45, seg=9)
     add_part("beard", "long", "hair", "neck", m, HOLDS)
+    # barbe à une natte : joues + une grosse natte nouée (anneaux), bout effilé
     m = Mesh()
-    m.add("cyl", (0.10, 0.10, 0.50), (0, -0.15, 1.20), (-4, 0, 0), taper=0.3, seg=7)
-    m.add("sphere", (0.40, 0.32, 0.20), (0, -0.02, 1.52), smooth=True, seg=10,
-          clip=lambda p: p.z > 1.60 or p.y > 0.05)
+    jaw(m, depth=0.07, width=0.44, drop=0.04)
+    for i in range(6):
+        m.add("sphere", (0.15 - i * 0.012, 0.15 - i * 0.012, 0.13), (0, -0.17 - i * 0.012, 1.40 - i * 0.105), smooth=True, seg=7,
+              tone=1.0 if i % 2 == 0 else 0.82)
     add_part("beard", "braid", "hair", "neck", m, HOLDS)
+    # deux nattes
     m = Mesh()
-    m.add("box", (0.045, 0.08, 0.20), (0.205, -0.03, 1.62))
-    m.add("box", (0.045, 0.08, 0.20), (-0.205, -0.03, 1.62))
-    m.add("box", (0.30, 0.04, 0.045), (0, -0.17, 1.50))
+    jaw(m, depth=0.05, width=0.42, drop=0.02)
+    for sx in (0.11, -0.11):
+        for i in range(5):
+            m.add("sphere", (0.11, 0.11, 0.12), (sx, -0.16 - i * 0.01, 1.42 - i * 0.10), smooth=True, seg=6, tone=1.0 if i % 2 == 0 else 0.82)
+    add_part("beard", "twin", "hair", "neck", m, HOLDS)
+    # barbe fourchue de viking
+    m = Mesh()
+    jaw(m, depth=0.08, width=0.45, drop=0.08)
+    m.add("cyl", (0.20, 0.17, 0.52), (0.10, -0.15, 1.25), (-4, 0, -18), taper=0.25, seg=7)
+    m.add("cyl", (0.20, 0.17, 0.52), (-0.10, -0.15, 1.25), (-4, 0, 18), taper=0.25, seg=7)
+    add_part("beard", "forked", "hair", "neck", m, HOLDS)
+    # favoris : grosses pattes + mentonnière
+    m = Mesh()
+    m.add("box", (0.085, 0.15, 0.32), (0.205, -0.03, 1.60))
+    m.add("box", (0.085, 0.15, 0.32), (-0.205, -0.03, 1.60))
+    m.add("box", (0.34, 0.07, 0.075), (0, -0.17, 1.50))
     add_part("beard", "chinstrap", "hair", "neck", m, HOLDS)
+    # grosses pattes seules (côtelettes)
+    m = Mesh()
+    m.add("sphere", (0.15, 0.17, 0.28), (0.19, -0.05, 1.60), smooth=True, seg=7)
+    m.add("sphere", (0.15, 0.17, 0.28), (-0.19, -0.05, 1.60), smooth=True, seg=7)
+    add_part("beard", "chops", "hair", "neck", m, HOLDS)
+    # barbe broussailleuse : énorme, ronde
+    m = Mesh()
+    m.add("sphere", (0.56, 0.50, 0.50), (0, -0.05, 1.45), smooth=True, seg=12,
+          clip=lambda p: p.z > 1.64 or p.y > 0.10 or (p.y < 0.0 and 1.55 < p.z < 1.625 and abs(p.x) < 0.075))
+    add_part("beard", "bushy", "hair", "neck", m, HOLDS)
     # moustaches
     m = Mesh()
-    m.add("box", (0.12, 0.03, 0.025), (0, -0.19, 1.615))
+    m.add("box", (0.15, 0.04, 0.04), (0, -0.192, 1.616))
     add_part("mustache", "thin", "hair", "neck", m, ["head"])
     m = Mesh()
-    m.add("box", (0.10, 0.04, 0.03), (0, -0.19, 1.615))
-    m.add("cyl", (0.03, 0.03, 0.09), (0.085, -0.185, 1.625), (0, 0, 0), taper=0.4, seg=6)
-    m.add("cyl", (0.03, 0.03, 0.09), (-0.085, -0.185, 1.625), (0, 0, 0), taper=0.4, seg=6)
-    m.add("sphere", (0.03, 0.04, 0.03), (0.13, -0.18, 1.665), smooth=True, seg=6)
-    m.add("sphere", (0.03, 0.04, 0.03), (-0.13, -0.18, 1.665), smooth=True, seg=6)
+    m.add("box", (0.12, 0.05, 0.05), (0, -0.192, 1.615))
+    m.add("cyl", (0.05, 0.05, 0.12), (0.115, -0.185, 1.635), (0, 0, 0), taper=0.5, seg=6)
+    m.add("cyl", (0.05, 0.05, 0.12), (-0.115, -0.185, 1.635), (0, 0, 0), taper=0.5, seg=6)
+    m.add("sphere", (0.06, 0.06, 0.06), (0.14, -0.18, 1.70), smooth=True, seg=6)
+    m.add("sphere", (0.06, 0.06, 0.06), (-0.14, -0.18, 1.70), smooth=True, seg=6)
     add_part("mustache", "handlebar", "hair", "neck", m, ["head"])
     m = Mesh()
-    m.add("box", (0.20, 0.06, 0.07), (0, -0.19, 1.61), tone=0.9)
+    m.add("box", (0.27, 0.085, 0.10), (0, -0.19, 1.612), tone=0.9)
     add_part("mustache", "walrus", "hair", "neck", m, ["head"])
+    m = Mesh()
+    m.add("box", (0.20, 0.07, 0.075), (0, -0.19, 1.62))
+    m.add("box", (0.06, 0.07, 0.11), (0.095, -0.185, 1.585), (0, 0, -10))
+    m.add("box", (0.06, 0.07, 0.11), (-0.095, -0.185, 1.585), (0, 0, 10))
+    add_part("mustache", "chevron", "hair", "neck", m, ["head"])
+
+
+def build_hair_extra():
+    HOLDS = ["torso", "head"]
+    cap = lambda m, k=1.0: m.add("sphere", (0.43 * k, 0.41 * k, 0.43 * k), (0, 0.005, 1.69), smooth=True, seg=14,
+                                clip=head_clip(1.77, 1.55))
+    # banane : une grosse vague devant
+    m = Mesh()
+    cap(m)
+    m.add("sphere", (0.40, 0.30, 0.20), (0, -0.12, 1.93), (-18, 0, 0), smooth=True, seg=10)
+    add_part("hair", "pompadour", "hair", "neck", m, HOLDS)
+    # dreadlocks : sept mèches épaisses qui pendent
+    m = Mesh()
+    cap(m)
+    for i, a in enumerate((-70, -45, -20, 0, 20, 45, 70)):
+        x = 0.23 * math.sin(math.radians(a))
+        y = 0.20 * math.cos(math.radians(a)) + 0.02
+        m.add("cyl", (0.085, 0.085, 0.50 - 0.03 * (i % 2)), (x, y, 1.40), taper=0.7, seg=6, tone=1.0 if i % 2 else 0.88)
+    add_part("hair", "dreads", "hair", "neck", m, HOLDS)
+    # carré : tombe jusqu'au menton, frange nette
+    m = Mesh()
+    cap(m, 1.04)
+    m.add("box", (0.47, 0.16, 0.46), (0, 0.11, 1.55), tone=0.9)
+    m.add("box", (0.08, 0.22, 0.34), (0.222, -0.02, 1.56), tone=0.9)
+    m.add("box", (0.08, 0.22, 0.34), (-0.222, -0.02, 1.56), tone=0.9)
+    m.add("box", (0.40, 0.07, 0.07), (0, -0.172, 1.80))
+    add_part("hair", "bob", "hair", "neck", m, HOLDS)
+    # bouclés : beaucoup de boules
+    m = Mesh()
+    cap(m, 0.98)
+    for i in range(11):
+        a = math.tau * i / 11
+        m.add("sphere", (0.17, 0.17, 0.17), (0.24 * math.cos(a), 0.18 * math.sin(a) + 0.02, 1.80 + 0.04 * math.sin(3 * a)), smooth=True, seg=6)
+    for i in range(5):
+        a = math.tau * i / 5
+        m.add("sphere", (0.17, 0.17, 0.17), (0.12 * math.cos(a), 0.10 * math.sin(a), 1.92), smooth=True, seg=6)
+    add_part("hair", "curly", "hair", "neck", m, HOLDS)
 
 
 # ------------------------------------------------------------------ CHAPEAUX
@@ -394,7 +525,7 @@ def build_hats():
     add_part("hat", "tricorn", "hat", "neck", m, HOLDS)
     m = Mesh()
     m.add("cyl", (0.41, 0.41, 0.04), (0, 0, 1.94), seg=12, taper=1.0, caps=False)
-    add_part("hat", "tricorn", "trim", "neck", m, HOLDS)
+    add_part("hat", "tricorn", "trim", "neck", m, HOLDS + ["@hat-tricorn.hat"])
     # bicorne de capitaine : calotte basse, deux rebords relevés sur les côtés, plume
     m = Mesh()
     m.add("cyl", (0.40, 0.38, 0.14), (0, 0, 1.95), seg=12, taper=0.95)
@@ -406,7 +537,7 @@ def build_hats():
     m = Mesh()
     m.add("cyl", (0.41, 0.39, 0.035), (0, 0, 1.92), seg=12, caps=False)
     m.add("sphere", (0.09, 0.09, 0.24), (0.20, 0.10, 2.10), (0, 24, 0), smooth=True, seg=6)
-    add_part("hat", "bicorn", "trim", "neck", m, HOLDS)
+    add_part("hat", "bicorn", "trim", "neck", m, HOLDS + ["@hat-bicorn.hat"])
     # bandana noué
     m = Mesh()
     m.add("sphere", (0.44, 0.42, 0.44), (0, 0.005, 1.69), smooth=True, seg=14, clip=head_clip(1.78, 1.70))
@@ -421,14 +552,43 @@ def build_hats():
     add_part("hat", "straw", "hat", "neck", m, HOLDS)
     m = Mesh()
     m.add("cyl", (0.445, 0.445, 0.06), (0, 0, 1.925), seg=14, caps=False)
-    add_part("hat", "straw", "trim", "neck", m, HOLDS)
+    add_part("hat", "straw", "trim", "neck", m, HOLDS + ["@hat-straw.hat"])
     # bonnet / calot
     m = Mesh()
-    m.add("sphere", (0.45, 0.43, 0.46), (0, 0.0, 1.70), smooth=True, seg=14, clip=head_clip(1.84, 1.72))
+    m.add("sphere", (0.47, 0.45, 0.40), (0, 0.0, 1.80), smooth=True, seg=48, clip=lambda p: p.z < 1.84)
     add_part("hat", "cap", "hat", "neck", m, HOLDS)
     m = Mesh()
-    m.add("cyl", (0.46, 0.44, 0.07), (0, 0, 1.80), seg=14, caps=False)
-    add_part("hat", "cap", "trim", "neck", m, HOLDS)
+    m.add("sphere", (0.484, 0.464, 0.412), (0, 0.0, 1.80), smooth=True, seg=48,
+          clip=lambda p: not (1.80 <= p.z <= 1.875))
+    add_part("hat", "cap", "trim", "neck", m, HOLDS + ["@hat-cap.hat"])
+
+
+def build_hats_extra():
+    HOLDS = ["head"]
+    # haut-de-forme
+    m = Mesh()
+    m.add("cyl", (0.62, 0.62, 0.035), (0, 0, 1.88), seg=14)
+    m.add("cyl", (0.36, 0.36, 0.28), (0, 0, 2.02), seg=12, taper=0.96)
+    add_part("hat", "tophat", "hat", "neck", m, HOLDS)
+    m = Mesh()
+    m.add("cyl", (0.375, 0.375, 0.08), (0, 0, 1.95), seg=12, caps=False)
+    add_part("hat", "tophat", "trim", "neck", m, HOLDS + ["@hat-tophat.hat"])
+    # turban : plusieurs grosses boules enroulées, et un joyau
+    m = Mesh()
+    m.add("sphere", (0.50, 0.48, 0.30), (0, 0, 1.86), smooth=True, seg=12)
+    m.add("sphere", (0.46, 0.44, 0.24), (0, 0, 2.00), smooth=True, seg=12, tone=0.9)
+    m.add("sphere", (0.30, 0.30, 0.22), (0, 0, 2.10), smooth=True, seg=10)
+    add_part("hat", "turban", "hat", "neck", m, HOLDS)
+    m = Mesh()
+    m.add("sphere", (0.09, 0.07, 0.10), (0, -0.235, 1.90), smooth=True, seg=6)
+    add_part("hat", "turban", "trim", "neck", m, HOLDS)
+    # bandeau : un ruban autour du front, bouts qui flottent
+    m = Mesh()
+    m.add("sphere", (0.455, 0.435, 0.45), (0, 0.005, 1.69), smooth=True, seg=48,
+          clip=lambda p: not (1.805 <= p.z <= 1.87))
+    m.add("box", (0.07, 0.04, 0.24), (0.07, 0.26, 1.70), (0, 0, 16))
+    m.add("box", (0.07, 0.04, 0.20), (-0.05, 0.26, 1.69), (0, 0, -20))
+    add_part("hat", "headband", "hat", "neck", m, HOLDS)
 
 
 # ------------------------------------------------------------------ VÊTEMENTS
@@ -497,7 +657,7 @@ def build_coats():
     m.add("box", (0.46, 0.32, 0.12), (0, 0, 1.43), tone=0.85)
     add_part("coat", "captain", "cloth", "chest", m)
     ms = Mesh().add("cyl", (0.58, 0.40, 0.40), (0, 0, 0.66), taper=0.8, seg=10, tone=0.92)
-    ms.add("box", (0.56, 0.12, 0.10), (0, -0.04, 1.47), (-12, 0, 0), tone=0.8)
+    ms.add("box", (0.56, 0.12, 0.08), (0, -0.04, 1.435), (-6, 0, 0), tone=0.8)
     add_part("coat", "captain", "cloth", "hips", ms)
     add_part("coat", "captain", "trim", "chest", Mesh().add("box", (0.07, 0.03, 0.62), (0, -0.162, 1.12)))
     sleeve_parts("coat", "captain", "cloth", 0.18, 0.16)
@@ -568,8 +728,10 @@ def build_pants_boots():
 build_body_skin()
 build_face()
 build_hair()
+build_hair_extra()
 build_beards()
 build_hats()
+build_hats_extra()
 build_shirts()
 build_coats()
 build_belts()
@@ -665,7 +827,7 @@ def pose(anim: str, t: float) -> None:
         set_rot("elR", -30)
         set_rot("hipL", -4)
         set_rot("hipR", 4)
-    PIVOTS["hips"].location = Vector((0, 0, REST["hips"].z + bob))
+    PIVOTS["hips"].location = Vector((0, 0, REST["hips"].z * LEG_K + bob))
 
 
 # ------------------------------------------------------------------ rendu
@@ -751,11 +913,20 @@ for anim in anims:
                     o.hide_render = True
                 for o in L["objects"]:
                     o.hide_render = False
+                swapped = []
                 for h in L["hold"]:
+                    if h.startswith("@"):   # une autre couche qui cache celle-ci (ex. le chapeau cache son ruban)
+                        for o in LAYERS[h[1:]]["objects"]:
+                            o.hide_render = False
+                            o.data.materials[0] = MAT_H
+                            swapped.append(o)
+                        continue
                     for o in HOLD[h]:
                         o.hide_render = False
                 path = OUT / "raw" / anim / lid
                 path.mkdir(parents=True, exist_ok=True)
                 scene.render.filepath = str(path / f"f{f}_d{d}.png")
                 bpy.ops.render.render(write_still=True)
+                for o in swapped:
+                    o.data.materials[0] = MAT_W
 print("rendu termine", len(layer_ids), "couches")
