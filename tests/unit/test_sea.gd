@@ -351,7 +351,14 @@ func _test_jump() -> void:
 			var bx: Array = ship.boxes[i]
 			var mid := Vector2((float(bx[0]) + float(bx[2])) * 0.5, (float(bx[1]) + float(bx[3])) * 0.5)
 			_check(not ship.is_walkable(mid), "%s : la caisse %d bloque à pied" % [ship_name, i])
-			_check(ship.is_walkable_air(mid, 0.9), "%s : mais pas en l'air" % ship_name)
+			# (sur le sloop la pile de caisses est adossée au mur de la cabine : son centre est dans le mur, qui ne s'enjambe pas)
+			var on_wall := false
+			for j in ship.boxes.size():
+				var wb: Array = ship.boxes[j]
+				if not (j in ship.low_boxes) and mid.x > float(wb[0]) - 0.12 and mid.x < float(wb[2]) + 0.12 and mid.y > float(wb[1]) - 0.12 and mid.y < float(wb[3]) + 0.12:
+					on_wall = true
+			if not on_wall:
+				_check(ship.is_walkable_air(mid, 0.9), "%s : mais pas en l'air" % ship_name)
 		ship.free()
 
 

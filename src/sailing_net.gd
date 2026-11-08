@@ -22,7 +22,7 @@ const ISLAND_RATE := 12.0   ## fois par seconde : état des ennemis et des coffr
 const LOOT_RATE := 6.0      ## fois par seconde : butin du monde
 const FLEET_RATE := 10.0    ## fois par seconde : bateaux ennemis
 const META_RATE := 2.0      ## fois par seconde : coffres, baies, tonneaux, îles générées
-const PROTOCOL := 7
+const PROTOCOL := 8   # 8 : grappin visé (choix de s'attirer, état du crochet + propriétaire), radeaux des joueurs
 
 var game: Node
 var active := false
@@ -34,6 +34,7 @@ var _island_timer := 0.0
 var _loot_timer := 0.0
 var _fleet_timer := 0.0
 var _meta_timer := 0.0
+var _raft_sent := false   ## le dernier envoi portait un radeau (il faut encore dire quand il disparaît)
 
 
 ## Code d'invitation à donner aux amis (vide tant qu'il n'est pas connu).
@@ -228,6 +229,10 @@ func tick(delta: float) -> void:
 		_player_timer = 0.0
 		var p: Dictionary = game.local_player_state()
 		_player_state.rpc(p["pos"], p["carrying"], p["loc"], p["pz"], p["lh"])
+		var raft: Array = game.raft_net_state()
+		if not raft.is_empty() or _raft_sent:
+			_raft_state.rpc(raft)
+		_raft_sent = not raft.is_empty()
 	if is_host:
 		_ship_timer += delta
 		if _ship_timer >= 1.0 / SHIP_RATE:
@@ -373,6 +378,12 @@ func send_item(peer: int, kind: String) -> void:
 @rpc("authority", "call_remote", "reliable")
 func _item(kind: String) -> void:
 	game.apply_item_got(kind)
+
+
+## Chaque joueur -> tous : son radeau (x, z, cap, ouverture et orientation de la voile), ou vide s'il n'en a pas (ou plus).
+@rpc("any_peer", "call_remote", "unreliable_ordered")
+func _raft_state(s: Array) -> void:
+	game.apply_remote_raft(multiplayer.get_remote_sender_id(), s)
 
 
 @rpc("any_peer", "call_remote", "unreliable_ordered")

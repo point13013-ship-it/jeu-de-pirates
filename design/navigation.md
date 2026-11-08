@@ -110,9 +110,8 @@ un cône très ouvert (elle était trop dure à prendre : un canon voisin la mas
 - Trésors (`data/treasures.json`, `Treasure`) : un coffre d'île donne son or ET un trésor à porter ; on le dépose dans le coffre du
   capitaine (le coffre de la cabine, `stash`) ; Corbin le receleur rachète le trésor porté, ou tout le coffre quand le bateau est
   à moins de `FENCE_RANGE` du quai (l'or se partage entre l'équipage).
-- Grappin à l'étrave (E) : cible le butin à flot le plus proche devant, sinon le bord de terre ; butin hissé dans le coffre du
-  capitaine, terre = bateau halé puis amarré (R décroche). `WorldLoot` : butin du monde (trésors, boulets, planches, bourses),
-  ramassé à la nage ou à pied, synchronisé à 6 Hz.
+- Grappin à l'étrave : voir « Session du 8 novembre (suite) » plus bas (il se vise et se choisit désormais). `WorldLoot` : butin du
+  monde (trésors, boulets, planches, bourses), ramassé à la nage ou à pied, synchronisé à 6 Hz.
 
 ### Îles : plus grandes, tirées au hasard, tonneaux cassables, baies rares
 - Les îles du fichier sont agrandies ×`ISLAND_SCALE` (2) avec plus d'ennemis, de tonneaux et de caisses.
@@ -144,3 +143,49 @@ pour un paquet (découpé en `net_dynamic`, ennemis proches seulement, et `net_s
 ajoutés à la scène avant `set_look`.
 Pas encore regardé : vente à Corbin au quai, boutique de l'armurier Armand, tir des armes à feu (traînées), ciblage d'un ennemi
 par le tromblon, partie à plusieurs avec un client qui nage ou se fait tirer d'un canon.
+
+## Session du 8 novembre 2026 (suite) — saut libre, grappin visé, radeau à voile
+
+### Saut libre (quai, ponton, bateau, eau)
+- Cause du « je ne peux pas sauter du quai à l'eau ni du ponton au bateau » : à terre, `Land.step` s'arrête à 0,22 m du bord (marge du
+  pirate) et le saut n'avançait librement qu'au-dessus d'un point déjà « vide » : entre les deux, une zone morte de 0,44 m où l'on ne
+  pouvait plus avancer. Un saut passe maintenant par `Land.air_move` / `air_clear` : le bord du quai ou de la plage ne l'arrête plus,
+  les petits obstacles (poteaux, tonneaux) s'enjambent à `Land.LOW_CLEAR` (0,5 m), seuls les murs des bâtiments l'arrêtent.
+- L'atterrissage ne dépend plus d'où l'on est parti : `_fall_floor` / `_touch_down` regardent ce qu'il y a SOUS le pirate (pont du bateau,
+  radeau, sol, eau). On peut donc sauter du quai ou du ponton sur le pont (avant : on tombait à l'eau), du pont au quai, de partout à l'eau.
+  Au bord d'un quai, `_stand_on_ground` recale sur le point libre le plus proche ; contre un mur on revient d'où l'on a sauté.
+- Saut plus généreux : `JUMP_SPEED` 7 (sommet 1,6 m), `AIR_SPEED` ×1,3 en l'air (~4 m franchis). Sur le pont : plat-bord dès 0,35 m
+  (`RAIL_HEIGHT`), caisses/tonneau/roue dès 0,5 m (`ShipModel.LOW_CLEAR`) ; la pile de caisses du sloop, collée à la cabine, redevient
+  une caisse (`_compute_low_obstacles` après `_index_nodes`). Mâts et murs de cabine restent infranchissables.
+- Corrigé au passage : les éclaboussures du plouf étaient posées en coordonnées de la scène dans le monde fixe (invisibles loin du port).
+
+### Grappin du bateau : on le vise, on choisit, il s'accroche à tout (`src/hook.gd`, section « grappin » de sailing_game.gd)
+- E au canon à grappin de l'étrave prend le grappin en main (il faut rester à moins de 2,6 unités du canon) : on VISE à la souris,
+  dans TOUTES les directions, avec un ruban en tirets et un cercle (vert + croix : le crochet saisirait quelque chose, rouge : rien) ;
+  la ligne du bas dit quoi et à quelle distance. Clic gauche ou E : lancer. R : ranger.
+- Le crochet file en ligne droite (`Hook.trace`, portée 26 m) et s'accroche à la PREMIÈRE chose qu'il touche : butin (même au sol),
+  bateau ennemi (le crochet le suit), récif, rivage (plage, quai, ponton), mur de bâtiment, tonneau, arbre, poteau. Un tir sans prise
+  n'est pas lancé. L'hôte rejoue le même tracé (requête `grapple` : direction en dixièmes de degré).
+- Une fois accroché (état 5) RIEN ne se fait tout seul : E halera le bateau jusqu'au crochet (point fixe ou bateau ennemi) ou ramènera
+  le butin ; E de nouveau arrête de haler ; R décroche. « Ne pas s'attirer » = ne rien faire, ou R. Requêtes : `grapple_haul`,
+  `grapple_reel`, `grapple_pause`, `grapple_release`. Corde cassée au-delà de 44 m.
+- État réseau du bateau : 26 champs (état du crochet, position, cible, espèce d'accroche en code, tireur).
+
+### Fabrication et radeau à voile (`src/crafting.gd`, `data/crafting.json`, `src/raft.gd`)
+- Le sac (Tab) a une rubrique « Fabrication » : le radeau à voile coûte 6 planches (on en a 4 au départ ; planches des tonneaux et caisses
+  des îles, de l'étagère de la cale, du Magasin Général). E dans le sac : il se pose sur l'eau libre la plus proche du pirate (à terre,
+  au bord de l'eau, pas contre un récif ni le bateau), étrave vers le large. Un seul radeau par joueur.
+- On y monte avec E (à terre ou à la nage, tout contre lui) ou en SAUTANT dessus. Sur le radeau : A/D barrent, W hisse, S affale
+  (la voile se règle toute seule au meilleur du vent), E débarque (terre ou pont du bateau à moins de 4,6 m), Espace plonge. Il va à
+  ~4,6 m/s vent arrière, tourne vite, glisse le long des îles et des récifs (`_raft_touches`), reste ancré quand personne n'est dessus.
+  La voile devient translucide et le pirate est dessiné par-dessus quand il est derrière.
+- Réseau (protocole 8) : chaque joueur diffuse son radeau (`raft_net_state`) ; les autres le voient glisser. Lieu réseau 7 = sur un radeau.
+
+### Vérification (8 novembre 2026, soir)
+`tests/unit` : 12 fichiers verts (nouveaux : `test_hook.gd`, `test_craft.gd`, `test_air.gd` ; `test_sea.gd` adapté à la pile de caisses du sloop).
+En jeu (captures dans `qa/session3/`, traces `--log`) : quai → eau, ponton → pont du bateau, pont → ponton, quai → radeau en sautant,
+visée du grappin, accroche sur le ponton / un butin / un bateau ennemi, bateau halé vers lui, planche ramenée au sac, radeau fabriqué
+depuis le sac puis navigué vent arrière, E pour débarquer, plonger puis remonter ; hôte + client sur deux fenêtres : le client voit le radeau.
+Arguments d'essai ajoutés : `--aim=°` (impose la visée), `--planks=N`, `--craft=raft@t`, `--raft-ride=t`, `--log` (traces `[essai …]`).
+Pas encore regardé : prise de la barre / mât en même temps que le grappin, radeau contre une île générée, équilibre du radeau (planches),
+plusieurs joueurs sur un même radeau (un seul pirate se tient dessus pour l'instant).

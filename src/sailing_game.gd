@@ -17,13 +17,14 @@ const INTERACT_RANGE := 1.5
 const STATS_PATH := "res://data/ship_stats.json"
 
 enum Mode { WALK, HELM, SAILS, CANNON }   ## ce que fait le pirate à son poste : marche, barre, vergues (au mât), dans un canon
-enum Loc { SHIP, LAND, CLIMB, NEST, HOLD, SWIM, FLIGHT }   ## où est le pirate : sur le pont, à terre, sur une échelle, dans le nid de pie, dans la cale, à la nage, en vol (canon)
+enum Loc { SHIP, LAND, CLIMB, NEST, HOLD, SWIM, FLIGHT, RAFT }   ## où est le pirate : sur le pont, à terre, sur une échelle, dans le nid de pie, dans la cale, à la nage, en vol (canon ou corde), sur son radeau
 const SPRITE_DEPTH_BIAS := 0.7         ## m : de combien on avance un pirate à terre vers la caméra (voir _snap_sprite)
 const HOLD_Y := 40.0                  ## hauteur (m) où la cale est posée dans la scène, loin au-dessus de tout
 const HIT_BALL := 0                    ## types de choc : boulet, récif, quai ou mur
 const HIT_ROCK := 1
 const HIT_WALL := 2
-const JUMP_SPEED := 6.0                ## m/s : assez pour enjamber une caisse ou passer le bastingage
+const JUMP_SPEED := 7.0                ## m/s : sommet à 1,6 m ; assez pour enjamber une caisse, passer le bastingage ou franchir un vide
+const AIR_SPEED := 1.3                 ## multiplicateur de la vitesse de marche en plein saut (on franchit ~4 m)
 const GRAVITY := 15.0                  ## m/s²
 const SWIM_SPEED := 2.3                ## m/s
 const SWIM_DEPTH := 0.5                ## m : de combien le pirate est enfoncé dans l'eau (on ne voit que le haut du corps)
@@ -54,7 +55,8 @@ var _land := Land.new()
 var _lpos := Vector2.ZERO           ## position à terre (monde, x/z)
 var _pz := 0.0                      ## hauteur au-dessus du sol ou du pont (saut, échelle, nid)
 var _vz := 0.0
-var _jump_wind := 0.0               ## s restantes d'accroupissement avant le saut
+var _air_origin: Dictionary = {}    ## d'où le dernier saut est parti : {loc, ppos, lpos, lh} (retour si l'on retombe dans un mur)
+var _jump_wind := 0.0              ## s restantes d'accroupissement avant le saut
 var _land_t := 0.0                  ## s restantes de réception après un saut
 var _climb: Dictionary = {}         ## échelle en cours : {kind: mast|hull, t, ...}
 var _notice := ""
@@ -1144,9 +1146,17 @@ func _apply_test_args() -> void:
 		_lh = _islands.ground_h(_lpos)   # sur le relief d'une île, on pose le pirate à la hauteur du sol
 		if _args.has("lh"):
 			_lh = float(_args["lh"])
+		_snap_camera()   # (essais : la caméra est déjà sur le pirate au départ)
+	if _args.has("planks"):   # essai : --planks=8 donne ce nombre de planches
+		_profile.planks = int(_args["planks"])
+	if _args.has("craft"):   # essai : --craft=raft@3 fabrique cet objet à cet instant (le pirate doit être à terre, près de l'eau)
+		var cr := str(_args["craft"]).split("@")
+		get_tree().create_timer(float(cr[1]) if cr.size() > 1 else 1.0).timeout.connect(func() -> void: _craft(cr[0]))
+	if _args.has("raft-ride"):   # essai : --raft-ride=t monte sur le radeau à cet instant
+		get_tree().create_timer(float(_args["raft-ride"])).timeout.connect(func() -> void: _board_raft())
 	if _args.has("press"):
 		# test : --press=E@2,SPACE@3.5 appuie sur ces touches aux secondes indiquées
-		var codes := {"E": KEY_E, "R": KEY_R, "SPACE": KEY_SPACE, "DOWN": KEY_DOWN, "UP": KEY_UP, "F": KEY_F, "ESC": KEY_ESCAPE, "1": KEY_1, "2": KEY_2, "3": KEY_3, "4": KEY_4, "T": KEY_T, "TAB": KEY_TAB, "X": KEY_X, "G": KEY_G, "C": KEY_C}
+		var codes := {"E": KEY_E, "R": KEY_R, "SPACE": KEY_SPACE, "DOWN": KEY_DOWN, "UP": KEY_UP, "F": KEY_F, "ESC": KEY_ESCAPE, "1": KEY_1, "2": KEY_2, "3": KEY_3, "4": KEY_4, "T": KEY_T, "TAB": KEY_TAB, "X": KEY_X, "G": KEY_G, "C": KEY_C, "H": KEY_H}
 		for item in str(_args["press"]).split(","):
 			var kv := item.split("@")
 			var code: Key = codes.get(kv[0], KEY_E)
@@ -2128,6 +2138,14 @@ func _inventory_rows() -> Array:
 				"desc": "Quatre pouvoirs inconnus, touches 1 à 4 à terre. Une seule baie à la fois : l'ancienne retourne dans ton sac."})
 	if _profile.berry != "":
 		rows.append({"kind": "none", "id": "", "label": "Pouvoir actuel : %s" % BerryBook.berry_name(_profile.berry), "right": "", "enabled": false, "desc": ""})
+	rows.append({"head": true, "label": "Fabrication"})
+	for cid in Crafting.order():
+		var recipe := str(cid)
+		var lack := Crafting.missing(_profile, recipe)
+		var need := "%s  (il t'en manque %d)" % [Crafting.cost_text(recipe), int(lack.get("plank", 0))] if not lack.is_empty() \
+				else "%s  (E : fabriquer)" % Crafting.cost_text(recipe)
+		rows.append({"kind": "craft", "id": recipe, "label": Crafting.recipe_name(recipe), "right": need, "enabled": lack.is_empty(),
+				"desc": str(Crafting.get_def(recipe).get("desc", ""))})
 	rows.append({"head": true, "label": "Provisions"})
 	for line: Array in [["Or", _profile.gold], ["Boulets", _profile.balls], ["Planches", _profile.planks],
 			["Balles", _profile.bullets], ["Cartouches", _profile.shells]]:
@@ -2153,6 +2171,10 @@ func _on_inventory_use(kind: String, id: String) -> void:
 			_say("En main : %s" % Weapons.weapon_name(id), 2.0)
 		"berry":
 			_eat_berry(id)
+		"craft":
+			_inventory.close()
+			_craft(id)
+			return
 	_inventory.set_rows(_inventory_rows())
 
 
@@ -2407,6 +2429,7 @@ func _process(delta_raw: float) -> void:
 	else:
 		_stuck_t = 0.0
 	_update_player(delta)
+	_update_rafts(delta)
 	var prev_sim_pos := _sim.position
 	var prev_sim_yaw := _sim.yaw
 	_sim.step(delta)
@@ -2426,6 +2449,7 @@ func _process(delta_raw: float) -> void:
 	_loot.step(delta, _is_authority())
 	_update_loot_pickup(delta)
 	_update_grapple_visual()
+	_update_hook_aim()
 	var watching_sails := (_loc == Loc.SHIP or _loc == Loc.CLIMB or _loc == Loc.SWIM) and not _args.has("no-fade")
 	_ship.update_sail_fade(_sprite.global_position + Vector3(0.0, 1.0, 0.0), _cam.global_transform.basis.z, watching_sails, delta,
 			float(_args.get("sail-fade", "0.3")))
@@ -2438,10 +2462,11 @@ func _process(delta_raw: float) -> void:
 	var up_mast: bool = _loc == Loc.NEST or (_loc == Loc.CLIMB and _climb.get("kind") == "mast")
 	# en haut du mât, ni le mât ni le nid ne cachent le pirate ; derrière un bâtiment rendu transparent, il est
 	# dessiné par-dessus (net, pas délavé par le mélange)
-	_sprite.no_depth_test = up_mast or _ghosting
+	var on_raft := _loc == Loc.RAFT   # sur le radeau, la voile est devant lui : on le dessine par-dessus (voile translucide)
+	_sprite.no_depth_test = up_mast or _ghosting or on_raft
 	_sprite.render_priority = 5 if _sprite.no_depth_test else 0
-	# passé en mélange (et non plus en découpe) pour être dessiné APRÈS le bâtiment transparent
-	_sprite.alpha_cut = SpriteBase3D.ALPHA_CUT_DISABLED if _ghosting else SpriteBase3D.ALPHA_CUT_DISCARD
+	# passé en mélange (et non plus en découpe) pour être dessiné APRÈS le bâtiment ou la voile transparents
+	_sprite.alpha_cut = SpriteBase3D.ALPHA_CUT_DISABLED if (_ghosting or on_raft) else SpriteBase3D.ALPHA_CUT_DISCARD
 	_ship.hide_sails_above(float(_ship.mast_ladder[3]) - 0.3 if up_mast and not _ship.mast_ladder.is_empty() else 1000.0)
 	_update_remotes(delta)
 	for i in _cannon_icons.size():
@@ -2499,6 +2524,9 @@ func _update_player(delta: float) -> void:
 	if _loc == Loc.FLIGHT:
 		_update_flight(delta)
 		return
+	if _loc == Loc.RAFT:
+		_update_raft_pilot(move)
+		return
 	if _loc == Loc.SHIP and _mode == Mode.HELM:
 		if move.x != _rudder_sent:
 			_rudder_sent = move.x
@@ -2522,8 +2550,10 @@ func _update_player(delta: float) -> void:
 		if move != Vector2.ZERO and not _dialog.is_open() and not _shop_menu.is_open():
 			_face = move.normalized()
 			var step_l := move.normalized() * WALK_SPEED * delta
-			if airborne and _land_void(_lpos + step_l, _lh):
-				_lpos += step_l   # en plein saut on passe au-dessus de l'eau : plouf à l'arrivée
+			if airborne:
+				# en plein saut on n'est plus tenu par le bord du quai ni de la plage : on franchit le vide, on passe
+				# au-dessus des poteaux et des tonneaux (seuls les murs arrêtent)
+				_lpos = _land.air_move(_lpos, step_l * AIR_SPEED, _pz, _lh)
 			else:
 				var r := _land.step(_lpos, step_l, _lh)
 				_lpos = Vector2(r.x, r.y)
@@ -2541,7 +2571,7 @@ func _update_player(delta: float) -> void:
 	var dir_ship := _ship_dir(move)
 	_pface = dir_ship
 	if airborne:
-		_ppos = _ship.move_air(_ppos, dir_ship * step_units, _pz)   # un saut enjambe les caisses et passe le bastingage
+		_ppos = _ship.move_air(_ppos, dir_ship * step_units * AIR_SPEED, _pz)   # un saut enjambe les caisses et passe le bastingage
 	else:
 		_ppos = _ship.move_with_slide(_ppos, dir_ship * step_units)
 
@@ -2587,6 +2617,8 @@ func _update_jump(delta: float) -> void:
 		_jump_wind -= delta
 		if _jump_wind <= 0.0:
 			_vz = JUMP_SPEED
+			_air_origin = {"loc": _loc, "ppos": _ppos, "lpos": _lpos, "lh": _lh}
+			_dbg("saute depuis (%.1f, %.1f)" % [_lpos.x, _lpos.y])
 	if _loc != Loc.SHIP and _loc != Loc.LAND:
 		_vz = 0.0   # sur une échelle, dans le nid, à la nage ou en vol : pas de gravité de saut, la hauteur est dictée ailleurs
 		return
@@ -2607,12 +2639,28 @@ func _fall_floor() -> float:
 			return 0.0
 		var w := _ship_to_world(_ppos)
 		var deck_y := _ship.position.y + _ship.deck_height(_ppos.x)
-		var quay := _land.walk_height(w, 0.0)
+		var rdeck := _raft_deck_y(w)
+		if rdeck != INF and deck_y + _pz >= rdeck - 0.12:
+			return rdeck - deck_y   # au-dessus de mon radeau : on peut se poser dessus
+		var quay := _land.surface_h(w, 0.0)   # le centre suffit : on peut se réceptionner tout au bord du quai (on est ensuite recalé)
 		if quay != Land.NO_SURFACE:
 			return quay - deck_y
 		return SEA_Y + _wave_height(w) - deck_y
-	if _loc == Loc.LAND and _land_void(_lpos, _lh):
-		return SEA_Y + _wave_height(_lpos) - _lh
+	if _loc == Loc.LAND:
+		# du quai, d'un ponton ou d'une plage on peut sauter sur le pont d'un bateau qui est là, dans l'eau ou au sol
+		var bp := _world_to_ship(_lpos)
+		if _ship.over_hull(bp):
+			var deck_rel := _ship.position.y + _ship.deck_height(bp.x) - _lh
+			if _pz >= deck_rel - 0.12:
+				return deck_rel
+		var rdeck_l := _raft_deck_y(_lpos)
+		if rdeck_l != INF and _lh + _pz >= rdeck_l - 0.12:
+			return rdeck_l - _lh
+		var g := _land.surface_h(_lpos, _lh)
+		if g != Land.NO_SURFACE:
+			return g - _lh
+		if _land.is_over_water(_lpos):
+			return SEA_Y + _wave_height(_lpos) - _lh
 	return 0.0
 
 
@@ -2624,6 +2672,7 @@ func _land_void(p: Vector2, h: float) -> bool:
 
 ## Fin d'un saut : sur le pont ou la terre on se réceptionne, au-dessus de l'eau on y plonge, au-dessus du quai on atterrit dessus.
 func _touch_down(floor_h: float) -> void:
+	_dbg("retombe : sol %.2f, pz %.2f, loc %d, lpos (%.1f, %.1f) ppos (%.1f, %.1f), parti de %s" % [floor_h, _pz, _loc, _lpos.x, _lpos.y, _ppos.x, _ppos.y, _air_origin.get("lpos")])
 	_vz = 0.0
 	if _loc == Loc.SHIP:
 		if _ship.over_hull(_ppos):
@@ -2634,27 +2683,91 @@ func _touch_down(floor_h: float) -> void:
 				_land_t = 0.14
 				return
 		var w := _ship_to_world(_ppos)
-		var quay := _land.walk_height(w, 0.0)
+		if _raft_deck_y(w) != INF and not _ship.over_hull(_ppos):
+			_board_raft()   # on a sauté sur le radeau
+			return
+		var quay := _land.surface_h(w, 0.0)
 		if quay != Land.NO_SURFACE and not _ship.over_hull(_ppos):
-			_loc = Loc.LAND
-			_lpos = w
-			_lh = quay
-			_pz = 0.0
-			_land_t = 0.14
-			_face = _screen_of_ship(_pface)
+			if _stand_on_ground(w, quay):
+				_face = _screen_of_ship(_pface)
+				return
+			_return_to_takeoff()   # coincé contre un mur ou un obstacle : on revient d'où l'on a sauté
 			return
 		_enter_swim(w)
 		return
 	if _loc == Loc.LAND:
-		if floor_h < -0.05 and _land_void(_lpos, _lh):
+		var bp := _world_to_ship(_lpos)
+		if _ship.over_hull(bp) and _lh + _pz >= _ship.position.y + _ship.deck_height(bp.x) - 0.12:
+			var spot := _ship.landing_spot(bp)
+			if spot != Vector2.INF:   # on atterrit sur le pont du bateau
+				_dbg("atterrissage sur le pont en (%.1f, %.1f)" % [spot.x, spot.y])
+				_loc = Loc.SHIP
+				_mode = Mode.WALK
+				_ppos = spot
+				_pface = _ship_dir(_face)
+				_pz = 0.0
+				_land_t = 0.14
+				_walkto = Vector2.INF
+				return
+		if _raft_deck_y(_lpos) != INF and _lh + _pz >= _raft_deck_y(_lpos) - 0.12:
+			_board_raft()   # on a sauté sur le radeau
+			return
+		var g := _land.surface_h(_lpos, _lh)
+		if g != Land.NO_SURFACE:
+			if _stand_on_ground(_lpos, g):
+				return
+			_return_to_takeoff()
+			return
+		if _land.is_over_water(_lpos):
 			_enter_swim(_lpos)
 			return
-		_pz = 0.0
-		_land_t = 0.14
+		_return_to_takeoff()
+
+
+## Pose le pirate à terre en `w` (monde x/z), le sol y étant à la hauteur `g` : au point libre le plus proche si le bord, un poteau ou un
+## mur l'en empêchent. Faux si aucun sol libre à moins de 1,6 m.
+func _stand_on_ground(w: Vector2, g: float) -> bool:
+	var q := w
+	var h := _land.walk_height(q, g)
+	if h == Land.NO_SURFACE:
+		q = _land.nearest_walkable(w, 1.6)
+		h = _land.walk_height(q, g)
+		if h == Land.NO_SURFACE:
+			return false
+	_loc = Loc.LAND
+	_mode = Mode.WALK
+	_lpos = q
+	_lh = h
+	_pz = 0.0
+	_vz = 0.0
+	_land_t = 0.14
+	_dbg("à terre en (%.1f, %.1f), sol à %.2f" % [q.x, q.y, h])
+	return true
+
+
+## Un saut qui finit dans un mur : le pirate retombe à l'endroit d'où il a sauté.
+func _return_to_takeoff() -> void:
+	_pz = 0.0
+	_vz = 0.0
+	_land_t = 0.14
+	if int(_air_origin.get("loc", Loc.SHIP)) == Loc.LAND:
+		_loc = Loc.LAND
+		_lpos = _air_origin["lpos"]
+		_lh = float(_air_origin["lh"])
+	else:
+		_loc = Loc.SHIP
+		_ppos = _ship.nearest_walkable(_air_origin.get("ppos", _ppos))
+
+
+## Trace pour les essais (--log) : où le pirate atterrit, ce que fait le crochet…
+func _dbg(text: String) -> void:
+	if _args.has("log"):
+		print("[essai t=%.2f] %s" % [_time, text])
 
 
 ## Plouf : le pirate tombe à l'eau en `w` (monde x/z) et se met à nager.
 func _enter_swim(w: Vector2) -> void:
+	_dbg("plouf en (%.1f, %.1f)" % [w.x, w.y])
 	_drop_carried(true)   # un boulet ou une planche coule ; un trésor reste dans les bras
 	_loc = Loc.SWIM
 	_mode = Mode.WALK
@@ -2665,7 +2778,7 @@ func _enter_swim(w: Vector2) -> void:
 	_swim_t = 0.0
 	_swim_ring_t = 0.0
 	_prev_lpos = w
-	_splash(_land_point(w, SEA_Y + 0.05))
+	_splash(Vector3(w.x, SEA_Y + 0.05, w.y))   # (_splash et _splash_burst posent leurs nœuds dans le monde fixe : coordonnées du monde)
 	_splash_burst(w)
 	_say("À la nage ! E près de la coque : remonter à bord. Un quai ou une plage : nage jusqu'au bord", 5.0)
 
@@ -2677,7 +2790,7 @@ func _splash_burst(w: Vector2) -> void:
 		(drop.material_override as StandardMaterial3D).shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 		drop.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		_world_fixed.add_child(drop)
-		var base := _land_point(w, SEA_Y + 0.1)
+		var base := Vector3(w.x, SEA_Y + 0.1, w.y)
 		drop.position = base
 		var a := TAU * float(k) / 9.0 + randf() * 0.5
 		var d := Vector3(cos(a), 0.0, sin(a)) * randf_range(0.5, 1.2)
@@ -2692,7 +2805,11 @@ func _splash_burst(w: Vector2) -> void:
 
 func _try_jump() -> void:
 	if _loc == Loc.SWIM:
-		_try_board_from_water()
+		if not _try_board_raft_from_water():
+			_try_board_from_water()
+		return
+	if _loc == Loc.RAFT:
+		_leave_raft(true)   # Espace : on plonge du radeau
 		return
 	if _loc == Loc.SHIP and _mode == Mode.HELM:
 		_leave_helm()   # sauter lâche la barre
@@ -2770,7 +2887,7 @@ func _swim_effects(delta: float) -> void:
 	_swim_ring_t -= delta
 	if _swim_ring_t <= 0.0:
 		_swim_ring_t = 0.55 if _lpos.distance_to(_prev_lpos) > 0.005 else 1.1
-		_splash(_land_point(_lpos, SEA_Y + 0.04))
+		_splash(Vector3(_lpos.x, SEA_Y + 0.04, _lpos.y))
 
 
 # ------------------------------------------------------------------ vol du canon
@@ -3100,6 +3217,11 @@ func _place_pirate() -> void:
 		Loc.FLIGHT:
 			gp = _land_point(_lpos, float(_flight.get("y", 0.0)))
 			ground = _land_point(_lpos, SEA_Y + 0.04)
+		Loc.RAFT:
+			var deck := (_raft.position.y + Raft.TOP) if _raft != null else SEA_Y
+			gp = _land_point(_lpos, deck + 0.02)
+			ground = _land_point(_lpos, deck + 0.04)
+			shadow = false
 		_:
 			gp = _ship_point(_ppos, 0.02 + _pz)
 			ground = _ship_point(_ppos, 0.04)
@@ -3166,6 +3288,8 @@ func local_player_state() -> Dictionary:
 		code = 5
 	elif _loc == Loc.FLIGHT:
 		code = 6
+	elif _loc == Loc.RAFT:
+		code = 7
 	var pos := _hpos if _loc == Loc.HOLD else (_lpos if (on_land or code >= 5) else _ppos)
 	var pz := float(_flight.get("y", 0.0)) if _loc == Loc.FLIGHT else _pz
 	return {"pos": pos, "carrying": _carrying, "loc": code, "pz": pz, "lh": _lh}
@@ -3180,13 +3304,13 @@ func ship_state() -> Array:
 	return [_sim.position.x, _sim.position.y, _sim.yaw, _sim.speed, _sim.rudder, _sim.rudder_target,
 			_sim.sail_level, _sim.sail_open, 1 if _sim.anchored else 0, mask, _helm_owner, _time,
 			_hull.leaks, _hull.patched, _hull.water, _sim.sail_trim, _sim.wind_angle, _sim.sail_trim_target, _stash.duplicate(),
-			_grap_state, _grap_hook.x, _grap_hook.y, _grap_target.x, _grap_target.y, 1 if _grap_kind == "land" else 0]
+			_grap_state, _grap_hook.x, _grap_hook.y, _grap_target.x, _grap_target.y, Hook.kind_code(_grap_kind), _grap_owner]
 
 
 ## Client : reçoit l'état du bateau de l'hôte. La position et le cap servent de cible (recalage en
 ## douceur dans _correct_from_host) ; le reste est appliqué tel quel.
 func apply_ship_state(s: Array) -> void:
-	if _ship == null or s.size() < 25:
+	if _ship == null or s.size() < 26:
 		return
 	_stash = (s[18] as Array).duplicate()
 	if _grap_state == 0 and int(s[19]) != 0:   # le crochet vient de partir : son lancer sert à tracer l'arc
@@ -3194,7 +3318,8 @@ func apply_ship_state(s: Array) -> void:
 	_grap_state = int(s[19])
 	_grap_hook = Vector2(float(s[20]), float(s[21]))
 	_grap_target = Vector2(float(s[22]), float(s[23]))
-	_grap_kind = "land" if int(s[24]) == 1 else ("loot" if _grap_state == 2 else "")
+	_grap_kind = Hook.kind_of_code(int(s[24]))
+	_grap_owner = int(s[25])
 	_hull.apply_state(int(s[12]), int(s[13]), float(s[14]))
 	_sim.sail_trim = float(s[15])
 	_sim.wind_angle = float(s[16])
@@ -3294,11 +3419,15 @@ func _update_remotes(delta: float) -> void:
 		elif int(r["loc"]) == 6:   # tiré du canon : pz porte l'altitude
 			sprite.global_position = _land_point(p, pz)
 			blob.global_position = _land_point(p, SEA_Y + 0.04)
+		elif int(r["loc"]) == 7:   # sur son radeau : p est l'endroit où il se tient
+			var rdeck := SEA_Y + _wave_height(p) * 0.9 + Raft.TOP
+			sprite.global_position = _land_point(p, rdeck + 0.02)
+			blob.global_position = _land_point(p, rdeck + 0.04)
 		else:
 			var up := pz if int(r["loc"]) == 3 else 0.0
 			sprite.global_position = _ship_point(p, 0.02 + pz)
 			blob.global_position = _ship_point(p, 0.04 + up)
-		blob.visible = int(r["loc"]) != 2 and int(r["loc"]) != 5
+		blob.visible = int(r["loc"]) != 2 and int(r["loc"]) != 5 and int(r["loc"]) != 7
 
 
 ## Mon apparence : celle de l'éditeur (sauvegardée), sinon celle par défaut.
@@ -3362,6 +3491,8 @@ func _animate_pirates(delta: float) -> void:
 	var move := Vector2.ZERO
 	if in_hold and _prev_hold:
 		move = _hpos - _prev_hpos
+	elif _loc == Loc.RAFT or _prev_loc == Loc.RAFT:
+		move = Vector2.ZERO   # le radeau porte le pirate : il ne marche pas
 	elif on_land and was_land:
 		move = _lpos - _prev_lpos
 	elif not on_land and not was_land and not in_hold and not _prev_hold:
@@ -3389,7 +3520,7 @@ func _animate_pirates(delta: float) -> void:
 		var p: Vector2 = r["pos"]
 		var loc: int = r["loc"]
 		var d := p - (r["prev"] as Vector2)
-		var m := d if (loc == 1 or loc == 4 or loc >= 5) else _screen_of_ship(d)
+		var m := Vector2.ZERO if loc == 7 else (d if (loc == 1 or loc == 4 or loc >= 5) else _screen_of_ship(d))
 		var rair := 1 if ((float(r["pz"]) > 0.05 and (loc == 0 or loc == 1)) or loc == 6) else 0
 		var r_carry: bool = (r["ball"] as MeshInstance3D).visible or (r["plank"] as MeshInstance3D).visible
 		(r["sprite"] as PirateSprite).drive(delta, m, r_carry,
@@ -3403,6 +3534,9 @@ func on_peer_left(id: int) -> void:
 		for key in ["sprite", "blob"]:
 			(_remotes[id][key] as Node).queue_free()
 		_remotes.erase(id)
+	if _remote_rafts.has(id):
+		(_remote_rafts[id] as Node).queue_free()
+		_remote_rafts.erase(id)
 	if _helm_owner == id:
 		_helm_owner = 0
 		_sim.rudder_target = 0.0
@@ -3426,6 +3560,8 @@ func _player_world() -> Vector3:
 		return _hold.point(_hpos, 0.9)
 	if _loc == Loc.SWIM:
 		return _land_point(_lpos, SEA_Y + 0.9)
+	if _loc == Loc.RAFT and _raft != null:
+		return _land_point(_lpos, _raft.position.y + Raft.TOP + 0.9)
 	if _loc == Loc.FLIGHT:
 		return _land_point(_lpos, 0.9)
 	if _loc == Loc.LAND or (_loc == Loc.CLIMB and _climb.get("kind") == "hull"):
@@ -3554,8 +3690,11 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if event is InputEventMouseButton:
 		var mb := event as InputEventMouseButton
+		# le grappin en main : le clic gauche lance le crochet vers le pointeur
+		if mb.pressed and mb.button_index == MOUSE_BUTTON_LEFT and _hook_aim and _hook_can_aim():
+			_hook_fire()
 		# à terre, le clic gauche frappe vers le pointeur (l'écran est centré sur le pirate)
-		if mb.pressed and mb.button_index == MOUSE_BUTTON_LEFT and _loc == Loc.LAND:
+		elif mb.pressed and mb.button_index == MOUSE_BUTTON_LEFT and _loc == Loc.LAND:
 			var d := mb.position - get_viewport().get_visible_rect().size * 0.5
 			if d.length() > 4.0:
 				_face = Vector2(d.x, d.y / sin(deg_to_rad(ELEVATION_DEG))).normalized()
@@ -3673,9 +3812,16 @@ func _splash_bucket() -> void:
 func _interact(secondary: bool) -> void:
 	if _loc == Loc.CLIMB or _loc == Loc.FLIGHT:
 		return
+	if _hook_interact(secondary):
+		return   # le grappin en main (ou accroché) a la priorité : E lance ou s'attire, R range ou décroche
+	if _loc == Loc.RAFT:
+		if not secondary:
+			_leave_raft(false)
+		return
 	if _loc == Loc.SWIM:
 		if not secondary:
-			_try_board_from_water()
+			if not _try_board_raft_from_water():
+				_try_board_from_water()
 		return
 	if _loc == Loc.HOLD:
 		_interact_hold(secondary)
@@ -3701,7 +3847,7 @@ func _interact(secondary: bool) -> void:
 					_request("chest", chest)
 			elif berry >= 0:
 				_pick_berry(berry)
-			else:
+			elif not _try_board_raft_from_land():
 				_try_board()
 		return
 	if _mode == Mode.HELM:
@@ -3756,7 +3902,8 @@ func _interact(secondary: bool) -> void:
 		"stash":
 			_interact_stash(secondary)
 		"grapple":
-			_request("grapple_release" if (secondary or _grap_state != 0) else "grapple", 0)
+			if not secondary:
+				_hook_toggle()   # E au canon à grappin : prendre le grappin en main pour viser
 		"cannon":
 			var i: int = it["index"]
 			if _cannon_loaded[i]:
@@ -3957,9 +4104,21 @@ func apply_request(peer: int, kind: String, value: int) -> void:
 		"trim":
 			_sim.trim_input = clampf(value / 100.0, -1.0, 1.0)
 		"grapple":
-			_grapple_fire(peer)
+			_grapple_fire(peer, value)
 		"grapple_release":
-			_grapple_release()
+			if _grap_owner == peer or _grap_owner == 0 or not (_remotes.has(_grap_owner) or _grap_owner == _my_id()):
+				_grapple_release()
+		"grapple_reel":   # ramener le butin accroché
+			if _grap_state == 5 and _grap_kind == "loot":
+				_grap_state = 2
+		"grapple_haul":   # haler le bateau jusqu'à ce que le crochet tient (point fixe ou bateau ennemi)
+			if _grap_state == 5 and (_grap_kind == "land" or _grap_kind == "enemy"):
+				_grap_state = 3
+				_notify_all("Le bateau est halé vers le crochet (E : arrêter, R : décrocher)")
+		"grapple_pause":   # arrêter de haler : le crochet reste accroché, le bateau s'arrête
+			if _grap_state == 3:
+				_grap_state = 5
+				_sim.speed = 0.0
 		"loot_take":
 			var taken := _loot.take(value)
 			if taken != "":
@@ -4029,20 +4188,32 @@ func _enter_helm() -> void:
 
 # ------------------------------------------------------------------ grappin
 
-const GRAPPLE_RANGE := 26.0     ## m : portée du crochet
-const GRAPPLE_SPEED := 32.0     ## m/s : vol du crochet
-const GRAPPLE_REEL := 7.0       ## m/s : on hale un butin
-const GRAPPLE_CONE := 1.4       ## rad : le crochet part dans ±80° autour de l'étrave
+## Le grappin du bateau (canon à grappin de l'étrave : E pour le prendre en main). On VISE à la souris, dans toutes les directions (tirets
+## et cercle : vert si le crochet saisirait quelque chose, rouge sinon), on LANCE (clic ou E) : le crochet file en ligne droite et
+## s'accroche à la PREMIÈRE chose qu'il touche (voir Hook) — rivage, rocher, mur, tonneau, butin, bateau ennemi. Puis on CHOISIT : E
+## haler le bateau jusqu'au crochet (ou ramener un butin), E de nouveau pour arrêter de haler, R décrocher. Rien ne se fait tout seul.
 
-var _grap_state := 0            ## 0 rangé, 1 en vol, 2 halage d'un butin, 3 accroché à la terre (remorque), 4 retour à vide
+const GRAPPLE_MAX_ROPE := Hook.RANGE * 1.7   ## m : au-delà, la corde casse
+
+var _grap_state := 0            ## 0 rangé, 1 en vol, 2 ramène un butin, 3 hale le bateau, 4 retour, 5 accroché (attend le choix de l'équipage)
 var _grap_hook := Vector2.ZERO  ## position monde du crochet
 var _grap_target := Vector2.ZERO
 var _grap_total := 1.0          ## distance du lancer (pour l'arc du vol)
-var _grap_kind := ""            ## « loot » ou « land », « » si rien n'a été visé
+var _grap_kind := ""            ## ce que le crochet tient : « land » (point fixe), « loot », « ship », « enemy », « » (rien)
 var _grap_loot := -1
-var _grap_owner := 0
+var _grap_owner := 0            ## le pirate qui tient le grappin
+var _grap_bp := Vector2.ZERO    ## hôte : le point d'accroche sur le bateau des joueurs (repère du bateau)
+var _grap_enemy := -1           ## hôte : le bateau ennemi accroché
+var _grap_off := Vector2.ZERO   ## hôte : le crochet par rapport au centre de ce bateau ennemi
 var _rope: MeshInstance3D
 var _hook_node: Node3D
+var _hook_aim := false          ## le grappin est en main : je vise
+var _hook_dir := Vector2.RIGHT  ## direction de visée (monde x/z)
+var _hook_hit: Dictionary = {}  ## ce que le crochet saisirait dans cette direction (Hook.trace)
+var _hook_line: MeshInstance3D
+var _hook_mouse := Vector2.INF
+var _hook_mouse_used := false
+var _hk_water := false          ## sondage en cours : le tir a-t-il déjà survolé l'eau ?
 
 
 ## Où se tient le grappin (repère du bateau) : à l'avant, au dernier endroit où l'on peut encore se tenir debout.
@@ -4076,59 +4247,240 @@ func _build_grapple_mount() -> void:
 	root.add_child(hook)
 
 
-## Sur la terre ou à flot, ce que le crochet peut attraper devant l'étrave : {kind: "loot", id, pos} (butin à flot le plus proche),
-## sinon {kind: "land", pos} (le bord de terre le plus proche), sinon {}.
-func _pick_grapple_target() -> Dictionary:
-	var from := _ship_to_world(Vector2(_ship.bow_x, 0.0))
-	var fwd := _sim.forward()
-	var best_id := -1
-	var best_d := GRAPPLE_RANGE
-	for it: Dictionary in _loot.items:
-		var p: Vector2 = it["pos"]
-		if not _land.is_over_water(p):
+# --- sondes du tir : ce que le crochet peut saisir (voir Hook.trace) ---
+
+func _hook_probes() -> Dictionary:
+	_hk_water = true   # le crochet part de la bouche du canon, au-dessus de l'eau : la première terre rencontrée est un rivage
+	return {"loot": _probe_loot, "enemy": _probe_enemy, "solid": _probe_solid}
+
+
+func _probe_loot(p: Vector2) -> Dictionary:
+	var id := _loot.nearest(p, 0.9)
+	return {} if id < 0 else {"id": id, "pos": _loot.pos_of(id)}
+
+
+func _probe_enemy(p: Vector2) -> Dictionary:
+	for s: Dictionary in _fleet.ships:
+		var model := s.get("model") as ShipModel
+		if model == null or s["state"] == "sinking":
 			continue
-		var to := p - from
-		var d := to.length()
-		if d > 1.0 and d < best_d and absf(fwd.angle_to(to)) < GRAPPLE_CONE:
-			best_d = d
-			best_id = int(it["id"])
-	if best_id >= 0:
-		return {"kind": "loot", "id": best_id, "pos": _loot.pos_of(best_id)}
-	var best := Vector2.INF
-	var best_land := GRAPPLE_RANGE
-	for k in 17:
-		var dir := fwd.rotated(lerpf(-GRAPPLE_CONE, GRAPPLE_CONE, float(k) / 16.0))
-		var d := 2.0
-		while d < best_land:
-			var p := from + dir * d
-			if not _land.is_over_water(p):
-				best_land = d
-				best = p
-				break
-			d += 0.5
-	if best != Vector2.INF:
-		return {"kind": "land", "pos": best}
+		var sim: ShipSim = s["sim"]
+		var rel := p - sim.position
+		var local := Basis(Vector3.UP, -sim.yaw) * Vector3(rel.x, 0.0, rel.y)
+		if model.over_hull(Vector2(local.x / ShipModel.SCALE - model.shift, -local.z / ShipModel.SCALE)):
+			return {"id": int(s["id"])}
 	return {}
 
 
-## Hôte : le pirate `peer` lance le crochet.
-func _grapple_fire(peer: int) -> void:
+func _probe_solid(p: Vector2) -> String:
+	for r: Array in _rocks.rocks:
+		if p.distance_squared_to(Vector2(float(r[0]), float(r[1]))) < pow(float(r[2]) * 0.95, 2.0):
+			return "rocher"
+	if _land.is_over_water(p):
+		_hk_water = true
+		return ""
+	var b := _land.blocker_at(p)
+	if b != "":
+		return b
+	return "terre" if _hk_water else ""   # (le pirate à terre ne saisit pas le sol sous ses pieds, seulement ce qui se dresse)
+
+
+## Hauteur (scène) du bout du crochet selon ce qu'il tient.
+func _hook_end_y(kind: String, pos: Vector2) -> float:
+	match kind:
+		"loot":
+			return SEA_Y + 0.45 if _land.is_over_water(pos) else _islands.ground_h(pos) + 0.35
+		"ship":
+			return _ship_point(_world_to_ship(pos), 0.8).y
+		"enemy":
+			return SEA_Y + 1.1
+		"land":
+			return SEA_Y + 0.7 if _land.is_over_water(pos) else maxf(_islands.ground_h(pos), 0.0) + 0.8
+	return SEA_Y + 0.15
+
+
+# --- côté joueur : viser, lancer, choisir ---
+
+## Où part le crochet dans le monde (x/z) : la bouche du canon à grappin, à l'étrave.
+func _hook_origin() -> Vector2:
+	return _ship_to_world(_grapple_mount()) + _sim.forward() * 0.9
+
+
+## Où part le crochet dans la scène (x, hauteur, z).
+func _hook_muzzle() -> Vector3:
+	return _ship.to_global(_ship.to_local3(_grapple_mount(), 0.0) + Vector3(0.82, 0.72, 0.0))
+
+
+## On manie le grappin depuis son canon, à l'étrave.
+func _hook_can_aim() -> bool:
+	if _dialog.is_open() or _shop_menu.is_open() or _chart.is_open() or _pause.is_open() or _inventory.is_open():
+		return false
+	return _loc == Loc.SHIP and _mode == Mode.WALK and _ppos.distance_to(_grapple_mount()) < 2.6
+
+
+## E au canon à grappin : on le prend en main pour viser (R : le ranger).
+func _hook_toggle() -> void:
+	if _hook_aim:
+		_hook_aim = false
+		return
+	_hook_aim = true
+	_hook_mouse_used = false
+	_hook_mouse = get_viewport().get_mouse_position()
+
+
+## Un point de la scène sur le plan horizontal de hauteur `height`, sous le pointeur de la souris.
+func _mouse_ground_point(height: float) -> Vector3:
+	var sv := (get_viewport().get_mouse_position() - _container.position) / float(_factor)
+	var o := _cam.project_ray_origin(sv)
+	var n := _cam.project_ray_normal(sv)
+	if absf(n.y) < 0.001:
+		return Vector3.INF
+	return o + n * ((height - o.y) / n.y)
+
+
+## Chaque image : la visée (direction à la souris, ce que le crochet saisirait) et son tracé.
+func _update_hook_aim() -> void:
+	if _hook_aim and (not _hook_can_aim() or _grap_state != 0):
+		_hook_aim = false
+	if _hook_line == null:
+		_hook_line = MeshInstance3D.new()
+		_hook_line.mesh = ImmediateMesh.new()
+		var mat := StandardMaterial3D.new()
+		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		mat.vertex_color_use_as_albedo = true
+		mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+		mat.no_depth_test = true
+		mat.render_priority = 6
+		_hook_line.material_override = mat
+		_hook_line.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		_hook_line.extra_cull_margin = 80.0
+		_world.add_child(_hook_line)
+	_hook_line.visible = _hook_aim
+	if not _hook_aim:
+		return
+	var origin := _hook_origin()
+	var a := _hook_muzzle()
+	var mouse := get_viewport().get_mouse_position()
+	if mouse.distance_to(_hook_mouse) > 2.0:
+		_hook_mouse_used = true
+	_hook_mouse = mouse
+	if _args.has("aim"):   # essai : --aim=degrés impose la visée (0 = vers +x, 90 = vers le bas de l'écran)
+		_hook_dir = Vector2.from_angle(deg_to_rad(float(_args["aim"])))
+	elif _hook_mouse_used:
+		var hit3 := _mouse_ground_point(a.y)
+		if hit3 != Vector3.INF and Vector2(hit3.x - a.x, hit3.z - a.z).length() > 0.3:
+			_hook_dir = Vector2(hit3.x - a.x, hit3.z - a.z).normalized()
+	else:
+		_hook_dir = _sim.forward()
+	_hook_hit = Hook.trace(origin, _hook_dir, _hook_probes())
+	var found: bool = str(_hook_hit["kind"]) != ""
+	var col := Color(0.45, 1.0, 0.5) if found else Color(1.0, 0.45, 0.35)
+	var end2: Vector2 = _hook_hit["pos"]
+	var b := _land_point(end2, _hook_end_y(str(_hook_hit["kind"]), end2))
+	var im := _hook_line.mesh as ImmediateMesh
+	im.clear_surfaces()
+	im.surface_begin(Mesh.PRIMITIVE_TRIANGLES)
+	im.surface_set_color(col)
+	var total := a.distance_to(b)
+	var dashes := int(total / 0.9)
+	for k in dashes:   # des tirets épais (rubans à plat), bien visibles à l'écran
+		_hook_strip(im, a.lerp(b, float(k) / float(maxi(dashes, 1))), a.lerp(b, (float(k) + 0.55) / float(maxi(dashes, 1))), 0.07)
+	for ring_r in [0.6, 0.95]:
+		for k in 20:
+			var a0 := TAU * float(k) / 20.0
+			var a1 := TAU * float(k + 1) / 20.0
+			_hook_strip(im, b + Vector3(cos(a0), 0.0, sin(a0)) * ring_r, b + Vector3(cos(a1), 0.0, sin(a1)) * ring_r, 0.06)
+	if found:   # une croix au centre : le crochet mord
+		_hook_strip(im, b + Vector3(-0.35, 0.0, 0.0), b + Vector3(0.35, 0.0, 0.0), 0.06)
+		_hook_strip(im, b + Vector3(0.0, 0.0, -0.35), b + Vector3(0.0, 0.0, 0.35), 0.06)
+	im.surface_end()
+
+
+## Un ruban à plat, large de 2 x `half_w`, de `p0` à `p1` (scène) : deux triangles.
+func _hook_strip(im: ImmediateMesh, p0: Vector3, p1: Vector3, half_w: float) -> void:
+	var d := p1 - p0
+	var side := Vector3(-d.z, 0.0, d.x)
+	if side.length() < 0.0001:
+		return
+	side = side.normalized() * half_w
+	for v: Vector3 in [p0 - side, p0 + side, p1 + side, p0 - side, p1 + side, p1 - side]:
+		im.surface_add_vertex(v)
+
+
+## Lancer le crochet dans la direction visée.
+func _hook_fire() -> void:
 	if _grap_state != 0:
 		return
-	var tgt := _pick_grapple_target()
+	if str(_hook_hit.get("kind", "")) == "":
+		_say("Rien à saisir par là : vise le rivage, un rocher, un mur, un tonneau, un bateau ou du butin", 3.0)
+		return
+	_request("grapple", Hook.dir_code(_hook_dir))
+	_hook_aim = false
+
+
+## Le choix, une fois le crochet accroché : haler le bateau jusqu'à lui (ou ramener un butin), ou arrêter de haler.
+func _hook_choose() -> void:
+	match _grap_state:
+		5:
+			_request("grapple_reel" if _grap_kind == "loot" else "grapple_haul", 0)
+		3:
+			_request("grapple_pause", 0)
+
+
+## E / R quand on vise ou quand le crochet est accroché et qu'on est à l'étrave. Renvoie vrai si la touche a servi.
+func _hook_interact(secondary: bool) -> bool:
+	if _hook_aim:
+		if secondary:
+			_hook_aim = false
+		else:
+			_hook_fire()
+		return true
+	if _grap_state != 0 and _loc == Loc.SHIP and _mode == Mode.WALK and _ppos.distance_to(_grapple_mount()) < 3.2:
+		if secondary:
+			_request("grapple_release", 0)
+		else:
+			_hook_choose()
+		return true
+	return false
+
+
+## Hauteur du sol à terre en `p`, ou Land.NO_SURFACE.
+func _ground_at(p: Vector2) -> float:
+	var h := _land.walk_height(p, 0.0)
+	if h == Land.NO_SURFACE:
+		h = _land.walk_height(p, _islands.ground_h(p))
+	return h
+
+
+## Vrai si un pirate peut se tenir debout à terre en `p`.
+func _can_stand_at(p: Vector2) -> bool:
+	return _land.is_walkable(p) and _ground_at(p) != Land.NO_SURFACE
+
+
+# --- côté hôte : le crochet vit et l'accroche suit ce qu'elle tient ---
+
+## Hôte : le pirate `peer` lance le crochet du bateau dans la direction `code` (dixièmes de degré).
+func _grapple_fire(peer: int, code: int) -> void:
+	if _grap_state != 0 or code < 0 or code >= 3600:
+		return
+	var origin := _hook_origin()
+	var hit := Hook.trace(origin, Hook.code_dir(code), _hook_probes())
 	_grap_owner = peer
-	_grap_hook = _ship_to_world(_grapple_mount())
-	if tgt.is_empty():
-		_grap_kind = ""
-		_grap_loot = -1
-		_grap_target = _grap_hook + _sim.forward() * 12.0
-		_notify_all("Le grappin ne trouve rien devant : ni butin à flot, ni quai ou plage à portée")
-	else:
-		_grap_kind = str(tgt["kind"])
-		_grap_target = tgt["pos"]
-		_grap_loot = int(tgt.get("id", -1))
+	_grap_hook = origin
+	_grap_loot = -1
+	_grap_enemy = -1
+	_grap_kind = str(hit["kind"])
+	_grap_target = hit["pos"]
+	match _grap_kind:
+		"loot":
+			_grap_loot = int(hit["id"])
+		"enemy":
+			_grap_enemy = int(hit["id"])
+			var ei := _fleet.find(_grap_enemy)
+			_grap_off = _grap_target - (_fleet.ships[ei]["sim"] as ShipSim).position if ei >= 0 else Vector2.ZERO
 	_grap_total = maxf(_grap_hook.distance_to(_grap_target), 1.0)
 	_grap_state = 1
+	_dbg("crochet lancé par %d : %s en (%.1f, %.1f)" % [peer, _grap_kind if _grap_kind != "" else "rien", _grap_target.x, _grap_target.y])
 
 
 ## Hôte : décrocher le crochet (il revient à bord).
@@ -4137,9 +4489,10 @@ func _grapple_release() -> void:
 		return
 	_grap_state = 4
 	_grap_loot = -1
+	_grap_kind = ""
 
 
-## Hôte : un butin halé arrive à bord. Un trésor va dans le coffre du capitaine, le reste à celui qui a lancé le crochet.
+## Hôte : un butin ramené arrive à bord. Un trésor va dans le coffre du capitaine, le reste à celui qui a lancé le crochet.
 func _collect_hauled(id: int) -> void:
 	var kind := _loot.take(id)
 	if kind == "":
@@ -4151,50 +4504,54 @@ func _collect_hauled(id: int) -> void:
 		_give_item(_grap_owner, kind)
 
 
-## Hôte : fait vivre le grappin (vol, halage d'un butin, remorquage vers la terre, retour).
+## Hôte : fait vivre le grappin (vol, accroche, butin ramené, bateau halé, retour).
+## États : 1 en vol, 5 accroché (on attend le choix de l'équipage), 2 ramène un butin, 3 hale le bateau, 4 retour.
 func _update_grapple(delta: float) -> void:
 	if _grap_state == 0:
 		return
-	var bow := _ship_to_world(_grapple_mount())
+	var bow := _hook_origin()
+	# l'accroche suit ce qu'elle tient
+	if _grap_state != 4:
+		match _grap_kind:
+			"enemy":
+				var ei := _fleet.find(_grap_enemy)
+				if ei < 0 or _fleet.ships[ei]["state"] == "sinking":
+					_grapple_release()
+					return
+				_grap_target = (_fleet.ships[ei]["sim"] as ShipSim).position + _grap_off
+			"loot":
+				if _grap_state == 1 or _grap_state == 5:
+					var lp := _loot.pos_of(_grap_loot)
+					if lp == Vector2.INF:
+						_grapple_release()
+						return
+					_grap_target = lp   # le butin dérive : on vise où il est
 	match _grap_state:
 		1:
-			if _grap_kind == "loot":
-				var lp := _loot.pos_of(_grap_loot)
-				if lp == Vector2.INF:
-					_grap_state = 4
-					return
-				_grap_target = lp   # le butin dérive : on vise où il est
 			var to := _grap_target - _grap_hook
-			var step := GRAPPLE_SPEED * delta
+			var step := Hook.SPEED * delta
 			if to.length() <= step:
 				_grap_hook = _grap_target
-				if _grap_kind == "loot":
-					_grap_state = 2
-				elif _grap_kind == "land":
-					_grap_state = 3
-					_notify_all("Grappin accroché : le bateau est halé vers la terre (R au poste : décrocher)")
-				else:
-					_grap_state = 4
+				_grap_state = 5 if _grap_kind != "" else 4
 			else:
 				_grap_hook += to.normalized() * step
 		2:
 			var lp2 := _loot.pos_of(_grap_loot)
 			if lp2 == Vector2.INF:
-				_grap_state = 4
+				_grapple_release()
 				return
 			var to2 := bow - lp2
 			if to2.length() < 3.0:
 				_collect_hauled(_grap_loot)
-				_grap_state = 4
-				_grap_loot = -1
+				_grapple_release()
 			else:
-				var np := lp2 + to2.normalized() * minf(GRAPPLE_REEL * delta, to2.length())
+				var np := lp2 + to2.normalized() * minf(Hook.REEL * delta, to2.length())
 				_loot.move_to(_grap_loot, np)
 				_grap_hook = np
 		3:
-			var to3 := _grap_hook - bow
+			var to3 := _grap_target - bow
 			var dist := to3.length()
-			if dist > GRAPPLE_RANGE * 1.6:
+			if dist > GRAPPLE_MAX_ROPE:
 				_notify_all("La corde du grappin a cassé")
 				_grapple_release()
 			elif dist > 3.3:
@@ -4204,20 +4561,26 @@ func _update_grapple(delta: float) -> void:
 				_sim.speed = 0.0   # amarré
 		4:
 			var to4 := bow - _grap_hook
-			var step4 := GRAPPLE_SPEED * 1.3 * delta
+			var step4 := Hook.SPEED * 1.3 * delta
 			if to4.length() <= step4:
 				_grap_state = 0
+				_grap_kind = ""
+				_grap_owner = 0
 			else:
 				_grap_hook += to4.normalized() * step4
+		5:
+			if bow.distance_to(_grap_target) > GRAPPLE_MAX_ROPE:
+				_notify_all("La corde du grappin a cassé")
+				_grapple_release()
 
 
-## Chez tout le monde : la corde et le crochet (positions reçues de l'hôte).
+## Chez tout le monde : la corde et le crochet (positions reçues de l'hôte), de la bouche du canon à grappin.
 func _update_grapple_visual() -> void:
 	if _rope == null:
 		_rope = MeshInstance3D.new()
 		var cm := CylinderMesh.new()
-		cm.top_radius = 0.035
-		cm.bottom_radius = 0.035
+		cm.top_radius = 0.055
+		cm.bottom_radius = 0.055
 		cm.height = 1.0
 		cm.radial_segments = 4
 		cm.rings = 1
@@ -4237,18 +4600,18 @@ func _update_grapple_visual() -> void:
 	_hook_node.visible = on
 	if not on:
 		return
-	var a := _ship_point(_grapple_mount(), 0.9)
-	var land_y := 0.3 if _grap_kind == "land" else SEA_Y + 0.45
+	var a := _hook_muzzle()
+	var end_y := _hook_end_y(_grap_kind, _grap_hook)
 	var k := 1.0 - clampf(_grap_hook.distance_to(_grap_target) / _grap_total, 0.0, 1.0)
-	var y := land_y
+	var y := end_y
 	var arc := 0.0
 	if _grap_state == 1:
-		y = lerpf(a.y, land_y, k)
+		y = lerpf(a.y, end_y, k)
 		arc = 1.4 * sin(PI * k)
 	elif _grap_state == 4:
-		var bow2 := Vector2(a.x + _world_origin.x, a.z + _world_origin.z)
-		var back := clampf(bow2.distance_to(_grap_hook) / maxf(_grap_total, 1.0), 0.0, 1.0)
-		y = lerpf(a.y, land_y, back)
+		var home := Vector2(a.x + _world_origin.x, a.z + _world_origin.z)
+		var back := clampf(home.distance_to(_grap_hook) / maxf(_grap_total, 1.0), 0.0, 1.0)
+		y = lerpf(a.y, end_y, back)
 		arc = 0.8 * sin(PI * back)
 	var b := _land_point(_grap_hook, y + arc)
 	var seg := b - a
@@ -4260,6 +4623,29 @@ func _update_grapple_visual() -> void:
 	_hook_node.global_position = b
 	if seg_len > 0.1 and absf(yv.y) < 0.98:
 		_hook_node.look_at(a, Vector3.UP)
+
+
+## Ce que dit la ligne du bas quand on tient le grappin ou qu'il est lancé, à l'étrave. Vide ailleurs.
+func _hook_prompt() -> String:
+	if _hook_aim:
+		var kind := str(_hook_hit.get("kind", ""))
+		if kind == "":
+			return "Grappin — rien à saisir par là (portée %d m)   R : ranger" % int(Hook.RANGE)
+		return "Grappin — clic ou E : lancer sur %s (%d m)   R : ranger" % [str(_hook_hit["name"]), int(_hook_hit["dist"])]
+	if _grap_state == 0 or _loc != Loc.SHIP or _ppos.distance_to(_grapple_mount()) >= 3.2:
+		return ""
+	match _grap_state:
+		1:
+			return "Le crochet file…"
+		5:
+			if _grap_kind == "loot":
+				return "Crochet sur du butin — E : le ramener   R : décrocher"
+			return "Crochet accroché sur %s — E : haler le bateau jusqu'à lui   R : décrocher (le bateau ne bouge pas)" % str(Hook.NAMES.get(_grap_kind, "?"))
+		2:
+			return "Le butin arrive…   R : décrocher"
+		3:
+			return "Le bateau est halé vers le crochet — E : arrêter de haler   R : décrocher"
+	return ""
 
 
 # ------------------------------------------------------------------ bateau bloqué : le remettre à l'eau
@@ -4458,7 +4844,10 @@ func _update_hud() -> void:
 				"   (barre tenue par un ami)" if _helm_owner != 0 and _helm_owner != _my_id() else ""]
 	_update_gauge()
 	_sail_hud.visible = _loc != Loc.LAND and _loc != Loc.HOLD and not _chart.is_open()
-	_sail_hud.set_state(_sim.wind_relative(), _sim.sail_trim, _sim.optimal_trim(), _sim.trim_efficiency(), _sim.sail_level > 0, _mode == Mode.SAILS)
+	var hs: ShipSim = _raft.sim if (_loc == Loc.RAFT and _raft != null) else _sim   # sur le radeau, le cadran suit le radeau
+	_sail_hud.set_state(hs.wind_relative(), hs.sail_trim, hs.optimal_trim(), hs.trim_efficiency(), hs.sail_level > 0, _mode == Mode.SAILS)
+	if hs != _sim:
+		_hud.text = "Radeau — vitesse %.1f nœuds   Voile : %s   %s" % [hs.speed * 1.944, "hissée" if hs.sail_level > 0 else "affalée", wind]
 	_gold_label.text = "Or : %d\nBoulets : %d   Planches : %d" % [_profile.gold, _profile.balls, _profile.planks]
 	if not _stash.is_empty():
 		_gold_label.text += "\nCoffre : %d trésor(s), %d or" % [_stash.size(), Treasure.total_value(_stash)]
@@ -4480,6 +4869,13 @@ func _update_hud() -> void:
 	if _notice_t > 0.0:
 		_prompt.text = _notice
 		return
+	var hook_text := _hook_prompt()
+	if hook_text != "":
+		_prompt.text = hook_text
+		return
+	if _loc == Loc.RAFT:
+		_prompt.text = _raft_prompt()
+		return
 	if _loc == Loc.HOLD:
 		_prompt.text = _hold_prompt()
 		return
@@ -4493,7 +4889,8 @@ func _update_hud() -> void:
 		var bp := _world_to_ship(_lpos)
 		var hw := _ship.half_width(clampf(bp.x, -_ship.length * 0.5 + 0.2, _ship.length * 0.5 - 0.2))
 		var near_hull := (absf(bp.y) - hw) * ShipModel.SCALE <= BOARD_REACH and bp.x > -_ship.length * 0.5 - 1.0 and bp.x < _ship.length * 0.5 + 1.0
-		_prompt.text = "À la nage — E : remonter à bord" if near_hull else "À la nage — rejoins la coque, une plage ou un quai"
+		var near_raft := _raft != null and Raft.covers(_raft.sim.position, _raft.sim.yaw, _lpos, 1.6)
+		_prompt.text = "À la nage — E : monter sur ton radeau" if near_raft else ("À la nage — E : remonter à bord" if near_hull else "À la nage — rejoins la coque, une plage ou un quai")
 		return
 	if _loc == Loc.SHIP and _mode == Mode.SAILS:
 		_prompt.text = "Au mât — Q/D : orienter les voiles   Z/S : hisser / affaler   E : lâcher"
@@ -4543,7 +4940,7 @@ func _update_hud() -> void:
 			else:
 				_prompt.text = "Caisse : E : prendre un boulet (%d)   R : prendre une planche (%d)" % [_profile.balls, _profile.planks]
 		"grapple":
-			_prompt.text = "E ou R : décrocher le grappin" if _grap_state != 0 else "E : lancer le grappin (butin à flot, quai ou plage devant l'étrave)"
+			_prompt.text = "E ou R : décrocher le grappin" if _grap_state != 0 else "E : prendre le grappin en main — on vise à la souris, tout autour du bateau"
 		"stash":
 			if _carry_kind == "treasure":
 				_prompt.text = "E : déposer le trésor dans le coffre du capitaine   —   %s" % _stash_text()
@@ -4563,3 +4960,250 @@ func _update_hud() -> void:
 				_prompt.text = "E : charger le canon"
 			else:
 				_prompt.text = "R : se glisser dans le canon (être tiré au loin)   —   ou prends un boulet au tonneau"
+
+
+# ------------------------------------------------------------------ fabrication et radeau
+
+var _raft: Raft                       ## mon radeau (un seul à la fois)
+var _remote_rafts: Dictionary = {}    ## id du joueur -> son radeau vu de loin (position, cap et voile reçus du réseau)
+
+
+## Fabrique `id` (voir data/crafting.json) avec ce qu'il y a dans le sac. Le radeau se pose sur l'eau libre la plus proche.
+func _craft(id: String) -> void:
+	if Crafting.get_def(id).is_empty() or id != "raft":
+		return
+	if _raft != null:
+		_say("Tu as déjà un radeau, à %d m d'ici" % int(_raft.sim.position.distance_to(_my_world_pos())), 3.5)
+		return
+	if _loc != Loc.LAND:
+		_say("Le radeau se fabrique à terre, au bord de l'eau", 3.5)
+		return
+	if not Crafting.can_afford(_profile, id):
+		var lack := Crafting.missing(_profile, id)
+		_say("Il te manque %d planche(s) pour le radeau (%s en tout) : casse des tonneaux et des caisses" % [int(lack.get("plank", 0)), Crafting.cost_text(id)], 5.0)
+		return
+	var spot := _raft_spot_near(_lpos)
+	if spot.is_empty():
+		_say("Pas d'eau libre assez près : approche-toi du rivage (pas contre un rocher ni contre le bateau)", 4.5)
+		return
+	Crafting.pay(_profile, id)
+	_spawn_raft(spot["pos"], spot["yaw"])
+	_dbg("radeau fabriqué en (%.1f, %.1f), cap %.0f°, planches restantes %d" % [spot["pos"].x, spot["pos"].y, rad_to_deg(spot["yaw"]), _profile.planks])
+	_splash_burst(spot["pos"])
+	_say("Radeau fabriqué ! Monte dessus : E ou saute (Espace). A/D : barrer   W/S : hisser / affaler la voile", 7.0)
+
+
+## Un emplacement d'eau libre pour un radeau près de `from` : {pos, yaw} (l'étrave vers le large), ou {}.
+func _raft_spot_near(from: Vector2) -> Dictionary:
+	var d := 2.4
+	while d <= 16.0:
+		for k in 24:
+			var dir := Vector2.from_angle(TAU * float(k) / 24.0 + d * 0.31)
+			var p := from + dir * d
+			var yaw := atan2(-dir.y, dir.x)
+			if not _raft_touches(p, yaw):
+				return {"pos": p, "yaw": yaw}
+		d += 0.8
+	return {}
+
+
+## Vrai si un radeau en `p` (monde x/z), cap `yaw`, toucherait la terre, un quai, un récif ou le bateau des joueurs.
+func _raft_touches(p: Vector2, yaw: float) -> bool:
+	var pts := Raft.hull_points(p, yaw)
+	for q: Vector2 in pts:
+		if not _land.is_over_water(q) or _ship.over_hull(_world_to_ship(q)):
+			return true
+	if Land.hits_land(pts):
+		return true
+	if not _islands.islands.is_empty() and _islands.ship_hit_index(pts) >= 0:
+		return true
+	return _rocks.hit(pts).x >= 0
+
+
+func _spawn_raft(pos: Vector2, yaw: float) -> void:
+	_raft = Raft.new()
+	_raft.owner_id = _my_id()
+	_raft.sim.position = pos
+	_raft.sim.yaw = yaw
+	_raft.sim.wind_dir = _sim.wind_dir
+	_raft.sim.wind_angle = _sim.wind_angle
+	_world_fixed.add_child(_raft)
+	_raft.float_on(pos, _wave_height, SEA_Y)
+
+
+## Chaque image : mon radeau navigue (ou reste ancré si je ne suis pas dessus), ceux des autres suivent le réseau.
+func _update_rafts(delta: float) -> void:
+	if _raft != null:
+		var r := _raft
+		var riding := _loc == Loc.RAFT
+		r.sim.wind_dir = _sim.wind_dir
+		r.sim.wind_angle = _sim.wind_angle
+		if riding:
+			r.sim.anchored = false
+			r.sim.sail_trim_target = r.sim.optimal_trim()   # la voile se règle toute seule
+		else:
+			r.sim.anchored = true
+			r.sim.sail_level = 0
+			r.sim.rudder_target = 0.0
+		var prev_pos := r.sim.position
+		var prev_yaw := r.sim.yaw
+		r.sim.step(delta)
+		if _raft_touches(r.sim.position, r.sim.yaw):
+			_raft_bump(prev_pos, prev_yaw)
+		r.float_on(r.sim.position, _wave_height, SEA_Y)
+		r.update_visual(delta)
+		r.set_sail_alpha(0.45 if riding else 1.0)
+		if riding:
+			_lpos = Raft.stand_world(r.sim.position, r.sim.yaw)
+			_sprite.direction = PirateSprite.direction_of(Vector2(cos(r.sim.yaw), -sin(r.sim.yaw)))
+	for id in _remote_rafts:
+		var rr: Raft = _remote_rafts[id]
+		rr.sim.position = rr.sim.position.lerp(rr.get_meta("target", rr.sim.position), 1.0 - exp(-delta * 10.0))
+		rr.float_on(rr.sim.position, _wave_height, SEA_Y)
+		var ridden := false
+		for rid in _remotes:
+			if int(_remotes[rid]["loc"]) == 7 and (_remotes[rid]["pos"] as Vector2).distance_to(rr.sim.position) < 2.5:
+				ridden = true
+		rr.set_sail_alpha(0.38 if ridden else 1.0)
+		rr.update_visual(delta)
+
+
+## Le radeau a touché quelque chose : il glisse le long de l'obstacle s'il peut, sinon il s'arrête.
+func _raft_bump(prev_pos: Vector2, prev_yaw: float) -> void:
+	var r := _raft
+	var np := r.sim.position
+	if _raft_touches(prev_pos, prev_yaw):
+		return   # il était déjà coincé (le bateau lui est tombé dessus) : on le laisse sortir
+	for o: Vector2 in [Vector2(np.x, prev_pos.y), Vector2(prev_pos.x, np.y), prev_pos]:
+		if not _raft_touches(o, r.sim.yaw):
+			r.sim.position = o
+			r.sim.speed *= 0.5
+			return
+	r.sim.position = prev_pos
+	r.sim.yaw = prev_yaw
+	r.sim.speed = 0.0
+
+
+## Barrer (A/D) et régler la voilure (W hisse, S affale) quand je suis sur le radeau.
+func _update_raft_pilot(move: Vector2) -> void:
+	if _raft == null:
+		_loc = Loc.SWIM
+		return
+	_raft.sim.rudder_target = clampf(move.x, -1.0, 1.0)
+	if move.y < -0.5:
+		_raft.sim.sail_level = ShipSim.SAIL_LEVELS
+	elif move.y > 0.5:
+		_raft.sim.sail_level = 0
+
+
+## Hauteur (scène) du pont de mon radeau si le point monde `w` est dessus, sinon INF.
+func _raft_deck_y(w: Vector2) -> float:
+	if _raft != null and Raft.covers(_raft.sim.position, _raft.sim.yaw, w):
+		return _raft.position.y + Raft.TOP
+	return INF
+
+
+## Je monte sur mon radeau : je me tiens au pied du mât, la voile se hisse.
+func _board_raft() -> void:
+	if _raft == null:
+		return
+	_loc = Loc.RAFT
+	_mode = Mode.WALK
+	_pz = 0.0
+	_vz = 0.0
+	_flight = {}
+	_walkto = Vector2.INF
+	_raft.sim.anchored = false
+	_dbg("à bord du radeau")
+	if _raft.sim.sail_level == 0:
+		_raft.sim.sail_level = ShipSim.SAIL_LEVELS
+		_raft.sim.sail_trim_target = _raft.sim.optimal_trim()
+	_lpos = Raft.stand_world(_raft.sim.position, _raft.sim.yaw)
+	_prev_lpos = _lpos
+	_splash_burst(_lpos)
+
+
+## E dans l'eau, tout contre le radeau : on s'y hisse.
+func _try_board_raft_from_water() -> bool:
+	if _raft != null and Raft.covers(_raft.sim.position, _raft.sim.yaw, _lpos, 1.6):
+		_board_raft()
+		return true
+	return false
+
+
+## E à terre, au bord de l'eau, près du radeau : on met le pied dessus.
+func _try_board_raft_from_land() -> bool:
+	if _raft != null and Raft.covers(_raft.sim.position, _raft.sim.yaw, _lpos, 3.0):
+		_board_raft()
+		return true
+	return false
+
+
+## Quitter le radeau. `jump` (Espace) : on plonge ; sinon (E) on pose le pied sur la terre ou le pont du bateau le plus proche à portée.
+func _leave_raft(jump: bool) -> void:
+	if _raft == null:
+		_loc = Loc.SWIM
+		return
+	var center := _raft.sim.position
+	if not jump:
+		var d := 1.8
+		while d <= 4.6:
+			for k in 24:
+				var q := center + Vector2.from_angle(TAU * float(k) / 24.0 + d) * d
+				var bp := _world_to_ship(q)
+				if _ship.is_walkable(bp):
+					_loc = Loc.SHIP
+					_mode = Mode.WALK
+					_ppos = bp
+					_pz = 0.0
+					_vz = 0.0
+					_land_t = 0.2
+					_splash_burst(_lpos)
+					return
+				if _can_stand_at(q):
+					_flight = {}
+					if _stand_on_ground(q, _ground_at(q)):
+						_splash_burst(_lpos)
+						return
+			d += 0.4
+		_say("Pas de terre ni de bateau à portée : Espace pour plonger", 3.0)
+		return
+	var side := Vector2(-sin(_raft.sim.yaw), -cos(_raft.sim.yaw)) * (Raft.HALF.y + 0.5)
+	_enter_swim(center + side)
+
+
+## Mon radeau pour les autres : [x, z, cap, ouverture de la voile, orientation de la voile], ou vide si je n'en ai pas.
+func raft_net_state() -> Array:
+	if _raft == null:
+		return []
+	return [_raft.sim.position.x, _raft.sim.position.y, _raft.sim.yaw, _raft.sim.sail_open, _raft.sim.sail_trim]
+
+
+## Le radeau du joueur `id`, reçu du réseau : il glisse vers sa position, ou disparaît (état vide).
+func apply_remote_raft(id: int, s: Array) -> void:
+	if s.size() < 5:
+		if _remote_rafts.has(id):
+			(_remote_rafts[id] as Node).queue_free()
+			_remote_rafts.erase(id)
+		return
+	if _world_fixed == null:
+		return
+	var rr: Raft
+	if _remote_rafts.has(id):
+		rr = _remote_rafts[id]
+	else:
+		rr = Raft.new()
+		rr.owner_id = id
+		_world_fixed.add_child(rr)
+		_remote_rafts[id] = rr
+		rr.sim.position = Vector2(float(s[0]), float(s[1]))
+		_dbg("radeau de %d vu à distance en (%.1f, %.1f)" % [id, float(s[0]), float(s[1])])
+	rr.set_meta("target", Vector2(float(s[0]), float(s[1])))
+	rr.apply_pose(float(s[2]), float(s[3]), float(s[4]))
+
+
+## Invite de la ligne du bas sur le radeau.
+func _raft_prompt() -> String:
+	var kts := _raft.sim.speed * 1.944 if _raft != null else 0.0
+	var sail := "voile hissée" if _raft != null and _raft.sim.sail_level > 0 else "voile affalée"
+	return "Radeau (%.1f nœuds, %s) — A/D : barrer   W/S : hisser / affaler   E : débarquer   Espace : plonger" % [kts, sail]

@@ -29,8 +29,8 @@ var masts: Array = []          ## [x, hauteur] de chaque mât
 var crate_pos := Vector2.INF   ## où se trouve la pile de caisses du pont (repère du modèle), INF si le modèle n'en a pas
 var stash_pos := Vector2.INF   ## où se trouve le coffre du capitaine, dans la cabine (repère du modèle)
 
-const RAIL_HEIGHT := 0.5       ## m : au-dessus de cette hauteur de saut, on passe par-dessus le plat-bord
-const LOW_CLEAR := 0.65        ## m : hauteur de saut qui suffit pour enjamber une caisse, un tonneau ou la roue
+const RAIL_HEIGHT := 0.35      ## m : au-dessus de cette hauteur de saut, on passe par-dessus le plat-bord
+const LOW_CLEAR := 0.5         ## m : hauteur de saut qui suffit pour enjamber une caisse, un tonneau ou la roue
 
 var _model: Node3D
 var _sails: Array = []         ## {node, top, base: Transform3D, alpha}
@@ -63,11 +63,11 @@ func load_ship(p_name: String) -> bool:
 	mast_ladder = meta.get("mast_ladder", [])
 	bow_x = float(meta.get("bow_x", length * 0.5 - 0.4))
 	masts = meta.get("masts", [])
-	_compute_low_obstacles()
 	_model = scene.instantiate() as Node3D
 	_model.scale = Vector3.ONE * SCALE
 	add_child(_model)
 	_index_nodes(_model)
+	_compute_low_obstacles()   # (après _index_nodes : il faut savoir où est la pile de caisses)
 	_compute_sail_pivots()
 	return true
 
@@ -83,6 +83,9 @@ func _compute_low_obstacles() -> void:
 		if not cabin.is_empty():
 			tall = tall or (float(b[2]) > float(cabin["x0"]) - 0.3 and float(b[0]) < float(cabin["x1"]) + 0.3 \
 					and float(b[3]) > float(cabin["y0"]) - 0.3 and float(b[1]) < float(cabin["y1"]) + 0.3)
+		# la pile de caisses du pont (sur le sloop elle touche la cabine) reste une caisse : on la saute
+		if crate_pos != Vector2.INF and Vector2((float(b[0]) + float(b[2])) * 0.5, (float(b[1]) + float(b[3])) * 0.5).distance_to(crate_pos) < 0.35:
+			tall = false
 		if not tall:
 			low_boxes.append(i)
 	for i in circles.size():

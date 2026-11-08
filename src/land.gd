@@ -167,6 +167,49 @@ func step(from: Vector2, delta: Vector2, cur: float) -> Vector3:
 	return Vector3(from.x, from.y, cur)
 
 
+## Hauteur de saut (m au-dessus du sol) qui suffit pour passer au-dessus d'un poteau, d'un tonneau ou d'un arbuste.
+const LOW_CLEAR := 0.5
+
+
+## Vrai si un pirate en l'air, à `alt` mètres au-dessus du sol, peut se trouver en `p` (monde x/z). Contrairement à la marche, un
+## saut ne s'arrête pas au bord du quai ni de la plage (c'est ce qui l'empêchait de plonger ou de franchir un vide) : seuls les
+## murs des bâtiments l'arrêtent, et les petits obstacles (poteaux, tonneaux, arbres) tant qu'on est trop bas.
+func air_clear(p: Vector2, alt: float) -> bool:
+	var m := Vector2(p.x, -p.y)
+	for o: Array in obstacles:
+		if m.x > float(o[0]) and m.x < float(o[2]) and m.y > float(o[1]) and m.y < float(o[3]):
+			return false
+	if alt < LOW_CLEAR:
+		for c: Array in circles:
+			if m.distance_to(Vector2(float(c[0]), float(c[1]))) < float(c[2]):
+				return false
+	return true
+
+
+## Fait avancer un pirate en l'air de `delta` à partir de `from` : libre au-dessus du vide et des petits obstacles, en glissant le
+## long des murs. À l'intérieur d'un bâtiment, les murs comptent comme à pied (`cur` : hauteur du sol sous le pirate).
+func air_move(from: Vector2, delta: Vector2, alt: float, cur: float) -> Vector2:
+	if interior_at(from) >= 0 or interior_at(from + delta) >= 0:
+		var r := step(from, delta, cur)
+		return Vector2(r.x, r.y)
+	for t: Vector2 in [from + delta, Vector2(from.x + delta.x, from.y), Vector2(from.x, from.y + delta.y)]:
+		if air_clear(t, alt):
+			return t
+	return from
+
+
+## Ce qui se dresse en `p` (monde x/z) et qu'un crochet peut saisir : « mur » (bâtiment), « objet » (poteau, tonneau, arbre) ou « ».
+func blocker_at(p: Vector2) -> String:
+	var m := Vector2(p.x, -p.y)
+	for o: Array in obstacles:
+		if m.x > float(o[0]) and m.x < float(o[2]) and m.y > float(o[1]) and m.y < float(o[3]):
+			return "mur"
+	for c: Array in circles:
+		if m.distance_to(Vector2(float(c[0]), float(c[1]))) < float(c[2]):
+			return "objet"
+	return ""
+
+
 ## Indice de l'intérieur qui contient le point monde `p`, ou -1 (dehors).
 func interior_at(p: Vector2) -> int:
 	var m := Vector2(p.x, -p.y)
