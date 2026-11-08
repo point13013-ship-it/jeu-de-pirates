@@ -142,6 +142,7 @@ var _islands := IslandWorld.new()    ## les îles : terre, ennemis, coffres (l'h
 var _chart: SeaChart                 ## la carte des mers, sur la table de la cabine
 var _island_hud: IslandHud           ## cœurs, flèche vers l'île choisie, voile rouge des coups reçus
 var _destination := -1               ## l'île choisie sur la carte, ou -1
+var _quest_dest := -1                ## l'île vers laquelle une quête d'expédition m'envoie, ou -1
 var _hp := 6                         ## mes points de vie (chacun les siens)
 var _hp_max := 6
 var _inv_t := 0.0                    ## s d'invulnérabilité restantes après un coup reçu
@@ -703,6 +704,7 @@ func _build_islands() -> void:
 	_hp_max = int(_islands.player_cfg.get("hp", 6))
 	_hp = _hp_max
 	_chart.world = _islands
+	_sync_quest_destination()   # une expédition en cours (sauvegardée) remet le cap sur son île
 	if _args.has("discover"):   # essai : --discover=all (ou une liste d'identifiants) révèle des îles sur la carte
 		for isl: Dictionary in _islands.islands:
 			if str(_args["discover"]) == "all" or str(isl["id"]) in str(_args["discover"]).split(","):
@@ -819,6 +821,7 @@ func _build_hud() -> void:
 	_profile.persistent = not _args.has("fresh")
 	_profile.load_file()
 	_quests = QuestLog.new(_profile)
+	_sync_quest_destination()
 	_gold_label = Label.new()
 	_gold_label.set_anchors_preset(Control.PRESET_TOP_RIGHT)
 	_gold_label.grow_horizontal = Control.GROW_DIRECTION_BEGIN
@@ -907,6 +910,9 @@ func _apply_test_args() -> void:
 			for i in _ship.cannons.size():
 				_cannon_loaded[i] = true
 				_request("fire", i))
+	if _args.has("quest"):   # essai : --quest=crabes_rhum met cette quête en cours
+		_profile.quests[str(_args["quest"])] = "active"
+		_sync_quest_destination()
 	if _args.has("berry"):   # essai : --berry=ignis donne cette baie
 		_profile.berry = str(_args["berry"])
 	if _args.has("gold"):   # essai : --gold=150 donne de l'or
@@ -1164,6 +1170,42 @@ func _nearest_npc() -> TownNpc:
 	return best
 
 
+## Une quête d'expédition en cours fixe le cap sur son île : la flèche de l'écran la montre, et la carte des mers y
+## plante le drapeau (une zone floue « Terre inconnue » tant qu'on ne l'a pas vue). Sans quête, le cap reste au choix du joueur.
+func _sync_quest_destination() -> void:
+	if _quests == null or _islands.islands.is_empty():
+		return
+	var id := _quests.current_island()
+	if id == "":
+		if _quest_dest >= 0 and _destination == _quest_dest:
+			_destination = -1
+		_quest_dest = -1
+		return
+	for i in _islands.islands.size():
+		if str(_islands.islands[i]["id"]) == id:
+			_quest_dest = i
+			_destination = i
+			return
+
+
+## À terre : si je pose le pied sur l'île d'une quête, l'expédition est accomplie (il reste à le dire au donneur).
+func _check_quest_arrival() -> void:
+	if _loc != Loc.LAND:
+		return
+	var i := _islands.island_at(_lpos, 0.0)
+	if i < 0:
+		return
+	var done := _quests.reach_island(str(_islands.islands[i]["id"]))
+	if done.is_empty():
+		return
+	if not (_islands.islands[i]["id"] in _profile.discovered):
+		_profile.discovered.append(_islands.islands[i]["id"])
+		_profile.save()
+	_sync_quest_destination()
+	var giver: String = str(_quests.defs[done[0]]["giver"])
+	_say("Île atteinte : %s ! Retourne voir %s au port" % [_islands.islands[i]["name"], _quests.names.get(giver, giver)], 6.0)
+
+
 func _talk(npc: TownNpc) -> void:
 	var t := _quests.talk(npc.id, npc.lines)
 	_dialog_ctx = {"npc": npc, "offer": t["offer"], "turn_in": t["turn_in"]}
@@ -1184,12 +1226,16 @@ func _on_dialog_closed(accepted: bool) -> void:
 			if not lines.is_empty():
 				_dialog.start(npc.display_name, lines, false)
 			_say("Quête acceptée : %s" % str(_quests.defs[ctx["offer"]]["title"]), 3.5)
+			if _quests.is_expedition(str(ctx["offer"])):
+				_sync_quest_destination()
+				_say("Quête acceptée : le cap est fixé sur la carte des mers", 4.0)
 		else:
 			_say("Tu déclines. Il te reste du temps pour changer d'avis.", 3.0)
 	elif ctx["turn_in"] != "":
 		var reward := _quests.complete(str(ctx["turn_in"]))
 		if reward > 0:
 			_say("Quête terminée ! +%d pièces d'or" % reward, 4.5)
+		_sync_quest_destination()
 	elif _shop_defs.has(npc.id):
 		_shop_menu.open(Shop.new(_profile, _shop_defs[npc.id], _local_look()))
 
@@ -1505,6 +1551,7 @@ func _update_islands(delta: float) -> void:
 			elif _net.active:
 				_net.send_hurt(tid, int(ev["damage"]), ev["from"])
 	_islands.update_visuals(delta, _is_authority())
+	_check_quest_arrival()
 	_islands.update_berries(delta, _lpos if _loc == Loc.LAND else Vector2(1.0e6, 1.0e6), _is_authority())
 	# repérage : une île à moins de reveal_range apparaît sur la carte
 	for i in _islands.island_in_sight(_sim.position):
@@ -1554,7 +1601,10 @@ func _update_island_hud(delta: float) -> void:
 	if _chart.is_open():
 		_chart.ship_pos = _sim.position
 		_chart.ship_dir = Vector2(cos(_sim.yaw), -sin(_sim.yaw))
-	h.dest_visible = _destination >= 0 and _destination < _islands.islands.size() and not _chart.is_open()
+	var has_goal := _destination >= 0 and _destination < _islands.islands.size()
+	h.dest_visible = has_goal and not _chart.is_open()
+	# la boussole que mon pirate tient en main montre le même cap (point bleu sur l'anneau)
+	_sprite.compass_goal = (_chart.shown_pos(_destination) - (_lpos if _loc == Loc.LAND else _sim.position)) if has_goal else Vector2.ZERO
 	if h.dest_visible:
 		var target := _chart.shown_pos(_destination)
 		var from := _lpos if _loc == Loc.LAND else _sim.position

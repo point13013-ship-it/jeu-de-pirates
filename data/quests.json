@@ -38,6 +38,94 @@
       ],
       "done": ["Ariane a reçu la lettre. Tu sais tenir ta langue, c'est bien."]
     },
+    "crabes_rhum": {
+      "title": "Les pinces de l'île aux Crabes",
+      "kind": "expedition",
+      "island": "crabes",
+      "giver": "corbin",
+      "target": "corbin",
+      "item": "des nouvelles de l'île aux Crabes",
+      "reward": 90,
+      "offer": [
+        "Un coffre aurait été jeté sur une plage, à l'est d'ici, là où les crabes ont fait leur royaume.",
+        "Va voir si c'est vrai, matelot. Pose le pied sur l'île et reviens me le dire. Je ne paie pas pour des on-dit.",
+        "Je ne sais pas exactement où c'est. Ta carte dessinera une zone floue : fais route vers elle."
+      ],
+      "accepted": ["Cap sur la rumeur. Ne te fais pas pincer."],
+      "active": ["Alors, cette île aux Crabes ? Va y poser le pied, je veux des certitudes."],
+      "ready": ["Tu as vu l'île aux Crabes ? Reviens me voir, je t'écoute."],
+      "turn_in": [
+        "Des crabes grands comme des tonneaux, et un coffre dans les rochers. Tu es sûr de toi ?",
+        "Très bien. Voilà ta part, pour la peine."
+      ],
+      "done": ["L'île aux Crabes... je saurai quoi en faire. Merci, matelot."]
+    },
+    "naufrage_croix": {
+      "title": "La croix du Naufragé",
+      "kind": "expedition",
+      "island": "naufrage",
+      "giver": "gaspard",
+      "target": "gaspard",
+      "item": "des nouvelles de l'îlot du Naufragé",
+      "reward": 120,
+      "offer": [
+        "Un marin m'a juré qu'un îlot, tout petit, porte une croix plantée dans le sable. Un naufragé, dit-il.",
+        "Va voir ce qu'il en reste. Je cherche une certaine veste à boutons d'or, qu'il aurait portée.",
+        "L'îlot est mal situé sur les cartes : tu ne verras qu'une zone floue. Fais route, et regarde à l'horizon."
+      ],
+      "accepted": ["Une veste à boutons d'or. Tu me diras ce que tu y trouves."],
+      "active": ["L'îlot du Naufragé, matelot. Pose le pied dessus, et reviens."],
+      "ready": ["Tu as vu l'îlot ? Dis-moi tout."],
+      "turn_in": [
+        "Une croix, un coffre, une tente... Il a eu le temps de s'installer, le pauvre.",
+        "Merci. Voici de quoi payer ta traversée."
+      ],
+      "done": ["Le Naufragé repose en paix, grâce à toi."]
+    },
+    "squelettes_veille": {
+      "title": "La veille de l'île des Squelettes",
+      "kind": "expedition",
+      "island": "squelettes",
+      "giver": "ariane",
+      "target": "ariane",
+      "item": "des nouvelles de l'île des Squelettes",
+      "reward": 200,
+      "offer": [
+        "Mon frère est parti en mer il y a deux ans. On dit que les pirates morts de l'île au sud-ouest gardent leurs voiles.",
+        "Je veux savoir si c'est vrai. Va sur l'île des Squelettes, regarde, et reviens. Prends garde : ils frappent.",
+        "Sur la carte, tu ne verras qu'une zone floue vers le sud-ouest. Le reste, tu le trouveras à l'oeil."
+      ],
+      "accepted": ["Que les vents te portent. Et garde ton sabre à la main."],
+      "active": ["L'île des Squelettes, vers le sud-ouest. Pose le pied dessus, et reviens."],
+      "ready": ["Tu as vu l'île ? Raconte-moi."],
+      "turn_in": [
+        "Des squelettes en bicorne... Il n'y avait pas de voile bleue ? Non ? Tant mieux.",
+        "Voilà ce que je t'avais promis."
+      ],
+      "done": ["Merci pour la veille. Je dormirai un peu mieux."]
+    },
+    "fort_reconnaissance": {
+      "title": "Reconnaissance du Fort de la Marine",
+      "kind": "expedition",
+      "island": "fort",
+      "giver": "odilon",
+      "target": "odilon",
+      "item": "des nouvelles du Fort de la Marine",
+      "reward": 220,
+      "offer": [
+        "De ma batterie, je vois parfois des tours de pierre vers l'est, loin. Un avant-poste de la Marine, j'en jurerais.",
+        "Je veux savoir combien ils sont, et s'ils ont des officiers. Va poser le pied sur leur île et reviens me le dire.",
+        "Mon télescope ne donne qu'une zone floue. Cap à l'est-sud-est, matelot."
+      ],
+      "accepted": ["Discrétion. Les soldats de la Marine n'aiment pas les visiteurs."],
+      "active": ["Le fort, à l'est. Pose le pied sur leur île, et reviens me faire ton rapport."],
+      "ready": ["Tu as vu le fort ? Fais-moi ton rapport."],
+      "turn_in": [
+        "Quatre soldats et un officier... C'est plus que je pensais. Bon travail.",
+        "Voilà ta solde."
+      ],
+      "done": ["Grâce à toi, la batterie saura à quoi s'attendre."]
+    },
     "longue_vue": {
       "title": "Une longue-vue pour Pétronille",
       "giver": "hector",

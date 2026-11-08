@@ -101,6 +101,7 @@ func _apply() -> void:
 	if texture != tex:
 		texture = tex
 	frame = direction * frames + (_forced_frame if _forced_frame >= 0 else int(_time) % frames)
+	_update_compass()
 
 
 ## La feuille d'une animation pour un look : calculée une fois puis gardée.
@@ -184,4 +185,110 @@ static func _compose(p_look: Dictionary, a: String) -> Texture2D:
 	vp.queue_free()
 	if OS.has_environment("PIRATE_DEBUG"):
 		img.save_png(OS.get_environment("PIRATE_DEBUG") + "/sheet_" + a + ".png")
+	return ImageTexture.create_from_image(img)
+
+
+# ------------------------------------------------------------------ la boussole en main
+
+## Une petite boussole tenue à la main : l'aiguille rouge montre le nord (le haut de l'écran, comme sur la carte des mers),
+## et un point doré montre le cap à suivre (quête ou île choisie) quand il y en a un. Posée à la hanche, côté de la main
+## droite selon la direction du pirate ; masquée quand les mains sont prises (tonneau, barre, échelle, saut).
+const COMPASS_W := 13
+const COMPASS_H := 10
+const COMPASS_HAND_Y := 21.0    ## px au-dessus des pieds
+## par direction (0 = vers la caméra, puis vers la droite de l'écran) : [décalage x en px, devant le corps ?]
+const COMPASS_SIDE := [[-9.0, true], [-8.0, true], [-3.0, true], [6.0, false], [9.0, false], [8.0, false], [3.0, false], [-6.0, true]]
+const COMPASS_ELEVATION := 40.0     ## degrés : inclinaison de la caméra
+const C_BRASS := Color(0.78, 0.58, 0.18)
+const C_BRASS_D := Color(0.5, 0.34, 0.1)
+const C_FACE := Color(0.95, 0.9, 0.72)
+const C_NORTH := Color(0.82, 0.12, 0.1)
+const C_SOUTH := Color(0.98, 0.98, 0.96)
+const C_GOAL := Color(0.2, 0.62, 0.95)
+
+## Direction (vecteur monde x/z) du cap à suivre, ou zéro : réglée par le jeu pour mon pirate.
+var compass_goal := Vector2.ZERO
+var compass_enabled := true
+var _compass: Sprite3D
+var _compass_key := Vector3i(-99, -99, -99)
+
+
+func _update_compass() -> void:
+	var show_it := compass_enabled and anim in ["idle", "walk"] and visible
+	if not show_it:
+		if _compass != null:
+			_compass.visible = false
+		return
+	if _compass == null:
+		_compass = Sprite3D.new()
+		_compass.pixel_size = 1.0 / PIXELS_PER_METER
+		_compass.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		_compass.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
+		_compass.shaded = false
+		_compass.alpha_cut = SpriteBase3D.ALPHA_CUT_DISCARD
+		_compass.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		add_child(_compass)
+		_register_compass_colors()
+	_compass.visible = true
+	# place : décalage d'écran (x droite, y haut) converti en axes du monde, un peu devant ou derrière le corps
+	var side: Array = COMPASS_SIDE[direction]
+	var e := deg_to_rad(COMPASS_ELEVATION)
+	var up := Vector3(0.0, cos(e), -sin(e))        # le haut de l'écran
+	var toward := Vector3(0.0, sin(e), cos(e))     # vers la caméra
+	# le décalage est calculé dans le monde (la caméra est fixe) puis converti dans le repère du pirate, qui peut être
+	# tourné (pont du bateau) : sans cela la boussole tombe à côté de la main
+	var world_offset := Vector3(float(side[0]) / PIXELS_PER_METER, 0.0, 0.0) + up * (COMPASS_HAND_Y / PIXELS_PER_METER) \
+			+ toward * (0.06 if bool(side[1]) else -0.06)
+	_compass.position = global_transform.basis.orthonormalized().inverse() * world_offset
+	# l'aiguille flotte un peu autour du nord ; la texture n'est refaite que quand un pixel change
+	var phase := float(get_instance_id() % 17)
+	var wobble := sin(Time.get_ticks_msec() / 1000.0 * 2.3 + phase) * 0.12 + sin(Time.get_ticks_msec() / 1000.0 * 5.1 + phase) * 0.05
+	var needle_q := roundi(wobble * 6.0)
+	var goal_q := -1 if compass_goal.length() < 0.01 else posmod(roundi(atan2(compass_goal.x, -compass_goal.y) / (TAU / 16.0)), 16)
+	var key := Vector3i(needle_q, goal_q, 0)
+	if key != _compass_key:
+		_compass_key = key
+		_compass.texture = _compass_texture(float(needle_q) / 6.0, goal_q)
+
+
+static func _register_compass_colors() -> void:
+	var added := false
+	for c: Color in [C_BRASS, C_BRASS_D, C_FACE, C_NORTH, C_SOUTH, C_GOAL]:
+		var col := Color.from_rgba8(c.r8, c.g8, c.b8)
+		if palette_colors.size() < PALETTE_MAX and not palette_colors.has(col):
+			palette_colors.append(col)
+			added = true
+	if added:
+		palette_version += 1
+
+
+## La boussole vue de dessus à 40° : un anneau de laiton aplati, un cadran crème, l'aiguille (rouge au nord, blanche au
+## sud) et, sur l'anneau, un point bleu dans la direction du cap (`goal_q` : 0 à 15 par pas de 22,5°, -1 : pas de cap).
+static func _compass_texture(needle_angle: float, goal_q: int) -> Texture2D:
+	var img := Image.create(COMPASS_W, COMPASS_H, false, Image.FORMAT_RGBA8)
+	var c := Vector2(COMPASS_W * 0.5 - 0.5, COMPASS_H * 0.5 - 0.5)
+	var rx := COMPASS_W * 0.5 - 0.3
+	var ry := COMPASS_H * 0.5 - 0.3
+	for y in COMPASS_H:
+		for x in COMPASS_W:
+			var d := Vector2((x - c.x) / rx, (y - c.y) / ry).length()
+			if d <= 1.0:
+				img.set_pixel(x, y, C_BRASS if d > 0.72 else C_FACE)
+			elif d <= 1.2 and y >= int(c.y):
+				img.set_pixel(x, y, C_BRASS_D)   # le bord, sous la boussole
+	# aiguille : du centre vers le nord (haut), tournée de `needle_angle` ; la pointe sud en face
+	var dir := Vector2(sin(needle_angle), -cos(needle_angle))
+	for t: float in [0.2, 0.45, 0.7]:
+		var p := c + Vector2(dir.x * rx, dir.y * ry) * t * 0.9
+		img.set_pixel(clampi(roundi(p.x), 0, COMPASS_W - 1), clampi(roundi(p.y), 0, COMPASS_H - 1), C_NORTH)
+	for t: float in [0.2, 0.45]:
+		var p := c - Vector2(dir.x * rx, dir.y * ry) * t * 0.9
+		img.set_pixel(clampi(roundi(p.x), 0, COMPASS_W - 1), clampi(roundi(p.y), 0, COMPASS_H - 1), C_SOUTH)
+	# point du cap sur l'anneau
+	if goal_q >= 0:
+		var a := TAU * float(goal_q) / 16.0
+		var g := c + Vector2(sin(a) * rx * 0.86, -cos(a) * ry * 0.86)
+		var gx := clampi(roundi(g.x), 0, COMPASS_W - 1)
+		var gy := clampi(roundi(g.y), 0, COMPASS_H - 1)
+		img.set_pixel(gx, gy, C_GOAL)
 	return ImageTexture.create_from_image(img)

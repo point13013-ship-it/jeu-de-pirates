@@ -30,7 +30,7 @@ func state_of(id: String) -> String:
 func talk(npc_id: String, generic: Array) -> Dictionary:
 	for id: String in defs:
 		var q: Dictionary = defs[id]
-		if q["target"] == npc_id and state_of(id) == "active":
+		if q["target"] == npc_id and (state_of(id) == "ready" or (state_of(id) == "active" and not is_expedition(id))):
 			return {"lines": q["turn_in"], "offer": "", "turn_in": id}
 	for id: String in defs:
 		var q: Dictionary = defs[id]
@@ -41,6 +41,8 @@ func talk(npc_id: String, generic: Array) -> Dictionary:
 				return {"lines": q["offer"], "offer": id, "turn_in": ""}
 			"active":
 				return {"lines": q["active"], "offer": "", "turn_in": ""}
+			"ready":
+				return {"lines": q.get("ready", q["active"]), "offer": "", "turn_in": ""}
 			"done":
 				return {"lines": q["done"], "offer": "", "turn_in": ""}
 	return {"lines": generic, "offer": "", "turn_in": ""}
@@ -57,7 +59,7 @@ func accept(id: String) -> Array:
 
 ## La quête est rendue : le joueur touche sa récompense. Renvoie le montant (0 si rien à rendre).
 func complete(id: String) -> int:
-	if not defs.has(id) or state_of(id) != "active":
+	if not defs.has(id) or not (state_of(id) in ["active", "ready"]):
 		return 0
 	profile.quests[id] = "done"
 	var reward := int(defs[id]["reward"])
@@ -70,7 +72,7 @@ func complete(id: String) -> int:
 func active_ids() -> Array:
 	var out: Array = []
 	for id: String in defs:
-		if state_of(id) == "active":
+		if state_of(id) in ["active", "ready"]:
 			out.append(id)
 	return out
 
@@ -80,5 +82,34 @@ func tracker_text() -> String:
 	var lines: Array[String] = []
 	for id: String in active_ids():
 		var q: Dictionary = defs[id]
-		lines.append("%s : porter %s à %s" % [q["title"], q["item"], names.get(q["target"], str(q["target"]))])
+		if is_expedition(id):
+			lines.append(("%s : retourne voir %s" if state_of(id) == "ready" else "%s : fais route vers l'île indiquée") % ([q["title"], names.get(q["giver"], str(q["giver"]))] if state_of(id) == "ready" else [q["title"]]))
+		else:
+			lines.append("%s : porter %s à %s" % [q["title"], q["item"], names.get(q["target"], str(q["target"]))])
 	return "\n".join(lines)
+
+
+## Une quête d'expédition : on y va voir une île (« island »), puis on revient le dire à celui qui l'a confiée.
+func is_expedition(id: String) -> bool:
+	return str((defs.get(id, {}) as Dictionary).get("kind", "")) == "expedition"
+
+
+## Le joueur vient de poser le pied sur l'île `island_id` : les expéditions en cours vers elle sont accomplies.
+## Renvoie les identifiants des quêtes qui passent à « ready » (il reste à retourner voir le donneur).
+func reach_island(island_id: String) -> Array:
+	var out: Array = []
+	for id: String in defs:
+		if is_expedition(id) and state_of(id) == "active" and str(defs[id]["island"]) == island_id:
+			profile.quests[id] = "ready"
+			out.append(id)
+	if not out.is_empty():
+		profile.save()
+	return out
+
+
+## L'île vers laquelle la quête en cours la plus ancienne dans le fichier envoie, ou « » : le cap à suivre.
+func current_island() -> String:
+	for id: String in defs:
+		if is_expedition(id) and state_of(id) == "active":
+			return str(defs[id]["island"])
+	return ""
