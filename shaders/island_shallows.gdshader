@@ -51,6 +51,11 @@ void fragment() {
 		if (ripple > 0.93) {
 			col = foam;
 		}
+		// scintillement du soleil : de petits éclats qui s'allument et s'éteignent
+		vec2 gc = floor(p * 2.2);
+		if (hash(gc + floor(TIME * 1.5 + hash(gc) * 6.0)) > 0.975 && fract(p.x * 2.2) < 0.5 && fract(p.y * 2.2) < 0.5) {
+			col = foam;
+		}
 	} else if (d < 6.2 + n * 0.8) {
 		col = mid;
 		float ripple = sin((p.x - p.y) * 1.1 - TIME * 0.5 + n * 6.0);

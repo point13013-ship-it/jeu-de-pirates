@@ -128,7 +128,9 @@ static func palm(root: Node3D, rng: RandomNumberGenerator) -> void:
 			k.box(Transform3D(basis, mid + Vector3.UP * 0.03), Vector3(0.05, 0.03, len * 1.05), Color(0.17, 0.4, 0.16))
 			pos += d * len
 			pitch -= rng.randf_range(0.3, 0.5)
-	k.instance(root)
+	var mi := k.instance(root)
+	mi.material_override = MeshKit.sway_material()
+	mi.set_instance_shader_parameter("phase", rng.randf() * TAU)
 
 
 static func bush(root: Node3D, rng: RandomNumberGenerator) -> void:
@@ -145,7 +147,9 @@ static func bush(root: Node3D, rng: RandomNumberGenerator) -> void:
 		for i in rng.randi_range(3, 6):
 			var a := rng.randf() * TAU
 			k.ball(_xf(Vector3(cos(a), 0.75 + rng.randf() * 0.2, sin(a)) * Vector3(0.45, 1.0, 0.45)), 0.07, fc, 5, 3)
-	k.instance(root)
+	var mi := k.instance(root)
+	mi.material_override = MeshKit.sway_material(1.1, 0.45)
+	mi.set_instance_shader_parameter("phase", rng.randf() * TAU)
 
 
 static func fern(root: Node3D, rng: RandomNumberGenerator) -> void:
@@ -162,7 +166,9 @@ static func fern(root: Node3D, rng: RandomNumberGenerator) -> void:
 		var p1 := p0 + d1 * 0.5
 		k.box(Transform3D(MeshKit.look(d2), p1 + d2 * 0.22), Vector3(0.14, 0.03, 0.45), col)
 		dir += Vector3.ZERO
-	k.instance(root)
+	var mi := k.instance(root)
+	mi.material_override = MeshKit.sway_material(0.6, 0.5)
+	mi.set_instance_shader_parameter("phase", rng.randf() * TAU)
 
 
 static func dead_tree(root: Node3D, rng: RandomNumberGenerator) -> void:

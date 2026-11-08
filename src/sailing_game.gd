@@ -395,8 +395,8 @@ func _build_view() -> void:
 	env.background_color = Color(0.10, 0.10, 0.22)
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	var day := str(_args.get("light", "jour")) == "jour"
-	env.ambient_light_color = Color(0.62, 0.66, 0.78) if day else Color(0.42, 0.40, 0.68)
-	env.ambient_light_energy = 1.05 if day else 1.25
+	env.ambient_light_color = Color(0.52, 0.60, 0.80) if day else Color(0.42, 0.40, 0.68)   # ombres froides, soleil chaud : le contraste fait le volume
+	env.ambient_light_energy = 0.88 if day else 1.25
 	env.tonemap_mode = Environment.TONE_MAPPER_LINEAR
 	_env = env
 	var world_env := WorldEnvironment.new()
@@ -404,11 +404,11 @@ func _build_view() -> void:
 	_world.add_child(world_env)
 
 	var sun := DirectionalLight3D.new()
-	sun.rotation_degrees = Vector3(-48, -40, 0)
-	sun.light_color = Color(1.0, 0.93, 0.80) if day else Color(1.0, 0.72, 0.52)
-	sun.light_energy = 1.55 if day else 1.7
+	sun.rotation_degrees = Vector3(-38, -40, 0) if day else Vector3(-48, -40, 0)   # soleil plus bas : ombres plus longues
+	sun.light_color = Color(1.0, 0.90, 0.72) if day else Color(1.0, 0.72, 0.52)
+	sun.light_energy = 1.9 if day else 1.7
 	sun.shadow_enabled = true
-	sun.shadow_opacity = 0.4
+	sun.shadow_opacity = 0.62
 	sun.shadow_blur = 1.6
 	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_ORTHOGONAL
 	sun.directional_shadow_max_distance = 70.0

@@ -137,6 +137,15 @@ void fragment() {
 			}
 		}
 	}
+	// ombres de nuages : grandes plaques fraîches qui dérivent lentement sur l'île, en aplats nets (deux tons)
+	if (cliff <= 0.5) {
+		float cl = fbm(p * 0.045 + vec2(TIME * 0.28, TIME * 0.11));
+		if (cl > 0.60) {
+			col *= vec3(0.76, 0.81, 0.94);
+		} else if (cl > 0.54) {
+			col *= vec3(0.88, 0.91, 0.97);
+		}
+	}
 	ALBEDO = srgb(col);
 	ROUGHNESS = 1.0;
 	SPECULAR = 0.0;

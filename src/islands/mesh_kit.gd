@@ -109,6 +109,21 @@ static func material() -> StandardMaterial3D:
 	return _mat
 
 
+static var _sway_mats: Dictionary = {}
+
+## Matière des plantes qui ploient dans le vent (shaders/foliage_sway.gdshader) ; la phase se règle par plante.
+## `tall` : hauteur (m) où le mouvement est maximal (palmier 4,5 ; buisson 1 ; fougère 0,5), `wind` : force.
+static func sway_material(tall: float = 4.5, wind: float = 1.0) -> ShaderMaterial:
+	var key := Vector2(tall, wind)
+	if not _sway_mats.has(key):
+		var m := ShaderMaterial.new()
+		m.shader = load("res://shaders/foliage_sway.gdshader")
+		m.set_shader_parameter("tall", tall)
+		m.set_shader_parameter("wind", wind)
+		_sway_mats[key] = m
+	return _sway_mats[key]
+
+
 func instance(parent: Node3D, pos: Vector3 = Vector3.ZERO, yaw: float = 0.0) -> MeshInstance3D:
 	var mi := MeshInstance3D.new()
 	mi.mesh = commit()
