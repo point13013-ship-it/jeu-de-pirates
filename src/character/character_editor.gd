@@ -61,7 +61,7 @@ func _process(delta: float) -> void:
 	var tex: Texture2D = _textures.get(_anim)
 	if tex == null:
 		return
-	var px := clampi(int(_stage.size.y / 72.0), 3, 9)
+	var px := clampi(int((_stage.size.y - 20.0) / 66.0), 3, 9)
 	if _zoom_head:
 		# gros plan : la tête au centre, deux fois plus grosse
 		var feet: Array = PirateLook.catalog().get("feet", [24, 58])
@@ -72,7 +72,9 @@ func _process(delta: float) -> void:
 		_preview.position = Vector2(_stage.size.x * 0.5, _stage.size.y * 0.5 + (float(frame[1]) * 0.5 - head_row) * zoom)
 	else:
 		_preview.scale = Vector2(px, px)
-		_preview.position = Vector2(_stage.size.x * 0.5, _stage.size.y * 0.5 + 8.0 * px)
+		# les pieds posent sur le bas du cadre (la position des pieds vient du catalogue)
+		var feet_dy: float = float(PirateLook.catalog().get("feet", [32, 68])[1]) - float(PirateLook.catalog().get("frame", [64, 72])[1]) * 0.5
+		_preview.position = Vector2(_stage.size.x * 0.5, _stage.size.y - 12.0 - feet_dy * px)
 	var frames: int = int(PirateLook.catalog()["anims"][_anim])
 	_preview.texture = tex
 	_preview.hframes = frames
