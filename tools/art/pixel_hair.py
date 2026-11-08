@@ -221,9 +221,12 @@ def beard_stubble(cv, view, P):
     if m is None:
         return
     # des poils épars : un pixel sur trois, en quinconce, plus serrés vers le menton
-    sparse = ((np.arange(64)[None, :] + 2 * np.arange(72)[:, None]) % 4 == 0)
-    cv.put(m & sparse, 3, False)
-    cv.put(m & ~sparse & (PY > top + 14) & ((np.arange(64)[None, :] + np.arange(72)[:, None]) % 2 == 0), 2, False)
+    jaw = m & (PY > top + 10.5) & (PX > (28.5 if view == "E" else 0))
+    ys, xs = np.arange(72)[:, None], np.arange(64)[None, :]
+    sparse = (xs % 2 == 0) & (ys % 2 == 0)                           # un pixel sur quatre sur les joues
+    chin = ((xs + ys) % 2 == 0) & (PY > top + 13.0)                   # un pixel sur deux au menton
+    cv.put(jaw & (sparse | chin), 3, False)
+    cv.put(jaw & ((xs + ys) % 2 == 0) & (PY > top + 14.6), 2, False)
 
 
 @layer("beard", "goatee", "hair")
@@ -490,9 +493,13 @@ def hat_plume_trim(cv, view, P):
     top = head_top(P)
     for x in range(25, 40):
         cv.px(x, int(top) - 2, 5)
-    # la plume : elle part du ruban, monte, puis retombe en arrière
-    limb(cv, [(36, top - 3), (41, top - 10), (46, top - 8), (47, top - 2)], (2.4, 2.2, 1.8, 1.2), flat=5, outline=False)
-    limb(cv, [(37, top - 3), (41, top - 9)], (1.0, 1.0), flat=4, outline=False)
+    # la plume : elle part du ruban, monte, puis retombe en arrière en s'effilant ; une nervure sombre la parcourt
+    feather = [(33.5, -2.0), (34.6, -6.6), (37.6, -10.6), (42.0, -12.4), (46.0, -11.2), (48.4, -7.6), (49.0, -3.6), (47.6, -6.4),
+               (44.6, -8.4), (41.0, -8.2), (38.0, -5.4), (36.2, -1.6)]
+    m = m_poly(T(feather, top))
+    fill(cv, m, bias=1, outline=True)
+    for a, b in (((35.4, -3.0), (38.0, -8.0)), ((38.0, -8.0), (43.0, -10.4)), ((43.0, -10.4), (47.4, -8.4))):
+        line(cv, (a[0], top + a[1]), (b[0], top + b[1]), 3, m)
 
 
 @layer("hat", "turban", "hat")
