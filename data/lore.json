@@ -1,0 +1,38 @@
+{
+  "_commentaire": "Les trouvailles des îles : messages en bouteille, journaux de pirates et répliques des naufragés. Le message est choisi d'après la graine de l'objet (toujours le même pour une île donnée). Dans un message « map », %s est remplacé par le nom d'une île où un coffre dort encore : la carte des mers la révèle. gold = [min, max] d'or trouvé avec la bouteille.",
+  "bottle_title": "Message dans une bouteille",
+  "journal_title": "Journal de bord abandonné",
+  "bottle_gold": [8, 30],
+  "journal_gold": [0, 15],
+  "bottles": [
+    {"lines": ["Si quelqu'un lit ceci, c'est que la mer a bien voulu porter mon message.", "Je suis resté trois lunes sur une île sans nom. Les crabes sont moins méchants qu'ils n'en ont l'air."]},
+    {"lines": ["À celui qui trouvera cette bouteille : ne fais jamais confiance à un receleur qui sourit trop.", "— Un capitaine qui a appris à ses dépens."]},
+    {"lines": ["Le vent tourne toujours le jour où l'on déploie toute la toile.", "Garde une planche de rechange dans ta cale. Toujours."]},
+    {"lines": ["J'ai caché mon butin sous une croix rouge, sur l'île où les morts ne dorment pas.", "Ne me demande pas pourquoi je ne suis jamais revenu le chercher."]},
+    {"lines": ["Mon équipage a fui quand les canons ennemis se sont tus : des squelettes chargeaient les leurs, un boulet après l'autre.", "Tire-leur dessus pendant qu'ils rechargent !"]},
+    {"lines": ["Les mouettes savent où est la terre. Suis-les quand la brume tombe."]},
+    {"lines": ["Les baies des dieux ne poussent qu'au fond des îles, loin du bord. Un buisson qui scintille, c'est peut-être elle."]},
+    {"map": true, "lines": ["Un coffre n'a jamais été ouvert sur %s.", "J'avais tracé la route sur ta carte, mais l'encre a bavé. Débrouille-toi."]},
+    {"map": true, "lines": ["Cap sur %s ! Mon ancre y a tenu une nuit, et j'y ai vu briller quelque chose sous le sable.", "Je n'ai jamais eu le courage d'y retourner."]},
+    {"map": true, "lines": ["Le vieux Rouille a enterré sa part à %s. Il le jurait, avant que la mer ne l'emporte."]}
+  ],
+  "journals": [
+    {"lines": ["Jour 12. Les provisions baissent. Les squelettes de l'île ne dorment jamais.", "Jour 13. J'ai compris : ils ne tirent que si leurs canons sont chargés, et ils sont trop peu pour tout recharger vite."]},
+    {"lines": ["Jour 3. J'ai trouvé des ruines au centre. Des colonnes, un mur, de la mousse partout.", "Jour 4. Quelqu'un vivait ici avant nous. On entend parfois grincer le bois la nuit."]},
+    {"lines": ["Jour 40. La brume est revenue. Elle avale tout, même le bruit des vagues.", "Jour 41. Il paraît que la pluie annonce l'orage. Je range mes cartes."]},
+    {"lines": ["Les lucioles sortent à la nuit tombée, sur les îles vertes. On croirait des étoiles tombées dans les fougères."]},
+    {"lines": ["Note à moi-même : frapper un palmier fait tomber des feuilles, jamais de noix de coco. Je le sais maintenant."]},
+    {"lines": ["Jour 7. Un naufragé m'a offert du poisson grillé. Il ne se souvient plus de son nom, mais il connaît toutes les histoires des mers.", "Jour 8. Il dit que les îles les plus sombres cachent les plus gros coffres."]},
+    {"lines": ["Mon bateau est à sec depuis la tempête. La coque est ouverte, la cale pleine d'eau.", "Une planche, un coup de marteau : on s'en sort toujours si on garde le sang-froid."]}
+  ],
+  "castaway_names": ["Naufragé", "Vieux Marin", "Robinson Rouillé", "Le Rescapé", "Matelot égaré"],
+  "castaway_lines": [
+    ["Ah ! Un visage ! Je commençais à parler au feu de camp.", "Ce n'est pas si mal ici : le soir, il y a des lucioles, le jour, des mouettes. Seul le courrier est lent."],
+    ["Ne marche pas trop près de l'eau, les crabes me volent mes poissons.", "Mais ils fuient dès qu'on les regarde de travers. De vrais lâches, mignons."],
+    ["Je suis arrivé sur une épave. Elle est toujours là, quelque part. Cherche autour des plages.", "Les bouteilles échouées, ça, c'est de la vraie lecture !"],
+    ["Quand le ciel noircit, mets-toi à l'abri sous un palmier. Les éclairs aiment les crânes de pirates.", "Et ne frappe pas les arbres : ils ne t'ont rien fait."],
+    ["Les îles de morts ont de drôles de lumières vertes. Les squelettes y rechargent leurs canons comme des soldats bien dressés.", "Reste sur le pont si tu y vas : n'attends pas qu'ils aient fini de charger."]
+  ],
+  "castaway_hat": ["straw", "bandana", "none", "cap"],
+  "castaway_beard": ["long", "full", "braid", "chops"]
+}

@@ -5,6 +5,7 @@ extends Control
 
 signal resume
 signal show_invite
+signal show_quests
 signal toggle_compass
 signal unstick_ship
 signal tow_ship
@@ -19,6 +20,7 @@ const CREAM := Color("fff1d6")
 var _invite_button: Button
 var _compass_button: Button
 var _back_button: Button
+var _volumes: VolumePanel
 var _open := false
 
 
@@ -45,9 +47,14 @@ func _ready() -> void:
 	sb.content_margin_bottom = 22
 	panel.add_theme_stylebox_override("panel", sb)
 	center.add_child(panel)
+	var columns := HBoxContainer.new()
+	columns.add_theme_constant_override("separation", 26)
+	panel.add_child(columns)
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 10)
-	panel.add_child(box)
+	columns.add_child(box)
+	_volumes = VolumePanel.new()   # à droite : les volumes (musique, ambiance, effets)
+	columns.add_child(_volumes)
 	var title := Label.new()
 	title.text = "Menu"
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -57,6 +64,7 @@ func _ready() -> void:
 	box.add_child(_button("Reprendre   (Échap)", func() -> void: resume.emit()))
 	_invite_button = _button("Inviter un ami   (I)", func() -> void: show_invite.emit())
 	box.add_child(_invite_button)
+	box.add_child(_button("Journal de quêtes   (J)", func() -> void: show_quests.emit()))
 	_compass_button = _button("Boussole   (B)", func() -> void: toggle_compass.emit())
 	box.add_child(_compass_button)
 	box.add_child(_button("Débloquer le bateau   (T, T)", func() -> void: unstick_ship.emit()))
@@ -75,6 +83,7 @@ func is_open() -> bool:
 func open(hosting: bool, compass_on: bool, online: bool) -> void:
 	_open = true
 	visible = true
+	_volumes.refresh()
 	_invite_button.visible = hosting
 	_compass_button.text = "Ranger la boussole   (B)" if compass_on else "Sortir la boussole   (B)"
 	_back_button.text = "Retour au menu principal  (quitte la partie en ligne)" if online else "Retour au menu principal"

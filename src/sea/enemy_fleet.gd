@@ -96,6 +96,9 @@ func _make_visual(s: Dictionary) -> void:
 	_root.add_child(model)
 	s["model"] = model
 	s["cannons"] = ShipCannons.build(model)
+	var crew := EnemyCrew.new()   # l'équipage de squelettes : timonier et canonniers qui rechargent
+	crew.build(model, s["cannons"], str(s["kind"]), _rng)
+	s["crew"] = crew
 	var label := Label3D.new()
 	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	label.font_size = 44
@@ -133,6 +136,9 @@ func step(delta: float, authority: bool, target: Dictionary) -> void:
 			sim.position += fwd * sim.speed * delta
 			sim.position = sim.position.lerp(s["target_pos"], 1.0 - exp(-delta * 4.0))
 			sim.yaw = lerp_angle(sim.yaw, float(s["target_yaw"]), 1.0 - exp(-delta * 4.0))
+		var crew = s.get("crew")
+		if crew != null:
+			(crew as EnemyCrew).step(delta, s["state"] != "sinking")
 		_place_visual(s, delta)
 
 
@@ -221,12 +227,17 @@ func _ai(s: Dictionary, dt: float, target: Dictionary) -> void:
 	# volée : le flanc qui regarde les joueurs, à portée et à peu près en face
 	if s["state"] == "chase" and alive and d < FIRE_RANGE and d > 8.0:
 		var port_vec := Vector2(sim.forward().y, -sim.forward().x)
+		var crew := s.get("crew") as EnemyCrew
+		if crew != null:   # les canonniers rechargent d'abord le flanc tourné vers les joueurs
+			crew.pref_side = 1 if absf(port_vec.angle_to(to)) < absf((-port_vec).angle_to(to)) else -1
 		for si in 2:
 			var side := 1.0 if si == 0 else -1.0
 			var cd: Array = s["cd"]
 			cd[si] = float(cd[si]) - dt
 			var ang := absf((port_vec * side).angle_to(to))
-			if float(cd[si]) <= 0.0 and ang < FIRE_ARC and (s["queue"] as Array).is_empty():
+			# pas de tir sans canon chargé : il faut que les squelettes aient fait leur travail
+			var ready := crew == null or crew.loaded_on_side(int(side)) > 0
+			if float(cd[si]) <= 0.0 and ang < FIRE_ARC and ready and (s["queue"] as Array).is_empty():
 				cd[si] = VOLLEY_COOLDOWN + _rng.randf_range(-0.8, 1.2)
 				_queue_volley(s, int(side), target)
 	else:
@@ -241,9 +252,14 @@ func _queue_volley(s: Dictionary, side: int, target: Dictionary) -> void:
 	if model == null:
 		return
 	var t := 0.0
+	var crew := s.get("crew") as EnemyCrew
 	for i in model.cannons.size():
 		if int((model.cannons[i] as Array)[2]) != side:
 			continue
+		if crew != null:
+			if not crew.loaded[i]:
+				continue   # canon vide : il ne tire pas
+			crew.firing.append(i)
 		(s["queue"] as Array).append([t, i, target["pos"], target.get("vel", Vector2.ZERO)])
 		t += _rng.randf_range(0.12, 0.35)
 
@@ -257,6 +273,9 @@ func _fire_queue(s: Dictionary, delta: float) -> void:
 			continue
 		q.remove_at(k)
 		var model := s["model"] as ShipModel
+		var crew := s.get("crew") as EnemyCrew
+		if crew != null:
+			crew.fired(int(e[1]))   # le canon est vidé : un squelette devra le recharger
 		if model == null or not fire_cb.is_valid():
 			continue
 		var idx := int(e[1])
@@ -421,7 +440,8 @@ func net_state() -> Array:
 	for s: Dictionary in ships:
 		var sim: ShipSim = s["sim"]
 		out.append([int(s["id"]), KINDS.find(str(s["kind"])), sim.position.x, sim.position.y, sim.yaw, float(s["hp"]),
-				{"patrol": 0, "chase": 1, "sinking": 2}[str(s["state"])], sim.speed, sim.sail_open, sim.sail_trim, sim.rudder])
+				{"patrol": 0, "chase": 1, "sinking": 2}[str(s["state"])], sim.speed, sim.sail_open, sim.sail_trim, sim.rudder,
+				(s["crew"] as EnemyCrew).mask() if s.get("crew") != null else 0])
 	return out
 
 
@@ -449,6 +469,8 @@ func apply_net(state: Array) -> void:
 		sim.sail_open = float(e[8])
 		sim.sail_trim = float(e[9])
 		sim.rudder = float(e[10])
+		if e.size() > 11 and s.get("crew") != null:
+			(s["crew"] as EnemyCrew).apply_mask(int(e[11]))   # les canons chargés, comme l'hôte les voit
 	for i in range(ships.size() - 1, -1, -1):
 		var s2: Dictionary = ships[i]
 		if not seen.has(int(s2["id"])) and s2["state"] != "sinking":

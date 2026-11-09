@@ -5,6 +5,9 @@ extends Sprite3D
 ## image selon le déplacement. Toujours de face à la caméra (billboard), pieds sur le point du noeud.
 
 const FPS := {"idle": 3.0, "walk": 9.0, "carry_idle": 3.0, "carry_walk": 9.0, "helm": 1.0, "climb": 5.0, "jump": 1.0}
+## Les animations d'action (jouées une fois, sur ordre du jeu : `play_action`) : pouvoir lancé et tirs des armes à feu (une feuille
+## par arme : l'arme est dessinée dans la feuille, aux mains du pirate). Elles ne sont fabriquées que pour le pirate du joueur.
+const ACTION_FPS := {"cast": 9.0, "shoot_pistolet": 12.0, "shoot_tromblon": 10.0, "shoot_fusil": 9.0, "slash_sabre": 14.0}
 const PIXELS_PER_METER := 36.0
 const SHEET_DIR := "res://assets/art/characters/pirate/"
 
@@ -40,6 +43,8 @@ var anim := "idle"
 var direction := 0
 var _time := 0.0
 var _forced_frame := -1
+var _actions_on := false          ## les feuilles d'action sont fabriquées pour ce pirate (voir enable_actions)
+var _action := ""                 ## l'action en cours ("" : aucune)
 var _textures: Dictionary = {}   ## animation -> Texture2D
 
 
@@ -67,6 +72,30 @@ func set_look(new_look: Dictionary) -> void:
 	var key := PirateLook.key(look)
 	for a: String in FPS:
 		_request(a, key)
+	if _actions_on:
+		for a: String in ACTION_FPS:
+			_request(a, key)
+
+
+## Fabrique aussi les feuilles de pouvoir et de tir (réservé au pirate du joueur : les autres n'en ont pas besoin).
+func enable_actions() -> void:
+	_actions_on = true
+	var key := PirateLook.key(look)
+	for a: String in ACTION_FPS:
+		_request(a, key)
+
+
+## Joue une animation d'action une fois (« cast », « shoot_pistolet »…) en regardant vers `screen_dir` (vecteur d'écran).
+## Sans effet tant que sa feuille n'est pas prête.
+func play_action(action_name: String, screen_dir: Vector2) -> void:
+	if not _textures.has(action_name):
+		return
+	_action = action_name
+	_time = 0.0
+	if screen_dir.length() > 0.001:
+		direction = direction_of(screen_dir)
+	anim = action_name
+	_apply()
 
 
 ## Appelé à chaque image : `screen_move` = déplacement d'écran de cette image (zéro si immobile).
@@ -76,6 +105,18 @@ func drive(delta: float, screen_move: Vector2, carrying: bool, at_helm: bool, he
 		air: int = 0, climbing: bool = false, face_dir: Vector2 = Vector2.ZERO) -> void:
 	var next := anim
 	_forced_frame = -1
+	if _action != "":   # une action en cours (tir, pouvoir) : on joue ses images une fois, puis on reprend la marche ou le repos
+		_time += delta * float(ACTION_FPS[_action])
+		var count := int(PirateLook.catalog()["anims"][_action])
+		if int(_time) < count:
+			_forced_frame = int(_time)
+			anim = _action
+			_apply()
+			return
+		_action = ""
+		_time = 0.0
+		anim = "idle"
+		next = "idle"
 	if air > 0:
 		next = "jump"
 		_forced_frame = {3: 0, 1: 1, 2: 2}[air]
@@ -180,6 +221,16 @@ static func register_colors(p_look: Dictionary) -> void:
 				if palette_colors.size() < PALETTE_MAX and not palette_colors.has(col):
 					palette_colors.append(col)
 					added = true
+	# les armes des animations de tir (couleurs fixes)
+	for variant: String in cat["parts"].get("weapon", {}).get("layers", {}):
+		for lay: Dictionary in cat["parts"]["weapon"]["layers"][variant]:
+			var wtint := Color.html(str(lay["color"]))
+			for t in tones:
+				var wcol := shade(wtint, roundf(float(t) * 255.0) / 255.0)
+				wcol = Color.from_rgba8(wcol.r8, wcol.g8, wcol.b8)
+				if palette_colors.size() < PALETTE_MAX and not palette_colors.has(wcol):
+					palette_colors.append(wcol)
+					added = true
 	if added:
 		palette_version += 1
 
@@ -202,8 +253,15 @@ static func _compose(p_look: Dictionary, a: String) -> Texture2D:
 	vp.disable_3d = true
 	vp.render_target_update_mode = SubViewport.UPDATE_ONCE
 	vp.canvas_item_default_texture_filter = Viewport.DEFAULT_CANVAS_ITEM_TEXTURE_FILTER_NEAREST
+	# l'ordre des pièces, puis (animations de tir) l'arme par-dessus tout : elle ne fait pas partie de l'apparence du joueur
+	var sequence: Array = []
 	for c: String in cat["order"]:
-		var variant: String = p_look["parts"].get(c, "none")
+		sequence.append([c, str(p_look["parts"].get(c, "none"))])
+	if a.begins_with("shoot_") or a.begins_with("slash_"):
+		sequence.append(["weapon", a.substr(6)])
+	for entry: Array in sequence:
+		var c: String = entry[0]
+		var variant: String = entry[1]
 		if variant == "none":
 			continue
 		for lay: Dictionary in cat["parts"][c]["layers"].get(variant, []):
@@ -232,9 +290,11 @@ static func _compose(p_look: Dictionary, a: String) -> Texture2D:
 ## Une petite boussole tenue à la main : l'aiguille rouge montre le nord (le haut de l'écran, comme sur la carte des mers),
 ## et un point doré montre le cap à suivre (quête ou île choisie) quand il y en a un. Posée à la hanche, côté de la main
 ## droite selon la direction du pirate ; masquée quand les mains sont prises (tonneau, barre, échelle, saut).
-const COMPASS_W := 13
-const COMPASS_H := 10
+const COMPASS_W := 17
+const COMPASS_H := 13
 const COMPASS_HAND_Y := 23.0    ## px au-dessus des pieds
+const ARROW_DIST := 1.8         ## m : la flèche d'or au sol se tient à cette distance du pirate
+const ARROW_HIDE := 6.0         ## m : elle s'éteint quand on est arrivé
 ## par direction (0 = vers la caméra, puis vers la droite de l'écran) : [décalage x en px, devant le corps ?]
 const COMPASS_SIDE := [[-9.0, true], [-8.0, true], [-3.0, true], [6.0, false], [9.0, false], [8.0, false], [3.0, false], [-6.0, true]]
 const COMPASS_ELEVATION := 40.0     ## degrés : inclinaison de la caméra
@@ -243,17 +303,20 @@ const C_BRASS_D := Color(0.5, 0.34, 0.1)
 const C_FACE := Color(0.95, 0.9, 0.72)
 const C_NORTH := Color(0.82, 0.12, 0.1)
 const C_SOUTH := Color(0.98, 0.98, 0.96)
-const C_GOAL := Color(0.2, 0.62, 0.95)
+const C_GOAL := Color(1.0, 0.82, 0.22)
 
-## Direction (vecteur monde x/z) du cap à suivre, ou zéro : réglée par le jeu pour mon pirate.
+## Direction (vecteur monde x/z) du cap à suivre, ou zéro : réglée par le jeu pour mon pirate. Quand il y en a un, l'aiguille
+## de la boussole le désigne (au lieu du nord) et une flèche d'or s'allume au sol, dans cette direction.
 var compass_goal := Vector2.ZERO
 var compass_enabled := true
 var _compass: Sprite3D
 var _compass_key := Vector3i(-99, -99, -99)
+var _arrow: MeshInstance3D
 
 
 func _update_compass() -> void:
 	var show_it := compass_enabled and anim in ["idle", "walk"] and visible
+	_update_goal_arrow(show_it and compass_goal.length() > ARROW_HIDE)
 	if not show_it:
 		if _compass != null:
 			_compass.visible = false
@@ -287,7 +350,43 @@ func _update_compass() -> void:
 	var key := Vector3i(needle_q, goal_q, 0)
 	if key != _compass_key:
 		_compass_key = key
-		_compass.texture = _compass_texture(float(needle_q) / 6.0, goal_q)
+		# avec un cap, l'aiguille le montre (elle ne flotte plus) ; sinon elle flotte autour du nord
+		var angle := TAU * float(goal_q) / 16.0 if goal_q >= 0 else float(needle_q) / 6.0
+		_compass.texture = _compass_texture(angle, goal_q)
+
+
+## La flèche d'or posée au sol à ARROW_DIST du pirate, pointée vers le cap : on la voit de loin, contrairement à la boussole.
+func _update_goal_arrow(show_it: bool) -> void:
+	if not show_it:
+		if _arrow != null:
+			_arrow.visible = false
+		return
+	if _arrow == null:
+		_arrow = MeshInstance3D.new()
+		var verts := PackedVector3Array([Vector3(0, 0, 0.5), Vector3(-0.33, 0, -0.22), Vector3(0, 0, -0.02), Vector3(0.33, 0, -0.22)])
+		var arrays := []
+		arrays.resize(Mesh.ARRAY_MAX)
+		arrays[Mesh.ARRAY_VERTEX] = verts
+		arrays[Mesh.ARRAY_INDEX] = PackedInt32Array([0, 2, 1, 0, 3, 2])
+		var mesh := ArrayMesh.new()
+		mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+		_arrow.mesh = mesh
+		var m := StandardMaterial3D.new()
+		m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		m.albedo_color = C_GOAL
+		m.cull_mode = BaseMaterial3D.CULL_DISABLED
+		m.no_depth_test = true
+		m.render_priority = 4
+		_arrow.material_override = m
+		_arrow.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		_arrow.top_level = true   # indépendante de l'orientation du pirate (pont du bateau)
+		add_child(_arrow)
+	var dir := compass_goal.normalized()
+	var pulse := 1.0 + 0.12 * sin(Time.get_ticks_msec() / 1000.0 * 5.0)
+	_arrow.visible = true
+	_arrow.global_position = global_position + Vector3(dir.x, 0.0, dir.y) * (ARROW_DIST + 0.1 * pulse) + Vector3(0.0, 0.14, 0.0)
+	_arrow.global_rotation = Vector3(0.0, atan2(dir.x, dir.y), 0.0)
+	_arrow.scale = Vector3.ONE * 1.5 * pulse
 
 
 static func _register_compass_colors() -> void:
@@ -317,12 +416,16 @@ static func _compass_texture(needle_angle: float, goal_q: int) -> Texture2D:
 				img.set_pixel(x, y, C_BRASS_D)   # le bord, sous la boussole
 	# aiguille : du centre vers le nord (haut), tournée de `needle_angle` ; la pointe sud en face
 	var dir := Vector2(sin(needle_angle), -cos(needle_angle))
-	for t: float in [0.2, 0.45, 0.7]:
-		var p := c + Vector2(dir.x * rx, dir.y * ry) * t * 0.9
-		img.set_pixel(clampi(roundi(p.x), 0, COMPASS_W - 1), clampi(roundi(p.y), 0, COMPASS_H - 1), C_NORTH)
-	for t: float in [0.2, 0.45]:
-		var p := c - Vector2(dir.x * rx, dir.y * ry) * t * 0.9
+	var tip := C_GOAL if goal_q >= 0 else C_NORTH   # avec un cap, l'aiguille est dorée et le nord reste marqué en rouge sur l'anneau
+	for t: float in [0.12, 0.26, 0.4, 0.54, 0.68, 0.82]:
+		var p := c + Vector2(dir.x * rx, dir.y * ry) * t * 0.95
+		img.set_pixel(clampi(roundi(p.x), 0, COMPASS_W - 1), clampi(roundi(p.y), 0, COMPASS_H - 1), tip)
+	for t: float in [0.15, 0.3, 0.45]:
+		var p := c - Vector2(dir.x * rx, dir.y * ry) * t * 0.95
 		img.set_pixel(clampi(roundi(p.x), 0, COMPASS_W - 1), clampi(roundi(p.y), 0, COMPASS_H - 1), C_SOUTH)
+	if goal_q >= 0:
+		img.set_pixel(clampi(roundi(c.x), 0, COMPASS_W - 1), 0, C_NORTH)   # repère du nord
+		img.set_pixel(clampi(roundi(c.x), 0, COMPASS_W - 1), 1, C_NORTH)
 	# point du cap sur l'anneau
 	if goal_q >= 0:
 		var a := TAU * float(goal_q) / 16.0

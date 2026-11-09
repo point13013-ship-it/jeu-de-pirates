@@ -11,6 +11,8 @@ extends Control
 const PIXELS_PER_METER := 36.0
 const VIEW_SIZE := Vector2i(960, 540)
 const ELEVATION_DEG := 40.0
+const SHOULDER_ELEV_DEG := 22.0       ## vue « épaule » (touche V) : la caméra descend, on regarde presque à l'horizontale
+const SHOULDER_ZOOM := 1.6            ## … et se rapproche (multiplie le grossissement)
 const SEA_Y := -1.45
 const WALK_SPEED := 3.6
 const INTERACT_RANGE := 1.5
@@ -44,6 +46,8 @@ var _ship: ShipModel
 var _sim := ShipSim.new()
 var _world: Node3D
 var _cam: Camera3D
+var _shoulder := false            ## vue « épaule » (touche V) : caméra plus basse et plus proche
+var _elev_deg := ELEVATION_DEG    ## inclinaison actuelle de la caméra (lissée entre la vue normale et la vue épaule)
 var _sea: MeshInstance3D
 var _sprite: PirateSprite
 var _my_look: Dictionary = {}       ## mon apparence (éditeur de pirate)
@@ -133,6 +137,7 @@ var _main_menu: MainMenu
 var _status_label: Label
 var _invite: InvitePanel            ## le cadre « Inviter un ami » de l'hôte (adresse IP, code)
 var _pause: PauseMenu               ## le menu de la touche Échap (retour au menu principal)
+var _quest_panel: QuestPanel        ## le journal de quêtes (J)
 static var _force_menu := false     ## après « Retour au menu principal » : on recharge la scène et on affiche le menu
 var _time_offset := 0.0             ## client : décalage pour suivre le temps de la houle de l'hôte
 var _net_target: Dictionary = {}    ## client : dernier état du bateau reçu de l'hôte
@@ -183,6 +188,10 @@ var _ghosting := false               ## un bâtiment est rendu transparent devan
 var _gold_label: Label
 var _quest_label: Label
 var _islands := IslandWorld.new()    ## les îles : terre, ennemis, coffres (l'hôte fait vivre les ennemis)
+var _atmo: Atmosphere                ## ciel, météo, sons, vie des îles
+var _atmo_prev := Vector2(1.0e6, 1.0e6)   ## position de l'image précédente (pour compter les pas)
+var _atmo_prev_kind := ""
+var _castaways_made: Dictionary = {}   ## graines des naufragés dont le PNJ existe déjà
 var _chart: SeaChart                 ## la carte des mers, sur la table de la cabine
 var _island_hud: IslandHud           ## cœurs, flèche vers l'île choisie, voile rouge des coups reçus
 var _destination := -1               ## l'île choisie sur la carte, ou -1
@@ -476,7 +485,13 @@ func _zoom_goal() -> float:
 			base = 0.62
 	if _loc == Loc.SHIP and _mode == Mode.HELM:
 		base = 0.52   # à la barre : on veut voir devant
-	return clampf(base * _zoom_user, ZOOM_MIN, ZOOM_MAX)
+	var goal := clampf(base * _zoom_user, ZOOM_MIN, ZOOM_MAX)
+	return goal * SHOULDER_ZOOM if _shoulder_active() else goal
+
+
+## La vue épaule ne joue que sur le pont, à terre, à la nage ou sur le radeau : la cale, le mât et les vols ont leur cadrage.
+func _shoulder_active() -> bool:
+	return _shoulder and (_loc == Loc.SHIP or _loc == Loc.LAND or _loc == Loc.SWIM or _loc == Loc.RAFT)
 
 
 ## Lisse le zoom vers son but ; la taille de la caméra suit (le calage sur la grille de pixels suit aussi : voir _ppm).
@@ -795,6 +810,7 @@ func _float_ship() -> void:
 
 func _build_player() -> void:
 	_sprite = PirateSprite.new()
+	_sprite.enable_actions()   # mon pirate a aussi ses animations de tir et de pouvoir
 	_sprite.set_look(_local_look())
 	_ship.add_child(_sprite)
 	_ball_icon = _make_ball(0.14, Color(0.12, 0.12, 0.16))
@@ -841,6 +857,9 @@ func _make_ball(radius: float, color: Color) -> MeshInstance3D:
 
 ## Lit les îles, les pose dans le monde (terre, ennemis, coffres) et les rend praticables à pied.
 func _build_islands() -> void:
+	_atmo = Atmosphere.new()   # le ciel (heure, météo), les sons et la vie des îles
+	add_child(_atmo)
+	_atmo.setup(_world, _world_fixed, _islands, _env, _sun, _args)
 	if _args.has("no-islands"):
 		return
 	_islands.setup(IslandWorld.read_json(IslandWorld.ISLANDS_PATH), IslandWorld.read_json(IslandWorld.ENEMIES_PATH))
@@ -1064,7 +1083,12 @@ func _build_hud() -> void:
 	_chart = SeaChart.new()
 	_chart.destination_chosen.connect(func(i: int) -> void: _destination = i)
 	add_child(_chart)
+	_quest_panel = QuestPanel.new()   # le journal de quêtes (J)
+	add_child(_quest_panel)
 	_pause = PauseMenu.new()
+	_pause.show_quests.connect(func() -> void:
+		_pause.close()
+		_open_quests())
 	_pause.resume.connect(_pause.close)
 	_pause.show_invite.connect(_toggle_invite)
 	_pause.toggle_compass.connect(_toggle_compass)
@@ -1156,7 +1180,7 @@ func _apply_test_args() -> void:
 		get_tree().create_timer(float(_args["raft-ride"])).timeout.connect(func() -> void: _board_raft())
 	if _args.has("press"):
 		# test : --press=E@2,SPACE@3.5 appuie sur ces touches aux secondes indiquées
-		var codes := {"E": KEY_E, "R": KEY_R, "SPACE": KEY_SPACE, "DOWN": KEY_DOWN, "UP": KEY_UP, "F": KEY_F, "ESC": KEY_ESCAPE, "1": KEY_1, "2": KEY_2, "3": KEY_3, "4": KEY_4, "T": KEY_T, "TAB": KEY_TAB, "X": KEY_X, "G": KEY_G, "C": KEY_C, "H": KEY_H}
+		var codes := {"E": KEY_E, "R": KEY_R, "SPACE": KEY_SPACE, "DOWN": KEY_DOWN, "UP": KEY_UP, "F": KEY_F, "ESC": KEY_ESCAPE, "1": KEY_1, "2": KEY_2, "3": KEY_3, "4": KEY_4, "T": KEY_T, "TAB": KEY_TAB, "X": KEY_X, "G": KEY_G, "C": KEY_C, "H": KEY_H, "V": KEY_V, "J": KEY_J}
 		for item in str(_args["press"]).split(","):
 			var kv := item.split("@")
 			var code: Key = codes.get(kv[0], KEY_E)
@@ -1181,6 +1205,15 @@ func _apply_test_args() -> void:
 		_sync_quest_destination()
 	if _args.has("berry"):   # essai : --berry=ignis donne cette baie
 		_profile.berry = str(_args["berry"])
+	if _args.has("chart"):   # essai : --chart=2 ouvre la carte des mers à cet instant
+		get_tree().create_timer(float(_args["chart"])).timeout.connect(_open_chart)
+	if _args.has("weapon"):   # essai : --weapon=pistolet met cette arme en main (avec des munitions)
+		var wid := str(_args["weapon"])
+		if not (wid in _profile.weapons):
+			_profile.weapons.append(wid)
+		_profile.weapon = wid
+		_profile.bullets = maxi(_profile.bullets, 20)
+		_profile.shells = maxi(_profile.shells, 20)
 	if _args.has("gold"):   # essai : --gold=150 donne de l'or
 		_profile.gold = int(_args["gold"])
 	if _args.has("quest"):   # essai : --quest=tonnelet met cette quête en cours
@@ -1990,7 +2023,10 @@ func _update_island_hud(delta: float) -> void:
 	var has_goal := _destination >= 0 and _destination < _islands.islands.size()
 	h.dest_visible = has_goal and not _chart.is_open()
 	# la boussole que mon pirate tient en main montre le même cap (point bleu sur l'anneau)
-	_sprite.compass_goal = (_chart.shown_pos(_destination) - (_lpos if _loc == Loc.LAND else _sim.position)) if has_goal else Vector2.ZERO
+	var goal_vec := (_chart.shown_pos(_destination) - (_lpos if _loc == Loc.LAND else _sim.position)) if has_goal else Vector2.ZERO
+	if not has_goal and _loc == Loc.LAND:
+		goal_vec = _nearest_closed_chest_vec()   # sur une île sans cap choisi : la boussole désigne le coffre fermé le plus proche
+	_sprite.compass_goal = goal_vec
 	if h.dest_visible:
 		var target := _chart.shown_pos(_destination)
 		var from := _lpos if _loc == Loc.LAND else _sim.position
@@ -2001,6 +2037,29 @@ func _update_island_hud(delta: float) -> void:
 		h.dest_name = str(_islands.islands[_destination]["name"]) if known else "Terre inconnue"
 
 
+## Une direction à terre (monde x/z) en vecteur d'écran (x à droite, y vers le bas) : la profondeur est écrasée par l'inclinaison de la caméra.
+func _screen_of_face(face: Vector2) -> Vector2:
+	return Vector2(face.x, face.y * sin(deg_to_rad(_elev_deg)))
+
+
+## Direction (monde x/z) du coffre encore fermé le plus proche sur l'île où l'on se trouve, ou zéro s'il n'y en a plus.
+func _nearest_closed_chest_vec() -> Vector2:
+	var i := _islands.island_at(_lpos, 8.0)
+	if i < 0:
+		return Vector2.ZERO
+	var best := Vector2.ZERO
+	var best_d := INF
+	for ch_id: int in _islands.islands[i]["chests"]:
+		var ch: Dictionary = _islands.chests[ch_id]
+		if ch["open"]:
+			continue
+		var v: Vector2 = (ch["pos"] as Vector2) - _lpos
+		if v.length() < best_d:
+			best_d = v.length()
+			best = v
+	return best
+
+
 ## Coup de sabre vers `_face` : le croissant s'affiche tout de suite, l'hôte décide qui est touché.
 func _try_attack() -> void:
 	if _loc != Loc.LAND or _atk_cd > 0.0 or _hp <= 0 or _dialog.is_open() or _shop_menu.is_open() or _chart.is_open() or _jump_wind > 0.0:
@@ -2009,7 +2068,11 @@ func _try_attack() -> void:
 		_try_shoot(_profile.weapon)
 		return
 	_atk_cd = float(_islands.player_cfg.get("swing_cooldown", 0.45))
+	_sprite.play_action("slash_sabre", _screen_of_face(_face))   # le coup de sabre : bras levé, coup, retour
 	_islands.spawn_slash(_lpos, _face)
+	_send_action("slash", "", _lpos, _face)
+	if _atmo != null:
+		_atmo.on_swing(_lpos, _face)   # les palmiers et buissons devant frémissent
 	if _is_authority():
 		_resolve_swing(_my_id(), _lpos, _face)
 	else:
@@ -2027,7 +2090,9 @@ func _try_shoot(wid: String) -> void:
 		return
 	_atk_cd = float(def.get("cooldown", 1.0))
 	var dir := _face.normalized()
+	_sprite.play_action("shoot_" + wid, _screen_of_face(dir))   # le pirate épaule, tire (recul) et reprend sa garde
 	_shot_fx(_lpos, dir, def)
+	_send_action("shot", wid, _lpos, dir)
 	_shake_t = maxf(_shake_t, 0.1)
 	if _is_authority():
 		_resolve_shot(_my_id(), wid, _lpos, dir)
@@ -2051,13 +2116,51 @@ func apply_shot(peer: int, wid: String, pos: Vector2, dir: Vector2) -> void:
 	_resolve_shot(peer, wid, pos, dir)
 
 
-## Éclair de bouche, traînées de plomb et fumée d'un tir (chez celui qui tire).
-func _shot_fx(origin: Vector2, dir: Vector2, def: Dictionary) -> void:
+## Je viens de faire une action visible (coup de sabre, tir, pouvoir) : les autres joueurs la voient aussi.
+func _send_action(kind: String, arg: String, pos: Vector2, dir: Vector2) -> void:
+	if _net != null and _net.active:
+		_net.send_action(kind, arg, pos, dir)
+
+
+## Une action d'un autre joueur (reçue par le réseau) : son pirate joue l'animation et l'effet apparaît chez moi.
+## Les dégâts, eux, sont décidés par l'hôte (apply_swing, apply_shot, apply_cast).
+func apply_action(peer: int, kind: String, arg: String, pos: Vector2, dir: Vector2) -> void:
+	if peer == _my_id() or not _remotes.has(peer) or _islands == null:
+		return
+	var r: Dictionary = _remotes[peer]
+	var sprite := r["sprite"] as PirateSprite
+	var screen := _screen_of_face(dir)
+	var height: float = float(r.get("lh", 0.0))
+	if _args.has("log"):
+		print("[action] joueur %d : %s %s vers %s" % [peer, kind, arg, dir])
+	match kind:
+		"slash":
+			sprite.play_action("slash_sabre", screen)
+			_islands.spawn_slash(pos, dir)
+		"shot":
+			var def := Weapons.get_def(arg)
+			if def.is_empty():
+				return
+			sprite.play_action("shoot_" + arg, screen)
+			_shot_fx(pos, dir, def, height)
+		"cast":
+			var parts := arg.split("|")
+			if parts.size() < 2:
+				return
+			var spell := BerryBook.spell(parts[0], int(parts[1]))
+			if spell.is_empty():
+				return
+			sprite.play_action("cast", screen)
+			_islands.spawn_fx(spell, pos, dir, BerryBook.color_of(parts[0]))
+
+
+## Éclair de bouche, traînées de plomb et fumée d'un tir. `height` : la hauteur du sol du tireur (celui qui tire, sinon moi).
+func _shot_fx(origin: Vector2, dir: Vector2, def: Dictionary, height: float = INF) -> void:
 	var pellets := int(def.get("pellets", 1))
 	var reach := float(def.get("range", 10.0))
 	var spread := float(def.get("spread", 0.0))
 	var color := Color.html(str(def.get("color", "#ffe9a8")))
-	var y := _lh + 0.95
+	var y := (_lh if height == INF else height) + 0.95
 	for k in pellets:
 		var d := dir.rotated(randf_range(-spread, spread)) if spread > 0.0 else dir
 		var from := origin + d * 0.7
@@ -2226,7 +2329,9 @@ func _try_cast(slot: int) -> void:
 		_profile.save()
 		_say("Pouvoir révélé : %s !" % spell["name"], 3.5)
 	var origin := _lpos
+	_sprite.play_action("cast", _screen_of_face(_face))   # bras ramenés, levés, puis lancés vers l'avant
 	_islands.spawn_fx(spell, origin, _face, BerryBook.color_of(_profile.berry))
+	_send_action("cast", "%s|%d" % [_profile.berry, slot], origin, _face)
 	match str(spell["kind"]):
 		"heal":
 			var gain := mini(int(spell["amount"]), _hp_max - _hp)
@@ -2477,6 +2582,7 @@ func _process(delta_raw: float) -> void:
 	var fwd_p := _sim.forward()
 	_fleet.step(delta, _is_authority(), {"pos": _sim.position, "vel": fwd_p * _sim.speed, "alive": true, "wind": _sim.wind_dir})
 	_update_camera(delta)
+	_update_atmosphere(delta)
 	_animate_pirates(delta)
 	_sync_pirate_palette()
 	_snap_sprite()
@@ -3383,6 +3489,7 @@ func apply_remote_player(id: int, pos: Vector2, carrying: bool, loc: int, pz: fl
 func _add_remote(id: int, pos: Vector2) -> void:
 	var sprite := PirateSprite.new()
 	_ship.add_child(sprite)   # d'abord dans la scène : set_look peut finir tout de suite (feuille déjà en cache) et la boussole a besoin de la transformation globale
+	sprite.enable_actions()   # on doit voir ses tirs, ses pouvoirs et ses coups de sabre
 	sprite.set_look(_remote_looks.get(id, PirateLook.random_look(id)))
 	var ball := _make_ball(0.14, Color(0.12, 0.12, 0.16))
 	ball.visible = false
@@ -3569,6 +3676,115 @@ func _player_world() -> Vector3:
 	return _ship_point(_ppos, 0.9)
 
 
+## Ouvre le journal de quêtes (J) : les quêtes en cours, à rendre et terminées, avec le nom des îles connues.
+func _open_quests() -> void:
+	if _quest_panel.is_open() or _dialog.is_open() or _shop_menu.is_open() or _chart.is_open():
+		return
+	_quest_panel.open(_quests, func(island_id: String) -> String:
+		for isl: Dictionary in _islands.islands:
+			if str(isl["id"]) == island_id:
+				var known := not bool(isl.get("proc", false)) or island_id in _profile.discovered
+				return str(isl["name"]) if known else "une terre inconnue"
+		return "une île inconnue")
+
+
+## Ciel, météo, sons et vie des îles : on décrit la situation du joueur (où il est, s'il marche) et l'ambiance suit.
+func _update_atmosphere(delta: float) -> void:
+	if _atmo == null:
+		return
+	var where := "ship"
+	var pos := _sim.position
+	var kind := "ship"
+	match _loc:
+		Loc.LAND:
+			where = "land"
+			pos = _lpos
+			kind = "land"
+		Loc.SWIM, Loc.RAFT:
+			where = "swim"
+			pos = _lpos
+			kind = "swim"
+		Loc.HOLD:
+			where = "hold"
+		Loc.FLIGHT, Loc.CLIMB, Loc.NEST:
+			where = "other"
+	var moved := 0.0
+	var walk_pos := pos
+	if _loc == Loc.SHIP and _mode == Mode.WALK:
+		walk_pos = _ppos * ShipModel.SCALE
+	if (_loc == Loc.LAND or (_loc == Loc.SHIP and _mode == Mode.WALK)) and kind == _atmo_prev_kind and _pz <= 0.05:
+		moved = walk_pos.distance_to(_atmo_prev)
+		if moved > 1.5:
+			moved = 0.0   # un saut de position (téléportation, changement de lieu) : pas des pas
+	_atmo_prev = walk_pos
+	_atmo_prev_kind = kind
+	# l'ennemi est là : un bateau ennemi en chasse à moins de 120 m, ou un ennemi d'île éveillé tout près
+	var battle := false
+	for es: Dictionary in _fleet.ships:
+		if es["state"] == "chase" and (es["sim"] as ShipSim).position.distance_to(_sim.position) < 120.0:
+			battle = true
+	if _loc == Loc.LAND:
+		for en: IslandEnemy in _islands.enemies:
+			if en.state != IslandEnemy.State.IDLE and en.state != IslandEnemy.State.DEAD and en.pos.distance_to(_lpos) < 12.0:
+				battle = true
+	_atmo.update(delta, {"pos": pos, "where": where, "speed": _sim.speed / maxf(_sim.max_speed, 0.1) * 8.0, "moved": moved,
+			"face": _face, "focus": _cam_focus, "paused": _pause.is_open(), "battle": battle})
+	_spawn_castaways()
+
+
+## Les naufragés des îles (camps tirés avec l'île) : leur PNJ naît quand l'île est posée dans le monde.
+func _spawn_castaways() -> void:
+	for i in _islands.islands.size():
+		var isl: Dictionary = _islands.islands[i]
+		if isl["node"] == null:
+			continue
+		for it: Dictionary in isl["lore_items"]:
+			if it["kind"] != "castaway" or _castaways_made.has(int(it["seed"])):
+				continue
+			_castaways_made[int(it["seed"])] = true
+			var info := IslandLore.castaway(int(it["seed"]))
+			var yaw: float = it["yaw"]
+			var p: Vector2 = it["pos"] + Vector2(sin(yaw), cos(yaw)) * 1.5   # devant son abri
+			var d := {"id": "naufrage_%d" % int(it["seed"]), "name": info["name"], "role": "naufragé", "pos": [p.x, -p.y],
+					"h": _islands.height(i, p), "facing": 0, "seed": int(it["seed"]), "parts": info["parts"], "lines": info["lines"]}
+			var npc := TownNpc.from_data(d, false)
+			_world_fixed.add_child(npc.sprite)
+			npc.blob = _blob.duplicate() as MeshInstance3D
+			_world_fixed.add_child(npc.blob)
+			_quests.names[npc.id] = npc.display_name
+			_npcs.append(npc)
+
+
+## On ramasse une bouteille ou un journal : on lit le message, un peu d'or parfois, et un message « carte » révèle une île.
+func _read_lore(it: Dictionary) -> void:
+	var seed_value := int(it["seed"])
+	var target := -1
+	var target_name := ""
+	if it["kind"] == "bottle":
+		var here := _islands.island_at(_lpos, 2.0)
+		var options: Array = []
+		for j in _islands.islands.size():
+			if j != here and _islands.chests_left(j) > 0 and not (_islands.islands[j]["id"] in _profile.discovered):
+				options.append(j)
+		if not options.is_empty():
+			target = int(options[absi(hash(seed_value)) % options.size()])
+			target_name = str(_islands.islands[target]["name"])
+	var info := IslandLore.bottle(seed_value, target_name) if it["kind"] == "bottle" else IslandLore.journal(seed_value)
+	_atmo.life.take_lore(it)
+	_atmo.audio.play_chime()
+	_dialog.start(str(info["title"]), info["lines"], false)
+	if bool(info["map"]) and target >= 0:
+		_profile.discovered.append(_islands.islands[target]["id"])
+		_chart.discovered = _profile.discovered
+		_destination = target
+		_say("Nouvelle île sur ta carte : %s (cap fixé)" % target_name, 5.0)
+	var gold := int(info["gold"])
+	if gold > 0:
+		_profile.gold += gold
+		_say("+%d or" % gold, 3.0)
+	_profile.save()
+
+
 func _update_camera(delta: float) -> void:
 	# La caméra suit le bateau (fixe à l'origine) plus le décalage du pirate sur le pont, en douceur.
 	# Caméra au sous-pixel : la 3D est rendue avec une caméra calée sur la grille de pixels (donc pas
@@ -3576,7 +3792,9 @@ func _update_camera(delta: float) -> void:
 	# l'échelle de l'écran. Les déplacements paraissent continus au lieu d'avancer par sauts de
 	# 2 ou 3 pixels d'écran.
 	_cam_offset = _cam_offset.lerp(_camera_target(), 1.0 - exp(-delta * 6.0))
-	var el := deg_to_rad(ELEVATION_DEG)
+	_elev_deg = lerpf(_elev_deg, SHOULDER_ELEV_DEG if _shoulder_active() else ELEVATION_DEG, 1.0 - exp(-delta * 4.0))
+	_cam.rotation_degrees = Vector3(-_elev_deg, 0, 0)
+	var el := deg_to_rad(_elev_deg)
 	var focus_exact := Vector3(_ship.position.x, 1.2, _ship.position.z) + _cam_offset
 	if _args.has("cam-world"):  # diagnostic : regarder un point précis du monde (ex. la ville)
 		var parts := str(_args["cam-world"]).split(",")
@@ -3616,7 +3834,7 @@ func _snap_camera() -> void:
 ## Cale une position au sol sur la grille de pixels de l'écran (x : 1 px ; z : 1 px vertical).
 func _snap_ground(v: Vector3) -> Vector3:
 	var grid_x := 1.0 / _ppm()
-	var grid_z := 1.0 / (_ppm() * sin(deg_to_rad(ELEVATION_DEG)))
+	var grid_z := 1.0 / (_ppm() * sin(deg_to_rad(_elev_deg)))
 	return Vector3(snappedf(v.x, grid_x), v.y, snappedf(v.z, grid_z))
 
 
@@ -3627,41 +3845,55 @@ func _snap_ground(v: Vector3) -> Vector3:
 ## hauteur de la flèche par poste : on n'actionne un poste que de près ET en lui faisant face, pour que deux postes
 ## voisins (la barre et un canon, par exemple) ne se marchent jamais dessus.
 const INTERACT_PARAMS := {
-	"helm": {"reach": 1.9, "cone": -0.15, "bias": 0.85, "h": 2.0},
-	"mast": {"reach": 1.25, "cone": 0.3, "h": 2.1},
-	"cannon": {"reach": 1.3, "cone": 0.4, "h": 1.7},
-	"crate": {"reach": 1.35, "cone": 0.3, "h": 1.6},
-	"stash": {"reach": 1.4, "cone": 0.3, "h": 1.5},
-	"grapple": {"reach": 1.5, "cone": 0.2, "h": 1.7},
-	"ammo": {"reach": 1.3, "cone": 0.3, "h": 1.5},
-	"anchor": {"reach": 1.5, "cone": 0.2, "h": 1.5},
-	"ladder": {"reach": 1.25, "cone": 0.3, "h": 1.7},
-	"mastladder": {"reach": 1.1, "cone": 0.3, "h": 2.0},
-	"hatch": {"reach": 1.2, "cone": -1.0, "h": 1.2},
-	"chart": {"reach": 1.5, "cone": 0.0, "h": 1.7},
+	"helm": {"reach": 1.55, "cone": 0.45, "h": 2.0},
+	"mast": {"reach": 1.15, "cone": 0.6, "h": 2.1},
+	"cannon": {"reach": 1.15, "cone": 0.7, "h": 1.7},
+	"crate": {"reach": 1.25, "cone": 0.6, "h": 1.6},
+	"stash": {"reach": 1.3, "cone": 0.6, "h": 1.5},
+	"grapple": {"reach": 1.35, "cone": 0.55, "h": 1.7},
+	"ammo": {"reach": 1.15, "cone": 0.65, "h": 1.5},
+	"anchor": {"reach": 1.3, "cone": 0.65, "h": 1.5},
+	"ladder": {"reach": 1.15, "cone": 0.6, "h": 1.7},
+	"mastladder": {"reach": 1.0, "cone": 0.6, "h": 2.0},
+	"hatch": {"reach": 1.1, "cone": 0.0, "h": 1.2},
+	"chart": {"reach": 1.4, "cone": 0.3, "h": 1.7},
 }
-const INTERACT_DEFAULT := {"reach": 1.3, "cone": 0.3, "h": 1.6}
+const INTERACT_DEFAULT := {"reach": 1.2, "cone": 0.6, "h": 1.6}
+const TARGET_FACING_WEIGHT := 9.0   ## poids de l'angle de visée dans le choix du poste (la distance seule ne suffit pas)
+const TARGET_STICKY := 1.35         ## le poste visé ne change que si un autre est nettement meilleur (évite le va-et-vient)
 
 
 ## Le poste du pont que E actionnerait : à portée ET devant moi (voir INTERACT_PARAMS), le mieux placé si plusieurs.
 func _compute_target() -> Dictionary:
 	if _loc != Loc.SHIP or _mode != Mode.WALK or _pz > 0.05 or _jump_wind > 0.0:
 		return {}
+	return pick_target(_interactables, _ppos, _pface, _target)
+
+
+## Choisit parmi `posts` le poste que E actionnerait depuis `pos` en regardant vers `face` : à portée, dans le
+## cône de vue, le mieux placé ; `current` (le poste déjà visé) est gardé tant qu'un autre n'est pas nettement meilleur.
+static func pick_target(posts: Array, pos: Vector2, face: Vector2, current: Dictionary) -> Dictionary:
 	var best: Dictionary = {}
 	var best_score := INF
-	for it: Dictionary in _interactables:
+	var kept_score := INF   # le score du poste déjà visé, s'il est toujours valide
+	for it: Dictionary in posts:
 		var p: Dictionary = INTERACT_PARAMS.get(it["kind"], INTERACT_DEFAULT)
-		var to: Vector2 = (it["pos"] as Vector2) - _ppos
+		var to: Vector2 = (it["pos"] as Vector2) - pos
 		var d := to.length()
 		if d > float(p["reach"]):
 			continue
-		var dot := 1.0 if d < 0.3 else _pface.dot(to / d)
+		var dot := 1.0 if d < 0.2 else face.dot(to / d)
 		if dot < float(p["cone"]):
 			continue
-		var score := d * (1.0 + 4.0 * (1.0 - dot)) * float(p.get("bias", 1.0))
+		var score := d * (1.0 + TARGET_FACING_WEIGHT * (1.0 - dot)) * float(p.get("bias", 1.0))
+		if it == current:
+			kept_score = score
 		if score < best_score:
 			best_score = score
 			best = it
+	# stabilité : tant que le poste visé reste valide, un autre ne le remplace que s'il est nettement meilleur
+	if not current.is_empty() and kept_score < INF and kept_score <= best_score * TARGET_STICKY:
+		return current
 	return best
 
 
@@ -3671,7 +3903,7 @@ func _nearest_interactable() -> Dictionary:
 
 ## Désigne l'objet visé par la flèche jaune.
 func _update_target(delta: float) -> void:
-	var blocked := _chart.is_open() or _pause.is_open() or _dialog.is_open() or _shop_menu.is_open() or _inventory.is_open()
+	var blocked := _chart.is_open() or _pause.is_open() or _dialog.is_open() or _shop_menu.is_open() or _inventory.is_open() or _quest_panel.is_open()
 	_target = {} if blocked else _compute_target()
 	if _target_marker == null:
 		return
@@ -3697,7 +3929,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		elif mb.pressed and mb.button_index == MOUSE_BUTTON_LEFT and _loc == Loc.LAND:
 			var d := mb.position - get_viewport().get_visible_rect().size * 0.5
 			if d.length() > 4.0:
-				_face = Vector2(d.x, d.y / sin(deg_to_rad(ELEVATION_DEG))).normalized()
+				_face = Vector2(d.x, d.y / sin(deg_to_rad(_elev_deg))).normalized()
 			_try_attack()
 		elif mb.pressed and mb.button_index == MOUSE_BUTTON_WHEEL_UP:
 			_zoom_user = clampf(_zoom_user * 1.12, 0.55, 1.9)   # molette : on se rapproche
@@ -3708,6 +3940,10 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	var key := event as InputEventKey
 	if not key.pressed or key.echo:
+		return
+	if _quest_panel.is_open():   # le journal de quêtes : J ou Échap le referme
+		if key.physical_keycode == KEY_ESCAPE or key.physical_keycode == KEY_J:
+			_quest_panel.close()
 		return
 	if _pause.is_open():   # le menu Échap : Échap le referme, le reste attend les clics
 		if key.physical_keycode == KEY_ESCAPE:
@@ -3730,12 +3966,19 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if key.physical_keycode == KEY_ESCAPE:
 		_toggle_pause()
+	elif key.physical_keycode == KEY_J:
+		_open_quests()
 	elif key.physical_keycode == KEY_TAB:
 		_toggle_inventory()
 	elif key.physical_keycode == KEY_X:
 		_cycle_weapon()
 	elif key.physical_keycode == KEY_T:
 		_try_unstick()
+	elif key.physical_keycode == KEY_V:
+		_shoulder = not _shoulder
+		_say("Vue épaule : V pour revenir à la vue normale" if _shoulder else "Vue normale", 2.0)
+	elif key.physical_keycode == KEY_M and _atmo != null:
+		_say("Son coupé : M pour le remettre" if _atmo.toggle_mute() else "Son remis", 2.0)
 	elif key.physical_keycode == KEY_B:
 		_toggle_compass()
 	elif key.physical_keycode == KEY_I:
@@ -3840,11 +4083,14 @@ func _interact(secondary: bool) -> void:
 		elif not secondary:
 			var chest := _islands.nearest_chest(_lpos)
 			var berry := _islands.nearest_berry(_lpos)
+			var lore: Dictionary = _atmo.life.nearest_lore(_lpos) if _atmo != null else {}
 			if chest >= 0:
 				if _carrying:
 					_say("Tes mains sont prises : dépose d'abord ce que tu portes (coffre du capitaine, caisse)", 3.5)
 				else:
 					_request("chest", chest)
+			elif not lore.is_empty():
+				_read_lore(lore)
 			elif berry >= 0:
 				_pick_berry(berry)
 			elif not _try_board_raft_from_land():
@@ -4904,6 +5150,9 @@ func _update_hud() -> void:
 			_prompt.text = "E : parler à %s" % near.display_name
 		elif _islands.nearest_chest(_lpos) >= 0:
 			_prompt.text = "E : ouvrir le coffre   F / clic : frapper"
+		elif _atmo != null and not _atmo.life.nearest_lore(_lpos).is_empty():
+			var found: Dictionary = _atmo.life.nearest_lore(_lpos)
+			_prompt.text = "E : ramasser la bouteille" if found["kind"] == "bottle" else "E : lire le journal abandonné"
 		elif _islands.nearest_berry(_lpos) >= 0:
 			var spot: Dictionary = _islands.berry_spots[_islands.nearest_berry(_lpos)]
 			_prompt.text = "E : cueillir la %s (elle va dans ton sac : Tab pour la manger)" % BerryBook.berry_name(str(spot["berry"]))

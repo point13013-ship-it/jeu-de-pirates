@@ -1,0 +1,336 @@
+class_name Synth
+extends RefCounted
+## Les sons du jeu, fabriqués par le code (aucun fichier audio) : bruit filtré, enveloppes et quelques sinusoïdes, mixés
+## en 16 bits mono. Les sons d'ambiance sont des boucles sans raccord (fin fondue dans le début) ; les autres, des sons
+## brefs. Tout est déterministe (graine fixe) et mis en cache : un son n'est fabriqué qu'une fois.
+
+const RATE := 22050
+static var _cache: Dictionary = {}
+
+
+# ------------------------------------------------------------------ outils
+
+static func _rng(seed_value: int) -> RandomNumberGenerator:
+	var r := RandomNumberGenerator.new()
+	r.seed = seed_value
+	return r
+
+
+## Bruit blanc de `n` échantillons (-1…1).
+static func _noise(n: int, seed_value: int) -> PackedFloat32Array:
+	var r := _rng(seed_value)
+	var out := PackedFloat32Array()
+	out.resize(n)
+	for i in n:
+		out[i] = r.randf() * 2.0 - 1.0
+	return out
+
+
+## Filtre passe-bas à un pôle (fréquence de coupure `hz`).
+static func _lowpass(x: PackedFloat32Array, hz: float) -> PackedFloat32Array:
+	var a := 1.0 - exp(-TAU * hz / RATE)
+	var y := 0.0
+	var out := PackedFloat32Array()
+	out.resize(x.size())
+	for i in x.size():
+		y += a * (x[i] - y)
+		out[i] = y
+	return out
+
+
+## Passe-haut : le signal moins son passe-bas.
+static func _highpass(x: PackedFloat32Array, hz: float) -> PackedFloat32Array:
+	var lp := _lowpass(x, hz)
+	var out := PackedFloat32Array()
+	out.resize(x.size())
+	for i in x.size():
+		out[i] = x[i] - lp[i]
+	return out
+
+
+static func _normalize(x: PackedFloat32Array, peak: float = 0.9) -> PackedFloat32Array:
+	var m := 0.0001
+	for v in x:
+		m = maxf(m, absf(v))
+	var k := peak / m
+	for i in x.size():
+		x[i] *= k
+	return x
+
+
+## Fond la fin dans le début sur `fade` échantillons, pour que la boucle ne claque pas au raccord.
+static func _loopify(x: PackedFloat32Array, fade: int) -> PackedFloat32Array:
+	var n := x.size() - fade
+	var out := PackedFloat32Array()
+	out.resize(n)
+	for i in n:
+		out[i] = x[i]
+	for i in fade:
+		var k := float(i) / float(fade)
+		out[i] = x[i] * k + x[n + i] * (1.0 - k)
+	return out
+
+
+static func _to_stream(x: PackedFloat32Array, loop: bool) -> AudioStreamWAV:
+	var data := PackedByteArray()
+	data.resize(x.size() * 2)
+	for i in x.size():
+		data.encode_s16(i * 2, int(clampf(x[i], -1.0, 1.0) * 32000.0))
+	var w := AudioStreamWAV.new()
+	w.format = AudioStreamWAV.FORMAT_16_BITS
+	w.mix_rate = RATE
+	w.stereo = false
+	w.data = data
+	if loop:
+		w.loop_mode = AudioStreamWAV.LOOP_FORWARD
+		w.loop_begin = 0
+		w.loop_end = x.size()
+	return w
+
+
+static func _cached(key: String, builder: Callable) -> AudioStreamWAV:
+	if not _cache.has(key):
+		_cache[key] = builder.call()
+	return _cache[key]
+
+
+# ------------------------------------------------------------------ boucles d'ambiance
+
+## La mer qui vient mourir sur le rivage : un grondement qui monte et redescend, un chuintement d'écume au sommet.
+static func waves() -> AudioStreamWAV:
+	return _cached("waves", func() -> AudioStreamWAV:
+		var secs := 9.0
+		var n := int(secs * RATE)
+		var rumble := _lowpass(_noise(n + 4000, 11), 380.0)
+		var hiss := _highpass(_lowpass(_noise(n + 4000, 12), 4200.0), 1400.0)
+		var out := PackedFloat32Array()
+		out.resize(n + 4000)
+		for i in out.size():
+			var t := float(i) / RATE
+			var swell := 0.5 + 0.5 * sin(TAU * t / 9.0 - 1.2)   # une grosse vague par boucle
+			var swell2 := 0.5 + 0.5 * sin(TAU * t / 4.5 + 0.7)
+			var env := 0.25 + 0.75 * pow(swell * 0.75 + swell2 * 0.25, 1.6)
+			out[i] = rumble[i] * 2.6 * env + hiss[i] * 1.6 * pow(env, 3.0)
+		return _to_stream(_loopify(_normalize(out, 0.8), 4000), true))
+
+
+## Le vent : un souffle grave qui enfle et retombe, avec un léger sifflement.
+static func wind() -> AudioStreamWAV:
+	return _cached("wind", func() -> AudioStreamWAV:
+		var n := int(7.0 * RATE)
+		var low := _lowpass(_noise(n + 4000, 21), 260.0)
+		var mid := _highpass(_lowpass(_noise(n + 4000, 22), 1100.0), 500.0)
+		var out := PackedFloat32Array()
+		out.resize(n + 4000)
+		for i in out.size():
+			var t := float(i) / RATE
+			var gust := 0.45 + 0.35 * sin(TAU * t / 7.0) + 0.2 * sin(TAU * t / 3.5 + 1.3)
+			out[i] = low[i] * 3.0 * gust + mid[i] * 1.2 * gust * gust
+		return _to_stream(_loopify(_normalize(out, 0.7), 4000), true))
+
+
+## Un feu de camp : un ronflement sourd et des craquements au hasard.
+static func fire() -> AudioStreamWAV:
+	return _cached("fire", func() -> AudioStreamWAV:
+		var n := int(4.0 * RATE)
+		var out := _lowpass(_noise(n + 4000, 31), 180.0)
+		for i in out.size():
+			out[i] *= 2.2
+		var r := _rng(32)
+		for k in 52:   # une cinquantaine de craquements sur 4 s
+			var at := r.randi_range(0, n + 3000)
+			var amp := r.randf_range(0.15, 0.9)
+			var len := r.randi_range(120, 900)
+			var tone := r.randf_range(0.3, 0.95)
+			var prev := 0.0
+			for j in len:
+				if at + j >= out.size():
+					break
+				var e := exp(-float(j) / (len * 0.28))
+				var nz := r.randf() * 2.0 - 1.0
+				prev += tone * (nz - prev)
+				out[at + j] += (nz - prev) * amp * e
+		return _to_stream(_loopify(_normalize(out, 0.7), 4000), true))
+
+
+## La pluie : un grésillement constant.
+static func rain() -> AudioStreamWAV:
+	return _cached("rain", func() -> AudioStreamWAV:
+		var n := int(3.0 * RATE)
+		var hi := _highpass(_noise(n + 3000, 41), 1800.0)
+		var out := PackedFloat32Array()
+		out.resize(n + 3000)
+		for i in out.size():
+			out[i] = hi[i] * (0.8 + 0.2 * sin(TAU * float(i) / RATE * 1.7))
+		return _to_stream(_loopify(_normalize(out, 0.6), 3000), true))
+
+
+## Les insectes d'une île verte : des trilles aigus par groupes.
+static func insects() -> AudioStreamWAV:
+	return _cached("insects", func() -> AudioStreamWAV:
+		var n := int(5.0 * RATE)
+		var out := PackedFloat32Array()
+		out.resize(n + 3000)
+		var r := _rng(51)
+		for k in 9:
+			var at := r.randi_range(0, n - 1000)
+			var f := r.randf_range(3800.0, 5200.0)
+			var pulses := r.randi_range(3, 7)
+			var gap := r.randf_range(0.045, 0.07)
+			for p in pulses:
+				var start := at + int(p * gap * RATE)
+				var len := int(0.03 * RATE)
+				for j in len:
+					if start + j >= out.size():
+						break
+					out[start + j] += sin(TAU * f * float(j) / RATE) * sin(PI * float(j) / len) * 0.5
+		return _to_stream(_loopify(_normalize(out, 0.45), 3000), true))
+
+
+# ------------------------------------------------------------------ sons brefs
+
+## Chant d'oiseau (3 variantes) : de petits sifflets qui montent et descendent.
+static func bird(variant: int) -> AudioStreamWAV:
+	return _cached("bird%d" % variant, func() -> AudioStreamWAV:
+		var r := _rng(60 + variant)
+		var out := PackedFloat32Array()
+		var notes := 3 + variant * 2
+		var base := 2200.0 + 500.0 * variant
+		for k in notes:
+			var len := int(r.randf_range(0.05, 0.11) * RATE)
+			var f0 := base * r.randf_range(0.8, 1.5)
+			var f1 := f0 * r.randf_range(0.6, 1.7)
+			var ph := 0.0
+			var seg := PackedFloat32Array()
+			seg.resize(len)
+			for j in len:
+				var u := float(j) / len
+				ph += TAU * lerpf(f0, f1, u) / RATE
+				seg[j] = sin(ph) * sin(PI * u) * 0.6
+			out.append_array(seg)
+			var gap := PackedFloat32Array()
+			gap.resize(int(r.randf_range(0.02, 0.07) * RATE))
+			out.append_array(gap)
+		return _to_stream(_normalize(out, 0.5), false))
+
+
+## Cri de mouette : deux notes plaintives, voix un peu rauque.
+static func gull() -> AudioStreamWAV:
+	return _cached("gull", func() -> AudioStreamWAV:
+		var out := PackedFloat32Array()
+		for note in 3:
+			var len := int((0.28 if note < 2 else 0.5) * RATE)
+			var f0 := 1500.0 + note * 150.0
+			var ph := 0.0
+			var seg := PackedFloat32Array()
+			seg.resize(len)
+			for j in len:
+				var u := float(j) / len
+				var f := f0 * (1.0 + 0.45 * sin(PI * u) - 0.25 * u) * (1.0 + 0.03 * sin(TAU * 28.0 * u))
+				ph += TAU * f / RATE
+				var s := sin(ph) + 0.5 * sin(2.0 * ph) + 0.3 * sin(3.0 * ph)
+				seg[j] = s * sin(PI * u) * 0.45
+			out.append_array(seg)
+			var gap := PackedFloat32Array()
+			gap.resize(int(0.07 * RATE))
+			out.append_array(gap)
+		return _to_stream(_normalize(out, 0.55), false))
+
+
+## Un pas : 0 sable, 1 herbe, 2 pont de bois, 3 eau peu profonde (variantes 0…2).
+static func step(kind: int, variant: int) -> AudioStreamWAV:
+	return _cached("step%d_%d" % [kind, variant], func() -> AudioStreamWAV:
+		var r := _rng(100 + kind * 10 + variant)
+		var len := int(0.16 * RATE)
+		var nz := PackedFloat32Array()
+		nz.resize(len)
+		for i in len:
+			nz[i] = r.randf() * 2.0 - 1.0
+		var out := PackedFloat32Array()
+		out.resize(len)
+		match kind:
+			0:   # sable : un frottement sourd
+				var lp := _lowpass(nz, 1300.0 + variant * 150.0)
+				for i in len:
+					out[i] = lp[i] * exp(-float(i) / (len * 0.35)) * 1.6
+			1:   # herbe : un froissement plus aigu
+				var bp := _highpass(_lowpass(nz, 4200.0), 1100.0)
+				for i in len:
+					out[i] = bp[i] * exp(-float(i) / (len * 0.45)) * (0.7 + 0.3 * sin(float(i) * 0.02 + variant)) * 1.5
+			2:   # bois : un toc grave et un claquement
+				var lp2 := _lowpass(nz, 2400.0)
+				var f := 95.0 + variant * 14.0
+				for i in len:
+					var e := exp(-float(i) / (len * 0.22))
+					out[i] = (sin(TAU * f * float(i) / RATE) * 0.9 + lp2[i] * 0.45) * e
+			_:   # eau peu profonde : un clapotis
+				var hp := _highpass(_lowpass(nz, 5200.0), 800.0)
+				for i in len:
+					out[i] = hp[i] * exp(-float(i) / (len * 0.55)) * (0.8 + 0.4 * sin(float(i) * 0.05 + variant))
+		return _to_stream(_normalize(out, 0.55), false))
+
+
+## Une éclaboussure : plus longue et plus grasse qu'un pas dans l'eau.
+static func splash() -> AudioStreamWAV:
+	return _cached("splash", func() -> AudioStreamWAV:
+		var len := int(0.45 * RATE)
+		var hp := _highpass(_lowpass(_noise(len, 71), 6000.0), 500.0)
+		var out := PackedFloat32Array()
+		out.resize(len)
+		for i in len:
+			var u := float(i) / len
+			out[i] = hp[i] * pow(1.0 - u, 2.0) * (1.0 + 0.5 * sin(u * 40.0))
+		return _to_stream(_normalize(out, 0.6), false))
+
+
+## Des feuilles qu'on froisse (on secoue un palmier, on traverse un buisson).
+static func rustle() -> AudioStreamWAV:
+	return _cached("rustle", func() -> AudioStreamWAV:
+		var len := int(0.5 * RATE)
+		var hp := _highpass(_lowpass(_noise(len, 81), 7000.0), 2500.0)
+		var out := PackedFloat32Array()
+		out.resize(len)
+		for i in len:
+			var u := float(i) / len
+			out[i] = hp[i] * sin(PI * pow(u, 0.6)) * (0.6 + 0.4 * sin(u * 60.0))
+		return _to_stream(_normalize(out, 0.5), false))
+
+
+## Petit carillon : on ramasse ou on trouve quelque chose.
+static func chime() -> AudioStreamWAV:
+	return _cached("chime", func() -> AudioStreamWAV:
+		var len := int(0.7 * RATE)
+		var out := PackedFloat32Array()
+		out.resize(len)
+		for i in len:
+			var t := float(i) / RATE
+			out[i] = (sin(TAU * 880.0 * t) + 0.6 * sin(TAU * 1320.0 * t) + 0.3 * sin(TAU * 1760.0 * t)) * exp(-t * 6.0)
+		return _to_stream(_normalize(out, 0.5), false))
+
+
+## Un grincement de bois (île de morts) : une note qui glisse, avec ses harmoniques.
+static func creak() -> AudioStreamWAV:
+	return _cached("creak", func() -> AudioStreamWAV:
+		var len := int(1.1 * RATE)
+		var out := PackedFloat32Array()
+		out.resize(len)
+		var ph := 0.0
+		for i in len:
+			var u := float(i) / len
+			var f := lerpf(210.0, 150.0, u) * (1.0 + 0.06 * sin(TAU * 11.0 * u))
+			ph += TAU * f / RATE
+			out[i] = (sin(ph) + 0.55 * sin(2.0 * ph) + 0.4 * sin(3.0 * ph + 1.0)) * sin(PI * u) * (0.6 + 0.4 * sin(TAU * 23.0 * u))
+		return _to_stream(_normalize(out, 0.45), false))
+
+
+## Le tonnerre : un grondement qui roule.
+static func thunder() -> AudioStreamWAV:
+	return _cached("thunder", func() -> AudioStreamWAV:
+		var len := int(3.2 * RATE)
+		var lp := _lowpass(_noise(len, 91), 170.0)
+		var out := PackedFloat32Array()
+		out.resize(len)
+		for i in len:
+			var u := float(i) / len
+			out[i] = lp[i] * (pow(1.0 - u, 1.6) * (0.5 + 0.5 * sin(u * 30.0 + sin(u * 9.0) * 3.0)) + (0.9 if u < 0.04 else 0.0))
+		return _to_stream(_normalize(out, 0.85), false))

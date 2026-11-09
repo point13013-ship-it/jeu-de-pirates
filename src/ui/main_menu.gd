@@ -25,6 +25,7 @@ var _join_row: HBoxContainer
 var _code_edit: LineEdit
 var _message: Label
 var _hint: Label
+var _volume_panel: VolumePanel
 var _preview: Sprite2D
 var _stage: Control
 var _look: Dictionary
@@ -149,9 +150,10 @@ func _build_left() -> Control:
 	_message.add_theme_font_size_override("font_size", 15)
 	box.add_child(_message)
 	box.add_child(_big_button("Mon pirate (apparence)", func() -> void: edit_pirate.emit()))
+	box.add_child(_big_button("Sons et musique", func() -> void: _volume_panel.visible = not _volume_panel.visible))
 	box.add_child(_big_button("Quitter", func() -> void: quit_game.emit()))
 	var tips := Label.new()
-	tips.text = "ZQSD / flèches : marcher   Espace : sauter   E : agir   R : agir autrement\nÉchap : menu (retour au menu)   B : boussole   I : invitation (hôte)"
+	tips.text = "ZQSD / flèches : marcher   Espace : sauter   E : agir   R : agir autrement\nÉchap : menu (retour au menu)   B : boussole   J : quêtes   I : invitation (hôte)   M : couper le son"
 	tips.add_theme_color_override("font_color", Color(0.8, 0.85, 0.9))
 	tips.add_theme_font_size_override("font_size", 13)
 	box.add_child(tips)
@@ -178,6 +180,9 @@ func _build_right() -> Control:
 	name_label.add_theme_font_size_override("font_size", 22)
 	name_label.add_theme_color_override("font_color", GOLD)
 	box.add_child(name_label)
+	_volume_panel = VolumePanel.new()   # (le bouton « Sons et musique » l'ouvre)
+	_volume_panel.visible = false
+	box.add_child(_volume_panel)
 	return box
 
 

@@ -22,6 +22,7 @@ const BLOCK := {
 	"skull_rock": [[0, 0, 2.3]], "tower": [[0, 0, 1.9]], "cannon": [[0, 0, 0.7]], "crate": [[0, 0, 0.55]],
 	"pond": [[0, 0, 1.7]], "driftwood": [[0, 0, 0.5]], "rowboat": [[0, 0, 1.2]], "hut": [[0, 0, 2.1]],
 	"sandcastle": [[0, 0, 0.6]], "totem": [[0, 0, 0.45]], "arch": [[-2.0, 0, 0.9], [2.0, 0, 0.9]],
+	"ruin": [[1.7, 0, 0.55], [-0.85, 1.47, 0.55], [-0.85, -1.47, 0.55], [0.3, -1.9, 1.0]], "castaway": [[0, -0.8, 1.0]],
 	"wreck": [[-9, 0, 2.3], [-4.5, 0, 2.5], [0, 0, 2.6], [4.5, 0, 2.5], [9, 0, 2.3]],
 }
 
@@ -79,6 +80,12 @@ static func make(parent: Node3D, kind: String, at: Vector2, yaw: float, seed_val
 		"totem": totem(root)
 		"arch": arch(root, seed_value)
 		"wreck": wreck(root, str(d.get("ship", "galion")))
+		"shell": shell(root, rng)
+		"starfish": starfish(root, rng)
+		"ruin": ruin(root, rng)
+		"bottle": bottle(root)
+		"journal": journal(root)
+		"castaway": castaway(root)
 		"wall":
 			root.position = Vector3.ZERO
 			root.rotation = Vector3.ZERO
@@ -564,3 +571,98 @@ static func wreck(root: Node3D, ship: String) -> void:
 	model.position = Vector3(0, -0.7, 0)
 	model.rotation = Vector3(deg_to_rad(18.0), deg_to_rad(90.0), deg_to_rad(6.0))
 	root.add_child(model)
+
+
+# ------------------------------------------------------------------ ambiance : plage, ruines, trouvailles
+
+## Un coquillage : une petite spirale rose posée sur le sable.
+static func shell(root: Node3D, rng: RandomNumberGenerator) -> void:
+	var k := MeshKit.new()
+	var tone: Color = [Color(0.96, 0.78, 0.74), Color(0.95, 0.9, 0.8), Color(0.86, 0.62, 0.55)][rng.randi() % 3]
+	var s := rng.randf_range(0.8, 1.3)
+	k.ball(_xf(Vector3(0, 0.05 * s, 0)), 0.09 * s, tone, 6, 3)
+	k.cyl(_xf(Vector3(0.07 * s, 0.05 * s, 0), Vector3(0, 0, -PI / 2.0 + 0.3)), 0.0, 0.07 * s, 0.14 * s, tone.darkened(0.1), 6)
+	k.instance(root)
+
+
+## Une étoile de mer : cinq bras plats.
+static func starfish(root: Node3D, rng: RandomNumberGenerator) -> void:
+	var k := MeshKit.new()
+	var c: Color = [Color(0.92, 0.5, 0.28), Color(0.86, 0.34, 0.36), Color(0.96, 0.68, 0.3)][rng.randi() % 3]
+	for i in 5:
+		var a := TAU * i / 5.0
+		k.between(Vector3(0, 0.025, 0), Vector3(cos(a) * 0.26, 0.02, sin(a) * 0.26), 0.07, 0.02, c, 4)
+	k.ball(_xf(Vector3(0, 0.03, 0)), 0.07, c.lightened(0.15), 5, 2)
+	k.instance(root)
+
+
+## Des ruines : trois colonnes brisées, un bloc tombé et un pan de mur, couverts de mousse.
+static func ruin(root: Node3D, rng: RandomNumberGenerator) -> void:
+	var k := MeshKit.new()
+	var moss := Color(0.3, 0.55, 0.24)
+	for i in 3:
+		var a := TAU * i / 3.0 + 0.4
+		var p := Vector3(cos(a) * 1.7, 0, sin(a) * 1.7)
+		var h := rng.randf_range(0.7, 2.3)
+		k.cyl(_xf(p + Vector3(0, h * 0.5, 0)), 0.4, 0.36, h, STONE, 8)
+		k.box(_xf(p + Vector3(0, 0.1, 0)), Vector3(1.0, 0.2, 1.0), STONE_D)
+		k.box(_xf(p + Vector3(0, h + 0.03, 0), Vector3(0.2, 0.0, 0.15)), Vector3(0.7, 0.12, 0.6), STONE)   # cassée en biseau
+		k.ball(_xf(p + Vector3(0.2, 0.2, 0.25)), 0.25, moss, 6, 3)
+	# colonne couchée
+	k.cyl(_xf(Vector3(-0.2, 0.36, 0.1), Vector3(0, 0.5, PI / 2.0)), 0.36, 0.34, 2.2, STONE, 8)
+	# pan de mur et bloc
+	k.box(_xf(Vector3(0.3, 0.55, -1.9), Vector3(0, 0.1, 0)), Vector3(2.6, 1.1, 0.4), STONE_D)
+	k.box(_xf(Vector3(1.5, 0.2, -1.4), Vector3(0, 0.6, 0)), Vector3(0.7, 0.4, 0.6), STONE)
+	k.ball(_xf(Vector3(-0.8, 1.15, -1.9)), 0.35, moss, 6, 3)
+	k.instance(root)
+
+
+## Une bouteille échouée avec un message roulé dedans ; un éclat doré la signale.
+static func bottle(root: Node3D) -> void:
+	var k := MeshKit.new()
+	var glass := Color(0.55, 0.85, 0.7)
+	k.cyl(_xf(Vector3(0, 0.1, 0), Vector3(0, 0, PI / 2.0 - 0.1)), 0.09, 0.09, 0.34, glass, 8)
+	k.cyl(_xf(Vector3(0.24, 0.12, 0), Vector3(0, 0, PI / 2.0 - 0.1)), 0.035, 0.05, 0.16, glass, 6)
+	k.cyl(_xf(Vector3(0.33, 0.13, 0), Vector3(0, 0, PI / 2.0 - 0.1)), 0.04, 0.04, 0.05, WOOD, 6)
+	k.box(_xf(Vector3(-0.02, 0.1, 0), Vector3(0, 0, 0.1)), Vector3(0.22, 0.07, 0.07), Color(0.95, 0.9, 0.7))
+	k.instance(root)
+	_glint(root, 0.75)
+
+
+## Un journal de pirate oublié sur une souche.
+static func journal(root: Node3D) -> void:
+	var k := MeshKit.new()
+	k.cyl(_xf(Vector3(0, 0.22, 0)), 0.34, 0.4, 0.44, WOOD_D, 8)
+	k.cyl(_xf(Vector3(0, 0.45, 0)), 0.32, 0.32, 0.04, Color(0.7, 0.5, 0.28), 8)
+	k.box(_xf(Vector3(0, 0.51, 0), Vector3(0, 0.4, 0)), Vector3(0.34, 0.07, 0.24), Color(0.45, 0.22, 0.16))
+	k.box(_xf(Vector3(0, 0.555, 0), Vector3(0, 0.4, 0)), Vector3(0.3, 0.03, 0.2), Color(0.95, 0.9, 0.75))
+	k.instance(root)
+	_glint(root, 1.0)
+
+
+## Le camp d'un naufragé : un abri de toile et de bambou, une natte, un sac. (Le naufragé lui-même est un PNJ du jeu.)
+static func castaway(root: Node3D) -> void:
+	var k := MeshKit.new()
+	var cloth := Color(0.78, 0.7, 0.52)
+	k.between(Vector3(-1.0, 0, -0.8), Vector3(-0.8, 1.7, -0.8), 0.07, 0.06, WOOD_D)
+	k.between(Vector3(1.0, 0, -0.8), Vector3(0.8, 1.7, -0.8), 0.07, 0.06, WOOD_D)
+	k.between(Vector3(-0.9, 1.7, -0.8), Vector3(0.9, 1.7, -0.8), 0.05, 0.05, WOOD_D)
+	k.box(_xf(Vector3(0, 0.95, -0.15), Vector3(-0.95, 0, 0)), Vector3(2.0, 0.05, 1.7), cloth)
+	k.box(_xf(Vector3(0, 0.02, -0.2)), Vector3(1.5, 0.03, 1.1), Color(0.62, 0.5, 0.3))   # natte
+	k.ball(_xf(Vector3(1.1, 0.2, 0.2)), 0.26, Color(0.55, 0.42, 0.28), 6, 3)   # sac
+	k.cyl(_xf(Vector3(-1.2, 0.13, 0.4)), 0.17, 0.17, 0.26, Color(0.4, 0.24, 0.14), 7)   # petit tonneau
+	k.instance(root)
+
+
+## Un éclat doré qui flotte au-dessus d'une trouvaille (comme le coffre) : repère visuel sans texte.
+static func _glint(root: Node3D, h: float) -> void:
+	var g := MeshInstance3D.new()
+	var sm := SphereMesh.new()
+	sm.radius = 0.09
+	sm.height = 0.18
+	g.mesh = sm
+	g.material_override = ProcKit.glow(Color(1.0, 0.88, 0.35))
+	g.position = Vector3(0, h, 0)
+	g.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	g.name = "glint"
+	root.add_child(g)

@@ -279,12 +279,26 @@ func _draw_ship() -> void:
 
 
 func _draw_compass(font: Font) -> void:
-	var c := Vector2(_map_rect.end.x - 60, _map_rect.end.y - 60)
-	draw_circle(c, 34.0, Color(0.9, 0.8, 0.58, 0.8))
-	draw_arc(c, 34.0, 0.0, TAU, 32, INK, 2.0)
-	draw_colored_polygon(PackedVector2Array([c + Vector2(0, -32), c + Vector2(7, 0), c + Vector2(-7, 0)]), Color(0.75, 0.12, 0.1))
-	draw_colored_polygon(PackedVector2Array([c + Vector2(0, 32), c + Vector2(7, 0), c + Vector2(-7, 0)]), INK)
-	draw_string(font, c + Vector2(-8, -38), "N", HORIZONTAL_ALIGNMENT_CENTER, 16, 15, INK)
+	# la rose des vents : le nord est en haut de la carte, l'est à droite (comme les coordonnées du monde : x vers l'est, z vers le sud)
+	var c := Vector2(_map_rect.end.x - 78, _map_rect.end.y - 78)
+	var r := 36.0
+	draw_circle(c, r, Color(0.9, 0.8, 0.58, 0.85))
+	draw_arc(c, r, 0.0, TAU, 40, INK, 2.0)
+	for k in 16:   # graduations : plus longues aux quatre points cardinaux
+		var a := TAU * float(k) / 16.0
+		var dir := Vector2(sin(a), -cos(a))
+		draw_line(c + dir * (r - (8.0 if k % 4 == 0 else 4.0)), c + dir * r, INK, 1.5)
+	var red := Color(0.75, 0.12, 0.1)
+	draw_colored_polygon(PackedVector2Array([c + Vector2(0, -r + 3), c + Vector2(7, 0), c + Vector2(-7, 0)]), red)
+	draw_colored_polygon(PackedVector2Array([c + Vector2(0, r - 3), c + Vector2(7, 0), c + Vector2(-7, 0)]), INK)
+	draw_colored_polygon(PackedVector2Array([c + Vector2(r - 3, 0), c + Vector2(0, 7), c + Vector2(0, -7)]), INK)
+	draw_colored_polygon(PackedVector2Array([c + Vector2(-r + 3, 0), c + Vector2(0, 7), c + Vector2(0, -7)]), INK)
+	draw_circle(c, 3.0, Color(0.9, 0.8, 0.58))
+	# les quatre lettres, avec un liseré clair pour rester lisibles sur la carte
+	for spec: Array in [["N", Vector2(0, -r - 8)], ["S", Vector2(0, r + 21)], ["E", Vector2(r + 16, 6)], ["W", Vector2(-r - 16, 6)]]:
+		var pos: Vector2 = c + (spec[1] as Vector2) + Vector2(-9, 0)
+		draw_string_outline(font, pos, str(spec[0]), HORIZONTAL_ALIGNMENT_CENTER, 18, 17, 4, Color(0.95, 0.88, 0.7))
+		draw_string(font, pos, str(spec[0]), HORIZONTAL_ALIGNMENT_CENTER, 18, 17, red if spec[0] == "N" else INK)
 
 
 func _draw_tooltip(i: int, font: Font) -> void:

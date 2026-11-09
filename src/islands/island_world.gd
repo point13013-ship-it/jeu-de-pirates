@@ -196,8 +196,9 @@ static func _scaled_island(d: Dictionary, s: float) -> Dictionary:
 const SCATTER_RULES := {
 	"palm": [1.6, 99.0, 2.4, 0.32], "rock_spire": [3.0, 99.0, 4.5, 1.0], "rock": [1.8, 99.0, 2.4, 0.8],
 	"dead_tree": [2.0, 99.0, 3.0, 0.3], "bush": [1.8, 99.0, 1.4, 0.0], "fern": [1.8, 99.0, 1.0, 0.0],
-	"driftwood": [0.3, 1.8, 3.0, 0.5],
+	"driftwood": [0.3, 1.8, 3.0, 0.5], "shell": [0.3, 2.8, 0.7, 0.0], "starfish": [0.3, 2.2, 1.4, 0.0],
 }
+const LORE_KINDS := ["bottle", "journal", "castaway"]   ## trouvailles : on les ramasse (bouteille, journal) ou on leur parle (naufragé)
 
 
 ## Place le décor (au hasard mais toujours pareil) : objets du fichier, puis semis de palmiers, rochers, buissons…
@@ -243,8 +244,15 @@ func _plan_decor(i: int) -> void:
 	var placed: Array = []
 	var bound: float = isl["radius"]
 	var scatter: Dictionary = isl["scatter"]
-	for kind: String in ["palm", "rock_spire", "rock", "dead_tree", "bush", "fern", "driftwood"]:
+	var tone := str(isl.get("tone", "lush"))
+	isl["lore_items"] = []
+	isl["plants"] = []
+	for kind: String in ["palm", "rock_spire", "rock", "dead_tree", "bush", "fern", "driftwood", "shell", "starfish"]:
 		var want := int(scatter.get(kind, 0))
+		if kind == "shell" and not scatter.has(kind):
+			want = int(bound / 1.6)
+		elif kind == "starfish" and not scatter.has(kind):
+			want = 0 if tone == "dead" else int(bound / 4.5)
 		var rule: Array = SCATTER_RULES[kind]
 		var got := 0
 		var tries := 0
@@ -268,6 +276,47 @@ func _plan_decor(i: int) -> void:
 			if float(rule[3]) > 0.0:
 				cb.append(Vector3(p.x, p.y, maxf(float(rule[3]), r * 0.85) if r > 0.0 else float(rule[3])))
 			got += 1
+	_plan_lore(i, rng, keep_clear, placed, tone)
+
+
+## Les trouvailles de l'île (toujours les mêmes d'une partie à l'autre) : ruines, camp d'un naufragé, bouteille échouée sur la
+## plage, journal de pirate à l'intérieur des terres. Chaque trouvaille a un `seed` : c'est elle qui choisit le message.
+func _plan_lore(i: int, rng: RandomNumberGenerator, keep_clear: Array, placed: Array, tone: String) -> void:
+	var isl: Dictionary = islands[i]
+	var c: Vector2 = isl["center"]
+	var bound: float = isl["radius"]
+	var items := isl["items"] as Array
+	var cb := isl["blockers_c"] as Array
+	# [sorte, chance, rayon mini de l'île, distance au bord mini, maxi, place libre autour]
+	var plans := [["ruin", 0.38, 14.0, 5.0, 99.0, 3.6], ["castaway", 0.3 if tone == "lush" else 0.0, 16.0, 4.5, 99.0, 3.6],
+			["bottle", 0.75, 4.0, 0.6, 2.0, 1.0], ["journal", 0.5, 10.0, 3.5, 99.0, 1.5]]
+	for plan: Array in plans:
+		var kind: String = plan[0]
+		var roll := rng.randf()
+		if roll > float(plan[1]) or bound < float(plan[2]):
+			continue
+		for attempt in 400:
+			var p := c + Vector2(rng.randf_range(-bound, bound), rng.randf_range(-bound, bound))
+			var s := sdf(i, p)
+			if s < float(plan[3]) or s > float(plan[4]):
+				continue
+			if _too_close(p, keep_clear, float(plan[5])) or _too_close(p, placed, 0.0) or not is_flat(i, p, 1.5):
+				continue
+			var yaw := rng.randf() * TAU
+			var seed_value := i * 1000 + 700 + items.size()
+			var item := {"kind": kind, "pos": p, "yaw": yaw, "seed": seed_value, "data": {}}
+			items.append(item)
+			cb.append_array(IslandDecor.blockers(kind, p, yaw))
+			placed.append([p, float(plan[5])])
+			if kind in LORE_KINDS:
+				(isl["lore_items"] as Array).append(item)
+			if kind == "castaway":   # son feu de camp, à côté de l'abri
+				var off := Vector2(1.9, 1.4)
+				var fp := p + Vector2(off.x * cos(yaw) + off.y * sin(yaw), -off.x * sin(yaw) + off.y * cos(yaw))
+				items.append({"kind": "campfire", "pos": fp, "yaw": 0.0, "seed": seed_value + 1, "data": {}})
+				cb.append_array(IslandDecor.blockers("campfire", fp, 0.0))
+				item["data"] = {"fire": fp}
+			break
 
 
 func _too_close(p: Vector2, list: Array, extra: float) -> bool:
@@ -442,6 +491,9 @@ func _build_island(i: int) -> void:
 		var made := IslandDecor.make(node, str(it["kind"]), (it["pos"] as Vector2) - c, float(it["yaw"]), int(it["seed"]), d, height(i, it["pos"]))
 		if it.has("breakable"):
 			(breakables[int(it["breakable"])] as Dictionary)["node"] = made
+		it["node"] = made
+		if it["kind"] in ["bush", "fern", "palm"]:   # les plantes s'écartent sur le passage du joueur (voir IslandLife)
+			(isl["plants"] as Array).append(it)
 	if bool(isl["proc"]):
 		for l: Vector3 in isl["lobes"]:
 			land.island_discs.append([l.x, l.y, l.z])

@@ -329,6 +329,32 @@ func _cast(berry: String, slot: int, pos: Vector2, dir: Vector2) -> void:
 		game.apply_cast(multiplayer.get_remote_sender_id(), berry, slot, pos, dir)
 
 
+## Une action visible d'un joueur (coup de sabre, tir, pouvoir) : tout le monde la voit (animation du pirate et effet).
+## `kind` : "slash", "shot" ou "cast" ; `arg` : l'arme (« pistolet »…) ou « baie|emplacement » ; `pos` et `dir` : d'où et vers où.
+## Un client l'envoie à l'hôte, qui la relaie aux autres ; l'hôte l'envoie directement à tous.
+func send_action(kind: String, arg: String, pos: Vector2, dir: Vector2) -> void:
+	if not active:
+		return
+	if is_host:
+		_action_event.rpc(multiplayer.get_unique_id(), kind, arg, pos, dir)
+	else:
+		_action_up.rpc_id(1, kind, arg, pos, dir)
+
+
+@rpc("any_peer", "call_remote", "reliable")
+func _action_up(kind: String, arg: String, pos: Vector2, dir: Vector2) -> void:
+	if not is_host:
+		return
+	var sender := multiplayer.get_remote_sender_id()
+	game.apply_action(sender, kind, arg, pos, dir)                   # l'hôte la voit aussi
+	_action_event.rpc(sender, kind, arg, pos, dir)                    # et la relaie à tous les clients
+
+
+@rpc("authority", "call_remote", "reliable")
+func _action_event(peer: int, kind: String, arg: String, pos: Vector2, dir: Vector2) -> void:
+	game.apply_action(peer, kind, arg, pos, dir)
+
+
 ## Client -> hôte : je cueille la baie `spot` ; `old` est la baie que je porte déjà (elle tombera en `pos`).
 func send_berry_pick(spot: int, old: String, pos: Vector2) -> void:
 	_berry_pick.rpc_id(1, spot, old, pos)
