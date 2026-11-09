@@ -6,11 +6,14 @@ import math
 from pixel_pirate import ANIMS, W, H, Cv, nb, dil, m_poly, m_ell, m_rbox, m_limb, fill, poly, ell, rbox, limb, mir, line, PX, PY
 
 LAYERS = {}   # id -> (catégorie, variante, emplacement, fonction)
+NATIVE = set()   # les couches dessinées directement à l'échelle de la référence (les autres de la tête sont réduites, voir pixel_build)
 
 
-def layer(cat, var, slot):
+def layer(cat, var, slot, native=False):
     def deco(fn):
         LAYERS[f"{cat}-{var}.{slot}"] = (cat, var, slot, fn)
+        if native:
+            NATIVE.add(f"{cat}-{var}.{slot}")
         return fn
     return deco
 
@@ -43,6 +46,23 @@ class Pose:
         self.crouch = 0        # genoux pliés (saut)
         self.arms_up = [0.0, 0.0]
         self.tq = None         # vue 3/4 en cours : SE ou NE (sinon None)
+        self.shoot = anim.startswith("shoot_")
+        self.cast = anim == "cast"
+        self.slash = anim.startswith("slash_")
+        self.aim = self.shoot or self.cast or self.slash     # bras de visée / de sort / de coup (voir pixel_body.aim_arms)
+        self.reach = 0.0       # bras tendus vers l'avant : 0 repos, 1 tendus, négatif ramenés au corps
+        self.arm_lift = 0.0    # mains levées, en pixels
+        if self.shoot:         # viser, le coup part (recul : mains et tête sursautent), reprendre la visée
+            self.reach, self.arm_lift = [(1.0, 1.0), (0.85, 4.5), (1.0, 2.0)][f]
+            self.hdy = [0, -1, 0][f]
+            self.dy = [0, 0, 0][f]
+        elif self.slash:       # coup de sabre : bras levé en arrière, coup vers l'avant, retour en garde
+            self.reach, self.arm_lift = [(0.2, 16.0), (1.0, 2.0), (0.6, -2.0)][f]
+            self.dy = [-1, 1, 0][f]
+        elif self.cast:        # bras ramenés à la taille, levés au-dessus de la tête, lancés vers l'avant, relâchés
+            self.reach, self.arm_lift = [(-0.3, -3.0), (0.2, 16.0), (1.0, 1.5), (0.8, -1.0)][f]
+            self.dy = [1, -1, 0, 0][f]
+            self.hdy = [0, 0, 0, 0][f]
         if self.walking:
             s = math.sin(ph)
             self.dy = -1 if abs(s) < 0.4 else 0

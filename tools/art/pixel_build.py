@@ -10,9 +10,8 @@ from PIL import Image
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import pixel_parts as parts  # noqa: E402
-import pixel_face  # noqa: E402,F401
 import pixel_details as det  # noqa: E402
-for _m in ('pixel_hair', 'pixel_body'):
+for _m in ('pixel_hair', 'pixel_body', 'pixel_head', 'pixel_hairstyles', 'pixel_weapons'):
     try:
         __import__(_m)
     except ModuleNotFoundError:
@@ -51,21 +50,30 @@ def make_warp(view, category):
     return lambda x: 32.0 - np.interp(32.0 - x, xs, ys)
 
 
+# La tête est dessinée dans l'ancien repère (crâne de 15 pixels, menton à y = 29,6) puis réduite de 12 % : son menton tombe sur le cou
+# du corps de référence (y = 31,5), le crâne reste centré sur x = 32.
+HEAD_XF = (0.88, 32.0, 29.6, 32.0, 31.5)
+
+
 def draw_layer(lid, view, pose):
     cat, var, slot, fn = parts.LAYERS[lid]
     cv = Cv()
-    if view in ("SE", "NE"):
-        pose.tq = view
-        pirate.set_warp(make_warp(view, cat))
-        try:
-            fn(cv, "S" if view == "SE" else "N", pose)
-            det.apply(lid, cv, "S" if view == "SE" else "N", pose)
-        finally:
-            pirate.set_warp(None)
-            pose.tq = None
-    else:
-        fn(cv, view, pose)
-        det.apply(lid, cv, view, pose)
+    pirate.set_xform(HEAD_XF if cat in HEAD_CATS and lid not in parts.NATIVE else None)
+    try:
+        if view in ("SE", "NE"):
+            pose.tq = view
+            pirate.set_warp(make_warp(view, cat))
+            try:
+                fn(cv, "S" if view == "SE" else "N", pose)
+                det.apply(lid, cv, "S" if view == "SE" else "N", pose)
+            finally:
+                pirate.set_warp(None)
+                pose.tq = None
+        else:
+            fn(cv, view, pose)
+            det.apply(lid, cv, view, pose)
+    finally:
+        pirate.set_xform(None)
     return cv.t
 
 
@@ -117,8 +125,11 @@ def build_sheets(lids, anims=None):
 def compose(look, cat, anim, f, direction):
     """Le pirate assemblé (image RGBA) pour un look : même ordre et mêmes couleurs que dans le jeu."""
     canvas = np.zeros((H, W, 4), np.float64)
-    for c in cat["order"]:
-        var = look["parts"].get(c, "none")
+    # l'arme des animations de tir se dessine par-dessus tout (elle n'est pas dans l'apparence du joueur)
+    sequence = [(c, look["parts"].get(c, "none")) for c in cat["order"]]
+    if anim.startswith(("shoot_", "slash_")):
+        sequence.append(("weapon", anim[len("shoot_"):]))   # (« shoot_ » et « slash_ » ont la même longueur)
+    for c, var in sequence:
         if var == "none" or var not in cat["parts"][c]["layers"]:
             continue
         for lay in cat["parts"][c]["layers"][var]:

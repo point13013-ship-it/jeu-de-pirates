@@ -19,7 +19,8 @@ ROOT = Path(os.environ["PIRATE_ROOT"]).resolve() if os.environ.get("PIRATE_ROOT"
 W, H = 64, 72                 # une image du pirate
 FEET = (32, 68)               # le point au sol
 TONES = (0.30, 0.46, 0.60, 0.74, 0.88, 1.0)
-ANIMS = {"idle": 4, "walk": 8, "carry_idle": 4, "carry_walk": 8, "helm": 1, "climb": 4, "jump": 3}
+ANIMS = {"idle": 4, "walk": 8, "carry_idle": 4, "carry_walk": 8, "helm": 1, "climb": 4, "jump": 3,
+         "cast": 4, "shoot_pistolet": 3, "shoot_tromblon": 3, "shoot_fusil": 3, "slash_sabre": 3}
 VIEW_OF_DIR = ["S", "SE", "E", "NE", "N", "NE", "E", "SE"]       # direction du jeu -> vue dessinée
 FLIP_OF_DIR = [False, False, False, False, False, True, True, True]
 
@@ -38,9 +39,53 @@ def _wx(x):
     return float(WARP(x)) if WARP is not None else x
 
 
+def rigid_shift(x):
+    """Le décalage entier que la rotation 3/4 donne au point x (0 hors rotation). Les membres de 2 pixels sont décalés d'un bloc avec
+    ce nombre au lieu d'être déformés : la déformation les écrasait à 1 pixel (une jambe devenait « hyper fine » en pivotant)."""
+    return int(round(float(WARP(x)) - x)) if WARP is not None else 0
+
+
+class no_warp:
+    """Dessine sans la déformation 3/4 le temps d'un bloc `with`."""
+
+    def __enter__(self):
+        global WARP
+        self._saved, WARP = WARP, None
+
+    def __exit__(self, *exc):
+        global WARP
+        WARP = self._saved
+
+
 YY, XX = np.mgrid[0:H, 0:W]
 PX = XX + 0.5
 PY = YY + 0.5
+
+# Réduction de la tête : les calques de la tête sont dessinés dans l'ancien repère (crâne de 15 pixels) puis ramenés à l'échelle du
+# corps de référence. XF = (s, ax, ay, bx, by) : le point (ax, ay) de l'ancien repère devient (bx, by), tout est multiplié par s.
+# PX et PY (les centres de pixels) sont remplacés EN PLACE par leur antécédent : tous les masques calculés avec PX/PY suivent seuls ;
+# seuls les tracés par pixels (polygones PIL, lignes, pixels isolés) transforment leurs points via _fx / _fy.
+XF = None
+
+
+def set_xform(xf):
+    global XF
+    XF = xf
+    if xf is None:
+        PX[:] = XX + 0.5
+        PY[:] = YY + 0.5
+    else:
+        s, ax, ay, bx, by = xf
+        PX[:] = ax + (XX + 0.5 - bx) / s
+        PY[:] = ay + (YY + 0.5 - by) / s
+
+
+def _fx(x):
+    return x if XF is None else XF[3] + (x - XF[1]) * XF[0]
+
+
+def _fy(y):
+    return y if XF is None else XF[4] + (y - XF[2]) * XF[0]
 
 
 def nb(m, dx, dy):
@@ -61,6 +106,9 @@ def dil(m):
     return m | nb(m, 1, 0) | nb(m, -1, 0) | nb(m, 0, 1) | nb(m, 0, -1)
 
 
+OUTLINES = False        # la référence n'a AUCUN contour noir : les formes se détachent par leur couleur
+
+
 class Cv:
     """Une image de tons (-1 = vide, 0 = contour, 1..5 = ombrage)."""
 
@@ -68,12 +116,14 @@ class Cv:
         self.t = np.full((H, W), -1, np.int8)
 
     def put(self, mask, idx, outline=False):
-        if outline:
+        if outline and OUTLINES:
             self.t[dil(mask) & ~mask] = 0
         self.t[mask] = idx[mask] if isinstance(idx, np.ndarray) else idx
 
     def outline(self):
         """Un contour autour de tout ce qui est dessiné dans cette couche."""
+        if not OUTLINES:
+            return
         m = self.t >= 0
         self.t[dil(m) & ~m] = 0
 
@@ -81,6 +131,9 @@ class Cv:
         x, y = int(round(x)) if not isinstance(x, int) else x, int(round(y)) if not isinstance(y, int) else y
         if WARP is not None:
             x = int(math.floor(_wx(x + 0.5)))
+        if XF is not None:
+            x = int(math.floor(_fx(x + 0.5))) if WARP is not None else int(math.floor(_fx(x + 0.5)))
+            y = int(math.floor(_fy(y + 0.5)))
         if 0 <= x < W and 0 <= y < H:
             self.t[y, x] = idx
 
@@ -98,6 +151,8 @@ class Cv:
 def m_poly(pts):
     if WARP is not None:
         pts = [(_wx(x), y) for x, y in pts]
+    if XF is not None:
+        pts = [(_fx(x), _fy(y)) for x, y in pts]
     img = Image.new("L", (W, H), 0)
     ImageDraw.Draw(img).polygon([(float(x), float(y)) for x, y in pts], fill=1)
     return np.asarray(img, bool)
@@ -185,6 +240,8 @@ def mir(pts, cx=32.0):
 def line(cv, p0, p1, idx, mask=None):
     if WARP is not None:
         p0, p1 = (_wx(p0[0]), p0[1]), (_wx(p1[0]), p1[1])
+    if XF is not None:
+        p0, p1 = (_fx(p0[0]), _fy(p0[1])), (_fx(p1[0]), _fy(p1[1]))
     n = int(max(abs(p1[0] - p0[0]), abs(p1[1] - p0[1]), 1))
     for i in range(n + 1):
         x = int(round(p0[0] + (p1[0] - p0[0]) * i / n))
