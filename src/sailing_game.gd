@@ -243,6 +243,10 @@ func _ready() -> void:
 	if _args.has("log"):
 		print("[affichage] pilote=%s vsync=%d écran=%.0f Hz" % [RenderingServer.get_current_rendering_driver_name(), DisplayServer.window_get_vsync_mode(), DisplayServer.screen_get_refresh_rate()])
 	set_anchors_preset(Control.PRESET_FULL_RECT)
+	# ce contrôle couvre tout l'écran : par défaut il « mange » les clics et _unhandled_input ne les voit jamais
+	# (plus d'attaque, plus de rotation à la molette) ; il les laisse donc passer
+	mouse_filter = Control.MOUSE_FILTER_IGNORE
+	ShipSim.view_sin = sin(deg_to_rad(ELEVATION_DEG))   # le bateau avance à la même vitesse à l'écran dans toutes les directions
 	_build_view()
 	_build_hud()
 	_net = SailingNet.new()
@@ -2795,7 +2799,7 @@ func _update_player(delta: float) -> void:
 		_update_nest(move, delta)
 		return
 	if _loc == Loc.SWIM:
-		_update_swim(move.rotated(-_cam_yaw), delta)   # (les flèches suivent l'écran, même si la caméra a tourné)
+		_update_swim(_screen_move(move), delta)   # (les flèches suivent l'écran, même si la caméra a tourné ; vitesse égale à l'écran)
 		return
 	if _loc == Loc.FLIGHT:
 		_update_flight(delta)
@@ -2814,11 +2818,14 @@ func _update_player(delta: float) -> void:
 	if _loc == Loc.SHIP and _mode == Mode.CANNON:
 		_cannon_aim = clampf(_cannon_aim + move.x * 0.9 * delta, -0.7, 0.7)
 		return
-	move = move.rotated(-_cam_yaw)   # marche à pied : les flèches suivent l'écran, même si la caméra a tourné (molette)
+	# marche à pied : les flèches suivent l'écran (même caméra tournée) et la vitesse est la même à l'écran vers le haut, le bas et les côtés
+	var sm := _screen_move(move)
+	var walk_mul := sm.length() if sm != Vector2.ZERO else 1.0
+	move = sm.normalized()
 	if _loc == Loc.HOLD:
 		if move != Vector2.ZERO:
 			var slow := 1.0 - _hull.walk_slow_in_water * _hull.fill()   # on patauge
-			_hpos = _hold_layout.move_with_slide(_hpos, move.normalized() * WALK_SPEED * _sprint_factor() * slow * delta)
+			_hpos = _hold_layout.move_with_slide(_hpos, move * WALK_SPEED * walk_mul * _sprint_factor() * slow * delta)
 		return
 	if _jump_wind > 0.0:
 		return   # accroupi avant de sauter
@@ -2826,7 +2833,7 @@ func _update_player(delta: float) -> void:
 	if _loc == Loc.LAND:
 		if move != Vector2.ZERO and not _dialog.is_open() and not _shop_menu.is_open():
 			_face = move.normalized()
-			var step_l := move.normalized() * WALK_SPEED * _sprint_factor() * delta
+			var step_l := move * WALK_SPEED * walk_mul * _sprint_factor() * delta
 			if airborne:
 				# en plein saut on n'est plus tenu par le bord du quai ni de la plage : on franchit le vide, on passe
 				# au-dessus des poteaux et des tonneaux (seuls les murs arrêtent)
@@ -2836,7 +2843,7 @@ func _update_player(delta: float) -> void:
 				_lpos = Vector2(r.x, r.y)
 				_lh = r.z
 		return
-	var step_units := WALK_SPEED * _sprint_factor() / ShipModel.SCALE * delta
+	var step_units := WALK_SPEED * walk_mul * _sprint_factor() / ShipModel.SCALE * delta
 	if _walkto != Vector2.INF:
 		var d := _walkto - _ppos
 		if d.length() > 0.04:
@@ -2851,6 +2858,17 @@ func _update_player(delta: float) -> void:
 		_ppos = _ship.move_air(_ppos, dir_ship * step_units * AIR_SPEED, _pz)   # un saut enjambe les caisses et passe le bastingage
 	else:
 		_ppos = _ship.move_with_slide(_ppos, dir_ship * step_units)
+
+
+## Flèches (écran : x vers la droite, y vers le bas) -> déplacement dans le monde, caméra tournée comprise. La longueur du
+## résultat est le facteur de vitesse qui rend le pas égal À L'ÉCRAN dans toutes les directions : la caméra est inclinée, donc
+## un mètre vers le haut de l'écran paraît plus court qu'un mètre de côté (il faut aller plus vite dans le monde).
+func _screen_move(move: Vector2) -> Vector2:
+	if move == Vector2.ZERO:
+		return Vector2.ZERO
+	var s := maxf(sin(deg_to_rad(ELEVATION_DEG)), 0.2)
+	var m := move.normalized()
+	return Vector2(m.x, m.y / s).rotated(-_cam_yaw)
 
 
 ## Direction d'écran (x vers la droite, y vers le bas) -> direction dans le repère du modèle du bateau.
@@ -3124,7 +3142,7 @@ func _update_swim(move: Vector2, delta: float) -> void:
 	if move == Vector2.ZERO:
 		return
 	_face = move.normalized()
-	var next := _lpos + move.normalized() * SWIM_SPEED * delta
+	var next := _lpos + move * SWIM_SPEED * delta   # (move : déjà corrigé pour la vitesse à l'écran, voir _screen_move)
 	if _land.is_walkable(next) and not _land.is_over_water(next):
 		_loc = Loc.LAND
 		_lpos = next
@@ -3278,7 +3296,7 @@ func _update_aim_line() -> void:
 
 # --- viser et tirer au canon, à la souris ---
 
-const GUN_ARC := 0.78            ## rad : de combien le canon peut se tourner de chaque côté de sa sortie (~45°)
+const GUN_ARC := PI              ## rad : visée libre sur 360° (le tube suit le curseur, d'où qu'il soit)
 const GUN_RELOAD := 0.7          ## s : délai entre deux tirs au même canon
 
 var _gun_i := -1                 ## le canon que je vise à la souris (-1 : aucun)
@@ -3388,8 +3406,8 @@ func _gun_fire() -> void:
 		_cannon_loaded[i] = true
 		_gun_cd = GUN_RELOAD
 		return
-	var deg := clampi(roundi(rad_to_deg(_cannon_aim)), -45, 45)
-	_request("aim_fire", i + 100 * (deg + 45))
+	var deg := clampi(roundi(rad_to_deg(_cannon_aim)), -180, 180)
+	_request("aim_fire", i + 100 * (deg + 180))
 	_cannon_loaded[i] = false   # affichage immédiat ; l'hôte confirme
 	_gun_cd = GUN_RELOAD
 
@@ -3749,7 +3767,7 @@ func _correct_from_host(delta: float) -> void:
 		return
 	_net_target["age"] = float(_net_target["age"]) + delta
 	var yaw: float = _net_target["yaw"]
-	var target: Vector2 = _net_target["pos"] + Vector2(cos(yaw), -sin(yaw)) * _sim.speed * float(_net_target["age"])
+	var target: Vector2 = _net_target["pos"] + Vector2(cos(yaw), -sin(yaw)) * _sim.speed * _sim.screen_comp() * float(_net_target["age"])
 	if _sim.position.distance_to(target) > 6.0:
 		_sim.position = target
 		_sim.yaw = yaw
@@ -4409,6 +4427,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	if not key.pressed or key.echo:
 		return
 	if _quest_panel.is_open():   # le journal de quêtes : J ou Échap le referme
+		DisplaySettings.window_scale_key(key.physical_keycode)
 		if key.physical_keycode == KEY_ESCAPE or key.physical_keycode == KEY_J:
 			_quest_panel.close()
 		return
@@ -4903,9 +4922,9 @@ func apply_request(peer: int, kind: String, value: int) -> void:
 					_net.broadcast_fire(value)
 				else:
 					fire_visual(value)
-		"aim_fire":   # tir visé : valeur = canon + 100 x (angle en degrés + 45)
+		"aim_fire":   # tir visé : valeur = canon + 100 x (angle en degrés + 180)
 			var gi := value % 100
-			var aim := deg_to_rad(float(clampi(value / 100 - 45, -45, 45)))
+			var aim := deg_to_rad(float(clampi(value / 100 - 180, -180, 180)))
 			if gi >= 0 and gi < _cannon_loaded.size() and _cannon_loaded[gi]:
 				_cannon_loaded[gi] = false
 				if _net.active:

@@ -44,7 +44,7 @@ func _init() -> void:
 	_desc.size = Vector2(520, 24)
 	_foot = _label(Vector2(20, 400), 15, Color(1.0, 0.85, 0.35))
 	_note = _label(Vector2(20, 430), 14, Color(0.7, 0.85, 1.0))
-	_note.text = "Haut/Bas : choisir     E : acheter     R : sortir"
+	_note.text = "Haut/Bas : choisir     E : acheter     + / − : taille     R : sortir"
 
 
 func _label(pos: Vector2, size: int, color: Color) -> Label:
@@ -55,6 +55,14 @@ func _label(pos: Vector2, size: int, color: Color) -> Label:
 	_panel.add_child(l)
 	return l
 
+
+
+## La fenêtre grandit avec l'écran et avec + / − (voir DisplaySettings.window_factor), autour de son centre.
+func _process(_delta: float) -> void:
+	if not visible or _panel == null:
+		return
+	_panel.pivot_offset = _panel.size / 2.0
+	_panel.scale = Vector2.ONE * DisplaySettings.window_factor(get_viewport_rect().size, _panel.size)
 
 func is_open() -> bool:
 	return _open
@@ -92,6 +100,8 @@ func key(code: int) -> void:
 			var res := shop.activate(_sel)
 			_refresh(str(res["msg"]))
 			purchased.emit(res)
+		KEY_EQUAL, KEY_PLUS, KEY_KP_ADD, KEY_MINUS, KEY_KP_SUBTRACT:   # agrandir / réduire la fenêtre
+			DisplaySettings.window_scale_key(code)
 		KEY_R, KEY_ESCAPE:
 			close()
 

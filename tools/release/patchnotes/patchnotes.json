@@ -2,6 +2,17 @@
   "_commentaire": "Les nouveautés affichées dans la salle de jeux (bouton Nouveautés, et après chaque mise à jour). La plus récente d'abord. 'version': 'prochaine' est remplacé par le numéro de la version au moment de la publication (publish.ps1). Les images sont les fichiers de ce dossier ; publish.ps1 les envoie avec la version.",
   "versions": [
     {
+      "version": "prochaine",
+      "titre": "Clics rétablis, canons 1-2-3, fenêtres agrandissables",
+      "points": [
+        "Corrigé : le clic gauche, le clic droit (attaques) et la molette enfoncée (rotation de la vue) fonctionnent de nouveau.",
+        "Canon : la visée est libre sur 360° et suit ton curseur ; clic gauche pour tirer.",
+        "Même vitesse à l'écran vers le haut, le bas et les côtés, à pied, à la nage et en bateau.",
+        "Canons mieux placés : 2 sur le sloop, 4 sur le brigantin, 6 sur le galion à égalité des deux bords.",
+        "Le sac, le coffre, la boutique et le journal de quêtes grandissent avec l'écran ; + et − pour régler leur taille."
+      ]
+    },
+    {
       "version": "2026.11.11-2227",
       "titre": "Réputation de pirate, canon à la souris et caméra tournante",
       "points": [

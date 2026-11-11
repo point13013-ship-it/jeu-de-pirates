@@ -17,6 +17,38 @@ static var hud_scale := 1.0   ## taille de l'interface en jeu (texte, cadran, c�
 static var _inited := false
 
 
+const WIN_MIN := 0.8
+const WIN_MAX := 2.4
+static var window_scale := 1.0   ## taille des fenêtres (sac, boutique, journal) réglée par le joueur avec + et −
+
+
+## Facteur d'agrandissement d'une fenêtre de `base` pixels dans une vue de `view` pixels : l'écran plus grand que 1280x720 agrandit
+## d'office les fenêtres, `window_scale` s'y ajoute, et la fenêtre ne dépasse jamais l'écran.
+static func window_factor(view: Vector2, base: Vector2) -> float:
+	var auto := clampf(minf(view.x / 1280.0, view.y / 720.0), 1.0, 2.0)
+	var f := auto * window_scale
+	if base.x > 0.0 and base.y > 0.0:
+		f = minf(f, minf(view.x * 0.96 / base.x, view.y * 0.96 / base.y))
+	return maxf(f, 0.4)
+
+
+## + / − dans une fenêtre : l'agrandit ou la réduit d'un cran et garde le réglage.
+static func step_window_scale(dir: int) -> void:
+	window_scale = clampf(window_scale * (1.15 if dir > 0 else 1.0 / 1.15), WIN_MIN, WIN_MAX)
+	save()
+
+
+## Vrai pour les touches qui règlent la taille des fenêtres ; les applique.
+static func window_scale_key(code: int) -> bool:
+	if code == KEY_EQUAL or code == KEY_PLUS or code == KEY_KP_ADD:
+		step_window_scale(1)
+		return true
+	if code == KEY_MINUS or code == KEY_KP_SUBTRACT:
+		step_window_scale(-1)
+		return true
+	return false
+
+
 ## À appeler au lancement : lit le réglage et l'applique (une seule fois).
 static func setup() -> void:
 	if _inited:
@@ -30,6 +62,7 @@ static func setup() -> void:
 				if MODES.has(str((data as Dictionary).get("mode", ""))):
 					mode = str((data as Dictionary)["mode"])
 				hud_scale = clampf(float((data as Dictionary).get("hud_scale", 1.0)), HUD_MIN, HUD_MAX)
+				window_scale = clampf(float((data as Dictionary).get("window_scale", 1.0)), WIN_MIN, WIN_MAX)
 	if mode != DEFAULT:
 		apply()
 

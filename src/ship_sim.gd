@@ -42,6 +42,18 @@ func configure(stats: Dictionary) -> void:
 	sail_speed = float(stats.get("sail_speed", sail_speed))
 
 
+## Sinus de l'inclinaison de la caméra (1 = pas de correction). Vue de dessus inclinée, un mètre « vers le haut de l'écran » paraît
+## plus court qu'un mètre « sur le côté » : le jeu le renseigne pour que le bateau avance à la même vitesse à l'écran dans
+## toutes les directions.
+static var view_sin: float = 1.0
+
+
+## Facteur sur le déplacement réel pour que la vitesse À L'ÉCRAN ne dépende pas du cap.
+func screen_comp() -> float:
+	var f := forward()
+	return 1.0 / maxf(sqrt(f.x * f.x + f.y * f.y * view_sin * view_sin), 0.2)
+
+
 ## Direction de l'étrave dans le monde, vecteur (x, z) unitaire.
 func forward() -> Vector2:
 	return Vector2(cos(yaw), -sin(yaw))
@@ -125,4 +137,4 @@ func step(dt: float) -> void:
 	if anchored:
 		steer = 0.3  # l'ancre fait pivoter le bateau lentement
 	yaw -= rudder * turn_rate * steer * dt
-	position += forward() * speed * dt
+	position += forward() * speed * dt * screen_comp()

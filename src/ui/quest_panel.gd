@@ -15,6 +15,7 @@ const BLUE := Color(0.55, 0.78, 1.0)
 var _open := false
 var _list: VBoxContainer
 var _footer: Label
+var _win: PanelContainer   ## la fenêtre elle-même (agrandie avec l'écran et + / −)
 
 
 func _ready() -> void:
@@ -40,6 +41,7 @@ func _ready() -> void:
 	sb.content_margin_bottom = 18
 	panel.add_theme_stylebox_override("panel", sb)
 	center.add_child(panel)
+	_win = panel
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 10)
 	panel.add_child(box)
@@ -63,11 +65,18 @@ func _ready() -> void:
 	_footer.add_theme_font_size_override("font_size", 15)
 	box.add_child(_footer)
 	var close := Button.new()
-	close.text = "Fermer   (J ou Échap)"
+	close.text = "Fermer   (J ou Échap)     + / − : taille"
 	close.custom_minimum_size = Vector2(0, 40)
 	close.focus_mode = Control.FOCUS_NONE
 	close.pressed.connect(self.close)
 	box.add_child(close)
+
+
+func _process(_delta: float) -> void:
+	if not visible or _win == null:
+		return
+	_win.pivot_offset = _win.size / 2.0
+	_win.scale = Vector2.ONE * DisplaySettings.window_factor(get_viewport_rect().size, _win.size)
 
 
 func is_open() -> bool:
