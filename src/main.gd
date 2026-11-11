@@ -17,6 +17,7 @@ var _camera: Camera2D
 
 
 func _ready() -> void:
+	DisplaySettings.setup()   # le mode d'affichage choisi (fenêtré, plein écran…)
 	_ship_defs = _load_ships()
 	_camera = Camera2D.new()
 	add_child(_camera)

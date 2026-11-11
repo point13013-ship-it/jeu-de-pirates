@@ -2,6 +2,14 @@
   "_commentaire": "Les nouveautés affichées dans la salle de jeux (bouton Nouveautés, et après chaque mise à jour). La plus récente d'abord. 'version': 'prochaine' est remplacé par le numéro de la version au moment de la publication (publish.ps1). Les images sont les fichiers de ce dossier ; publish.ps1 les envoie avec la version.",
   "versions": [
     {
+      "version": "prochaine",
+      "titre": "Choisis ton mode d'affichage",
+      "points": [
+        "Nouvelle option « Affichage » (menu principal et menu Échap) : fenêtré, plein écran ou fenêtre sans bordure. Ton choix est gardé d'une partie à l'autre."
+      ],
+      "images": []
+    },
+    {
       "version": "2026.11.11-2125",
       "titre": "Armes en main, skins d'armes et un jeu plus net",
       "points": [

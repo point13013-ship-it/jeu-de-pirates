@@ -7,6 +7,7 @@ const GOLD := Color("e0a93c")
 const CREAM := Color("fff1d6")
 
 var _sliders: Dictionary = {}
+var _display_buttons: Dictionary = {}
 
 
 func _init() -> void:
@@ -56,9 +57,37 @@ func _init() -> void:
 			(_sliders[key] as HSlider).value = float(AudioSettings.DEFAULTS[key])
 		AudioSettings.save())
 	add_child(reset)
+	_build_display()
+
+
+## L'affichage : un bouton par mode (fenêtré, plein écran, fenêtre sans bordure). Le changement est repoussé à la fin de
+## l'image, pour ne pas toucher à la fenêtre en pleine gestion du clic.
+func _build_display() -> void:
+	DisplaySettings.setup()
+	var title := Label.new()
+	title.text = "Affichage"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_font_size_override("font_size", 22)
+	title.add_theme_color_override("font_color", GOLD)
+	add_child(title)
+	var group := ButtonGroup.new()
+	for m: String in DisplaySettings.MODES:
+		var b := Button.new()
+		b.text = str(DisplaySettings.LABELS[m])
+		b.toggle_mode = true
+		b.button_group = group
+		b.button_pressed = DisplaySettings.mode == m
+		b.focus_mode = Control.FOCUS_NONE
+		b.toggled.connect(func(on: bool) -> void:
+			if on:
+				DisplaySettings.set_mode.call_deferred(m))
+		add_child(b)
+		_display_buttons[m] = b
 
 
 ## Remet les curseurs d'après les réglages en cours (à l'ouverture du menu).
 func refresh() -> void:
 	for key: String in AudioSettings.KEYS:
 		(_sliders[key] as HSlider).set_value_no_signal(float(AudioSettings.volumes[key]))
+	for m: String in _display_buttons:
+		(_display_buttons[m] as Button).set_pressed_no_signal(DisplaySettings.mode == m)

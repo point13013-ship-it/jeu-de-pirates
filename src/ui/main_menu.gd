@@ -150,7 +150,7 @@ func _build_left() -> Control:
 	_message.add_theme_font_size_override("font_size", 15)
 	box.add_child(_message)
 	box.add_child(_big_button("Mon pirate (apparence)", func() -> void: edit_pirate.emit()))
-	box.add_child(_big_button("Sons et musique", func() -> void: _volume_panel.visible = not _volume_panel.visible))
+	box.add_child(_big_button("Sons, musique et affichage", func() -> void: _volume_panel.visible = not _volume_panel.visible))
 	box.add_child(_big_button("Quitter", func() -> void: quit_game.emit()))
 	var tips := Label.new()
 	tips.text = "ZQSD / flèches : marcher   Espace : sauter   E : agir   R : agir autrement\nÉchap : menu (retour au menu)   B : boussole   J : quêtes   I : invitation (hôte)   M : couper le son"
