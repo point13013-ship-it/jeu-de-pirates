@@ -27,13 +27,21 @@ const HIT_SPARKS := 8                 ## nombre d'étincelles
 ## des pirates affichés (le joueur en premier) ; plus grand coûterait cher au filtre (il compare chaque pixel à toute la liste).
 const PIRATE_PALETTE_MAX := 512
 
+## 1.5 Ville : tout ce qui est entièrement à l'ouest de cette abscisse (m, monde) est retiré au chargement (la plage buguée et ses
+## palmiers). Le sol de la ville s'arrête à -41,5.
+const TOWN_SAND_CUT_X := -41.8
+
 ## 1.6 Pluie : elle tombe partout dans la zone de météo, pas en colonne au-dessus du bateau.
 const RAIN_AREA := 70.0               ## m : côté du carré de pluie autour de la caméra (assez large pour le plus fort dézoom)
 const RAIN_DROPS := 2600              ## gouttes à pleine intensité
 const RAIN_SPLASHES := 900            ## impacts de gouttes sur l'eau à pleine intensité
 const RAIN_FALL_SPEED := 16.0         ## m/s
 const RAIN_TOP := 14.0                ## m au-dessus de la mer d'où partent les gouttes
+const RAIN_DROP_WIDTH := 0.05         ## m : épaisseur d'un trait (l'image est en basse résolution : plus fin, il disparaît)
+const RAIN_DROP_LENGTH := 0.8         ## m
+const RAIN_ALPHA := 0.4
+const RAIN_RENDER_PRIORITY := 10      ## dessinée après la surface de la mer (transparente), sinon la mer la cache
 
-## 1.7 Coque : un saut ne traverse plus le bordé ni le toit de la cabine. Hauteur (m au-dessus du pont) du toit de la cabine et
-## marge (unités du modèle) autour des murs de la cabine qui arrêtent un pirate en l'air.
-const CABIN_WALL_MARGIN := 0.08
+## 1.7 Coque : un saut ne se pose plus de l'autre côté d'un mur (cabine) ni à travers le toit de la cabine. Quand il ne peut se
+## poser nulle part sur le pont, le pirate tombe à l'eau à cette distance (unités du modèle) à l'extérieur de la coque.
+const HULL_OUTSIDE_MARGIN := 0.15

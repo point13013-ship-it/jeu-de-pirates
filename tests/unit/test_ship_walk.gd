@@ -41,6 +41,7 @@ func _initialize() -> void:
 		_check_true("%s : on se dégage de la roue" % ship_name, ship.is_walkable(out))
 		var moved := ship.move_with_slide(stuck, Vector2(-0.05, 0.0))
 		_check_true("%s : coincé, on peut quand même bouger" % ship_name, moved != stuck)
+		_test_jumps_never_cross_walls(ship, ship_name, reach)
 		ship.free()
 	# le terrain : le quai est solide pour un bateau, la mer ne l'est pas
 	_check_true("quai : la coque le touche", Land.hits_land([Vector2(0.0, -10.0)]))
@@ -78,6 +79,43 @@ func _flood(ship: ShipModel, start: Vector2) -> Dictionary:
 				seen[n] = true
 				todo.append(n)
 	return seen
+
+
+## Bug 1.7 : des sauts depuis tout le pont (bâbord, tribord, proue, poupe), dans 16 directions, à pleine hauteur : là où l'on
+## retombe, on ne doit jamais se retrouver dans la cabine (on n'y était pas) ni passer de l'autre côté d'un mur. Et la bande entre
+## la cabine et le plat-bord, ainsi que le toit de la cabine, ne mènent plus dans la cabine.
+func _test_jumps_never_cross_walls(ship: ShipModel, ship_name: String, reach: Dictionary) -> void:
+	var bad := 0
+	var tries := 0
+	for key: Vector2i in reach:
+		if (key.x + key.y) % 3 != 0:
+			continue   # un point sur trois suffit
+		var start := Vector2(key) * STEP
+		if ship.inside_cabin(start):
+			continue
+		for k in 16:
+			var dir := Vector2.from_angle(TAU * k / 16.0)
+			var p := start
+			for i in 30:   # un saut : ~1,6 m de haut, ~0,09 unité par image pendant une demi-seconde
+				p = ship.move_air(p, dir * 0.09, 1.0)
+			tries += 1
+			var spot := ship.landing_spot(p, false)
+			if spot == Vector2.INF:
+				continue   # à l'eau (ou le long de la coque)
+			if ship.inside_cabin(spot) or not ship._clear_line(p, spot):
+				bad += 1
+	_check_true("%s : %d sauts, aucun ne finit dans la cabine ni à travers un mur (%d mauvais)" % [ship_name, tries, bad], bad == 0)
+	var c := ship.cabin
+	var mid_x := (float(c["x0"]) + float(c["door_x"])) * 0.5
+	var band := Vector2(mid_x, (float(c["y1"]) + ship.half_width(mid_x)) * 0.5 + 0.08)   # entre le mur de la cabine et le bord
+	var s1 := ship.landing_spot(band, false)
+	_check_true("%s : la bande le long de la cabine ne mène pas dans la cabine" % ship_name, s1 == Vector2.INF or not ship.inside_cabin(s1))
+	var roof := Vector2(mid_x, 0.0)
+	var s2 := ship.landing_spot(roof, false)
+	_check_true("%s : retomber sur le toit de la cabine depuis dehors ne fait pas entrer dedans" % ship_name, s2 == Vector2.INF or not ship.inside_cabin(s2))
+	_check_true("%s : depuis la cabine, on s'y repose" % ship_name, ship.landing_spot(roof, true) != Vector2.INF and ship.inside_cabin(ship.landing_spot(roof, true)))
+	var out := ship.outside_point(band)
+	_check_true("%s : le point de chute le long de la coque est dehors" % ship_name, not ship.over_hull(out))
 
 
 func _check_true(name: String, cond: bool) -> void:

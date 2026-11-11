@@ -29,7 +29,9 @@ var phase := 0.4               ## heure du jour, 0…1 (0,5 = midi, 0 = minuit)
 
 var _env: Environment
 var _sun: DirectionalLight3D
-var _rain_fx: CPUParticles3D
+var _rain_fx: GPUParticles3D
+var _splash_fx: GPUParticles3D
+var sea_y := -1.45               ## hauteur de la mer dans la scène (SailingGame.SEA_Y) : la pluie finit là, les impacts y naissent
 var _fixed_phase := -1.0
 var _fixed_weather := ""
 var _flash_t := 8.0
@@ -46,29 +48,7 @@ func setup(env: Environment, sun: DirectionalLight3D, world: Node3D, args: Dicti
 	if args.has("weather"):
 		_fixed_weather = str(args["weather"])
 	enabled = not args.has("no-cycle")
-	_rain_fx = CPUParticles3D.new()
-	_rain_fx.amount = 420
-	_rain_fx.lifetime = 0.75
-	_rain_fx.preprocess = 0.8
-	_rain_fx.local_coords = false
-	_rain_fx.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
-	_rain_fx.emission_box_extents = Vector3(15.0, 0.5, 13.0)
-	_rain_fx.direction = Vector3(0.18, -1.0, 0.05)
-	_rain_fx.spread = 2.0
-	_rain_fx.initial_velocity_min = 24.0
-	_rain_fx.initial_velocity_max = 28.0
-	_rain_fx.gravity = Vector3.ZERO
-	var bm := BoxMesh.new()
-	bm.size = Vector3(0.025, 0.7, 0.025)
-	_rain_fx.mesh = bm
-	var m := StandardMaterial3D.new()
-	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	m.albedo_color = Color(0.78, 0.88, 1.0, 0.55)
-	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	_rain_fx.material_override = m
-	_rain_fx.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	_rain_fx.emitting = false
-	world.add_child(_rain_fx)
+	_build_rain(world)
 	_apply(0.0)
 	# on démarre directement dans le temps du moment
 	var t := _weather_target()
@@ -119,13 +99,100 @@ func update(delta: float, focus: Vector3, paused: bool = false) -> void:
 			lightning = true
 	flash = maxf(flash - delta * 3.5, 0.0)
 	if _rain_fx != null:
-		_rain_fx.position = focus + Vector3(0.0, 13.0, 0.0)
-		_rain_fx.emitting = rain > 0.05 and not paused
-		var want := int(lerpf(60.0, 460.0, clampf(rain * (0.55 + 0.45 * storm), 0.0, 1.0)))
-		if absi(want - _rain_fx.amount) > 50:   # (changer le nombre de gouttes relance l'émetteur : on ne le fait que par paliers)
-			_rain_fx.amount = want
+		# La pluie couvre toute la vue (mer, îles, autres bateaux) : un grand carré centré sur ce que regarde la caméra, pas une
+		# colonne au-dessus du bateau. Les gouttes vivent dans le monde (elles ne suivent pas le bateau une fois lâchées) et
+		# finissent à la surface de la mer, où naissent les impacts.
+		var on := rain > 0.05 and not paused
+		var density := clampf(rain * (0.55 + 0.45 * storm), 0.0, 1.0)
+		_rain_fx.position = Vector3(focus.x, sea_y + GameConfig.RAIN_TOP, focus.z)
+		_rain_fx.emitting = on
+		_rain_fx.amount_ratio = lerpf(0.08, 1.0, density)   # (amount_ratio : la densité change sans relancer l'émetteur)
+		_splash_fx.position = Vector3(focus.x, sea_y + 0.03, focus.z)
+		_splash_fx.emitting = on
+		_splash_fx.amount_ratio = lerpf(0.08, 1.0, density)
 	if enabled and not paused:
 		_apply(delta)
+
+
+## La pluie (bug 1.6) : des traits de pluie sur tout le carré GameConfig.RAIN_AREA autour de la vue, et des impacts (petits anneaux
+## clairs qui s'ouvrent et s'éteignent) à la surface de la mer. Particules calculées par la carte graphique : des milliers de gouttes
+## sans coût notable pour le processeur.
+func _build_rain(world: Node3D) -> void:
+	var half := GameConfig.RAIN_AREA * 0.5
+	var fall := GameConfig.RAIN_FALL_SPEED
+	_rain_fx = GPUParticles3D.new()
+	_rain_fx.amount = GameConfig.RAIN_DROPS
+	_rain_fx.lifetime = GameConfig.RAIN_TOP / fall   # elles meurent en touchant la mer
+	_rain_fx.preprocess = _rain_fx.lifetime
+	_rain_fx.local_coords = false
+	_rain_fx.visibility_aabb = AABB(Vector3(-half, -GameConfig.RAIN_TOP - 2.0, -half), Vector3(half * 2.0, GameConfig.RAIN_TOP + 4.0, half * 2.0))
+	var pm := ParticleProcessMaterial.new()
+	pm.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_BOX
+	pm.emission_box_extents = Vector3(half, 0.4, half)
+	pm.direction = Vector3(0.12, -1.0, 0.04)
+	pm.spread = 1.5
+	pm.initial_velocity_min = fall * 0.95
+	pm.initial_velocity_max = fall * 1.05
+	pm.gravity = Vector3.ZERO
+	pm.particle_flag_align_y = true   # chaque trait dans le sens de sa chute
+	_rain_fx.process_material = pm
+	var bm := BoxMesh.new()
+	bm.size = Vector3(GameConfig.RAIN_DROP_WIDTH, GameConfig.RAIN_DROP_LENGTH, GameConfig.RAIN_DROP_WIDTH)
+	var m := StandardMaterial3D.new()
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.albedo_color = Color(0.80, 0.90, 1.0, GameConfig.RAIN_ALPHA)
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	# LA cause du bug 1.6 : la surface de la mer est transparente et passait devant la pluie au tri des objets transparents ;
+	# on ne voyait donc les gouttes qu'au-dessus du bateau et des rochers. La pluie est dessinée après la mer.
+	m.render_priority = GameConfig.RAIN_RENDER_PRIORITY
+	bm.material = m
+	_rain_fx.draw_pass_1 = bm
+	_rain_fx.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_rain_fx.emitting = false
+	world.add_child(_rain_fx)
+	# impacts sur l'eau : un petit anneau à plat qui s'agrandit en s'effaçant
+	_splash_fx = GPUParticles3D.new()
+	_splash_fx.amount = GameConfig.RAIN_SPLASHES
+	_splash_fx.lifetime = 0.35
+	_splash_fx.local_coords = false
+	_splash_fx.visibility_aabb = AABB(Vector3(-half, -1.0, -half), Vector3(half * 2.0, 2.0, half * 2.0))
+	var sp := ParticleProcessMaterial.new()
+	sp.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_BOX
+	sp.emission_box_extents = Vector3(half, 0.0, half)
+	sp.gravity = Vector3.ZERO
+	sp.initial_velocity_min = 0.0
+	sp.initial_velocity_max = 0.0
+	sp.scale_min = 0.6
+	sp.scale_max = 1.2
+	var grow := Curve.new()
+	grow.add_point(Vector2(0.0, 0.3))
+	grow.add_point(Vector2(1.0, 1.0))
+	var grow_tex := CurveTexture.new()
+	grow_tex.curve = grow
+	sp.scale_curve = grow_tex
+	var fade := Gradient.new()
+	fade.set_color(0, Color(1, 1, 1, 0.75))
+	fade.set_color(1, Color(1, 1, 1, 0.0))
+	var fade_tex := GradientTexture1D.new()
+	fade_tex.gradient = fade
+	sp.color_ramp = fade_tex
+	_splash_fx.process_material = sp
+	var ring := TorusMesh.new()
+	ring.inner_radius = 0.07
+	ring.outer_radius = 0.11
+	ring.rings = 10
+	ring.ring_segments = 3
+	var rm := StandardMaterial3D.new()
+	rm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	rm.albedo_color = Color(0.86, 0.94, 1.0)
+	rm.vertex_color_use_as_albedo = true   # (le dégradé d'effacement passe par la couleur des particules)
+	rm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	rm.render_priority = GameConfig.RAIN_RENDER_PRIORITY
+	ring.material = rm
+	_splash_fx.draw_pass_1 = ring
+	_splash_fx.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_splash_fx.emitting = false
+	world.add_child(_splash_fx)
 
 
 func _apply(_delta: float) -> void:

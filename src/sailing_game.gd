@@ -709,6 +709,7 @@ func _build_port() -> void:
 	_land.load_meta(_port_meta)
 	_port = scene.instantiate() as Node3D
 	_world_fixed.add_child(_port)
+	_remove_town_sand()
 	var kinds := {"ground_cobble": 0, "ground_planks": 1, "ground_sand": 2, "ground_grass": 3}
 	# matières peintes : le nom du matériau Blender dit quel motif utiliser (enduit, tuiles, bois, pierre)
 	var surface_kinds := {"pl_": 0, "roof_": 1, "wood": 2, "stone": 3}
@@ -774,6 +775,61 @@ func _build_port() -> void:
 		_sim.yaw = -PI / 2.0
 		# le centre de la coque est décalé du pivot du bateau (beaupré compris) : on le compense
 		_sim.position = Vector2(x, z) - Vector2(cos(_sim.yaw), -sin(_sim.yaw)) * (_ship.shift * ShipModel.SCALE)
+
+
+## Bug 1.5 : la plage à gauche de la ville (ouest, x < -42) était dessinée et arrêtait les bateaux, mais ne faisait pas partie du
+## sol où l'on marche : un pirate qui y sautait se retrouvait à nager dans le sable, ou coincé contre son bord. On la retire au
+## chargement, avec ses palmiers (fondus dans le maillage « props » de tout le port : on n'en garde que les triangles à droite de la
+## coupe) et leurs collisions. Fait ici plutôt que dans port.glb, que tools/art/make_port_scene.py régénère.
+func _remove_town_sand() -> void:
+	var cut := GameConfig.TOWN_SAND_CUT_X
+	var stack: Array[Node] = [_port]
+	while not stack.is_empty():
+		var n: Node = stack.pop_back()
+		stack.append_array(n.get_children())
+		if not (n is MeshInstance3D) or (n as MeshInstance3D).mesh == null:
+			continue
+		var mi := n as MeshInstance3D
+		if String(mi.name).contains("ground_sand"):
+			mi.visible = false
+			continue
+		var box := mi.global_transform * mi.mesh.get_aabb()
+		if box.position.x < cut and box.end.x > cut:
+			_strip_mesh_west_of(mi, cut)
+	# plus de palmiers sur la plage disparue : leurs cercles n'arrêtent plus un saut ni un crochet
+	_land.circles = _land.circles.filter(func(c: Array) -> bool: return float(c[0]) > cut)
+
+
+## Retire d'un maillage tous les triangles entièrement à l'ouest de `cut_x` (coordonnées du monde).
+func _strip_mesh_west_of(mi: MeshInstance3D, cut_x: float) -> void:
+	var src := mi.mesh
+	var out := ArrayMesh.new()
+	var xf := mi.global_transform
+	for s in src.get_surface_count():
+		var arrays := src.surface_get_arrays(s)
+		var verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+		var idx: PackedInt32Array = arrays[Mesh.ARRAY_INDEX] if arrays[Mesh.ARRAY_INDEX] != null else PackedInt32Array()
+		if idx.is_empty():
+			idx.resize(verts.size())
+			for k in verts.size():
+				idx[k] = k
+		var kept := PackedInt32Array()
+		for t in range(0, idx.size(), 3):
+			var west := true
+			for k in 3:
+				if (xf * verts[idx[t + k]]).x >= cut_x:
+					west = false
+					break
+			if not west:
+				kept.append(idx[t])
+				kept.append(idx[t + 1])
+				kept.append(idx[t + 2])
+		if kept.is_empty():
+			continue
+		arrays[Mesh.ARRAY_INDEX] = kept
+		out.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+		out.surface_set_material(out.get_surface_count() - 1, src.surface_get_material(s))
+	mi.mesh = out
 
 
 ## Ombre ronde sous le pirate.
@@ -2997,12 +3053,15 @@ func _touch_down(floor_h: float) -> void:
 	_vz = 0.0
 	if _loc == Loc.SHIP:
 		if _ship.over_hull(_ppos):
-			var spot := _ship.landing_spot(_ppos)
+			var from_cabin := _ship.inside_cabin(_air_origin.get("ppos", _ppos) as Vector2) and int(_air_origin.get("loc", Loc.SHIP)) == Loc.SHIP
+			var spot := _ship.landing_spot(_ppos, from_cabin)
 			if spot != Vector2.INF:
 				_ppos = spot
 				_pz = 0.0
 				_land_t = 0.14
 				return
+			# rien d'atteignable sur le pont sans traverser un mur (bande entre la cabine et le plat-bord) : on tombe le long de la coque
+			_ppos = _ship.outside_point(_ppos)
 		var w := _ship_to_world(_ppos)
 		if _raft_deck_y(w) != INF and not _ship.over_hull(_ppos):
 			_board_raft()   # on a sauté sur le radeau

@@ -239,14 +239,62 @@ func over_hull(bp: Vector2) -> bool:
 
 ## Où retombe un pirate qui touche le pont en bp : le point lui-même s'il est libre, le point libre voisin s'il
 ## est sur la coque (une caisse, le plat-bord), Vector2.INF s'il est au-dessus de l'eau.
-func landing_spot(bp: Vector2) -> Vector2:
-	if is_walkable(bp):
+## `from_cabin` : le saut est parti de l'intérieur de la cabine. Bug 1.7 : on ne se pose plus jamais de l'autre côté d'un mur.
+## Avant, un saut qui retombait sur la bande étroite entre la cabine et le plat-bord était « recalé » au point libre le plus proche…
+## souvent dans la cabine, à travers son mur ; et un saut depuis le quai qui retombait au-dessus du toit de la cabine y entrait.
+func landing_spot(bp: Vector2, from_cabin: bool = false) -> Vector2:
+	if is_walkable(bp) and inside_cabin(bp) == from_cabin:
 		return bp
 	if over_hull(bp):
-		var q := nearest_walkable(bp, 1.6)
-		if is_walkable(q):
+		var q := nearest_reachable(bp, 1.6, from_cabin)
+		if q != Vector2.INF:
 			return q
 	return Vector2.INF
+
+
+## Le point libre le plus proche de bp qu'on atteint en ligne droite sans traverser de mur (cabine, mât…), du même côté des murs
+## de la cabine que `in_cabin` ; Vector2.INF si aucun à moins de max_dist.
+func nearest_reachable(bp: Vector2, max_dist: float, in_cabin: bool) -> Vector2:
+	var d := 0.0
+	while d <= max_dist:
+		for k in (1 if d == 0.0 else 24):
+			var q := bp + Vector2.from_angle(TAU * k / 24.0) * d
+			if is_walkable(q) and inside_cabin(q) == in_cabin and _clear_line(bp, q):
+				return q
+		d += 0.1
+	return Vector2.INF
+
+
+## Vrai si le segment a → b ne traverse aucun mur (boîte haute, mât). Les caisses basses s'enjambent : elles ne comptent pas, ni
+## l'obstacle sur lequel on retombe (a est dedans : on en descend).
+func _clear_line(a: Vector2, b: Vector2) -> bool:
+	var steps := maxi(int(ceil(a.distance_to(b) / 0.04)), 1)
+	for s in steps + 1:
+		var p := a.lerp(b, float(s) / float(steps))
+		for i in boxes.size():
+			if i in low_boxes:
+				continue
+			var bx: Array = boxes[i]
+			if _in_box(p, bx) and not _in_box(a, bx):
+				return false
+		for i in circles.size():
+			if i in low_circles:
+				continue
+			var c: Array = circles[i]
+			var cc := Vector2(float(c[0]), float(c[1]))
+			if p.distance_to(cc) < float(c[2]) and a.distance_to(cc) >= float(c[2]):
+				return false
+	return true
+
+
+static func _in_box(p: Vector2, bx: Array) -> bool:
+	return p.x > float(bx[0]) and p.x < float(bx[2]) and p.y > float(bx[1]) and p.y < float(bx[3])
+
+
+## Le point juste à l'extérieur de la coque, à côté de bp (là où tombe à l'eau un saut qui ne peut se poser nulle part).
+func outside_point(bp: Vector2) -> Vector2:
+	var side := 1.0 if bp.y >= 0.0 else -1.0
+	return Vector2(bp.x, side * (half_width(bp.x) + GameConfig.HULL_OUTSIDE_MARGIN))
 
 
 ## Le point libre le plus proche de bp (recherche en spirale), ou bp si rien à moins de max_dist.

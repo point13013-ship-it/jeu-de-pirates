@@ -10,7 +10,7 @@ const SHIP_LAND: Array = [
 	[-42.0, -52.0, 42.0, 0.0],
 	[14.0, -0.2, 18.0, 30.0],
 	[-24.0, -0.2, -21.0, 14.0],
-	[-62.0, -52.0, -42.0, 4.0],
+	# (la plage à l'ouest, [-62, -52, -42, 4], a été retirée : bug 1.5 du lot 1 ; c'est désormais la mer jusqu'au quai)
 ]
 
 var walk_rects: Array = []   ## [x0, y0, x1, y1] en (x, y) du fichier

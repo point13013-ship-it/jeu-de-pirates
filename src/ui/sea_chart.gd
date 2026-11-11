@@ -12,7 +12,7 @@ const SAND_D := Color(0.78, 0.64, 0.38)
 const GRASS := Color(0.55, 0.68, 0.36)
 const INK := Color(0.28, 0.17, 0.09)
 const INK_L := Color(0.45, 0.3, 0.17)
-const PORT_RECT := Rect2(-62.0, -52.0, 104.0, 82.0)   ## le port en gros : x, z, largeur, hauteur
+const PORT_RECT := Rect2(-42.0, -52.0, 84.0, 82.0)   ## le port en gros : x, z, largeur, hauteur (sans la plage ouest, retirée)
 
 var world: IslandWorld
 var discovered: Array = []
