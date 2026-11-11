@@ -130,7 +130,7 @@ func step(dt: float) -> void:
 		sail_trim_target = clampf(sail_trim_target + trim_input * TRIM_SPEED * 1.2 * dt, -MAX_TRIM, MAX_TRIM)
 	sail_trim = move_toward(sail_trim, sail_trim_target, TRIM_SPEED * dt)
 	rudder = move_toward(rudder, rudder_target, 1.6 * dt)
-	var target := 0.0 if anchored else max_speed * sail_open * wind_factor() * trim_efficiency() * drag
+	var target := 0.0 if anchored else max_speed * sail_open * sail_efficiency() * drag
 	var rate := accel if target > speed else accel * (2.6 if anchored else 0.6)
 	speed = move_toward(speed, target, rate * dt)
 	var steer := MIN_STEER + (1.0 - MIN_STEER) * clampf(speed / (max_speed * 0.6), 0.0, 1.0)
@@ -138,3 +138,10 @@ func step(dt: float) -> void:
 		steer = 0.3  # l'ancre fait pivoter le bateau lentement
 	yaw -= rudder * turn_rate * steer * dt
 	position += forward() * speed * dt * screen_comp()
+
+
+const MIN_SAIL_EFF := 0.4    ## rendement minimal des voiles (vent debout + vergues mal réglées) : le vent ralentit, il n'arrête jamais le bateau
+
+## Rendement total des voiles, de MIN_SAIL_EFF (très mauvais vent / réglage) à 1 (vent arrière, vergues au mieux).
+func sail_efficiency() -> float:
+	return MIN_SAIL_EFF + (1.0 - MIN_SAIL_EFF) * clampf(wind_factor() * trim_efficiency(), 0.0, 1.0)
