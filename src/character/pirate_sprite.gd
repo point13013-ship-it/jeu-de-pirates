@@ -17,7 +17,16 @@ static var _building: Dictionary = {}  ## clé -> true pendant la composition
 static var palette_colors: Array[Color] = []
 static var palette_version := 0
 static var view_yaw := 0.0   ## rad : de combien la caméra a tourné (réglé par le jeu) ; les directions du monde sont relues à l'écran en conséquence
-const PALETTE_MAX := 512
+const PALETTE_MAX := GameConfig.PIRATE_PALETTE_MAX
+## Les pirates affichés en ce moment. La palette « pirates » est refaite à partir d'eux seuls (voir refresh_palette) : avant, elle
+## ne faisait que grossir (chaque essai de l'éditeur de personnage, chaque aperçu, chaque look passé) jusqu'à sa limite, et les
+## couleurs arrivées ensuite (un nouveau skin, une nouvelle tenue) n'y entraient plus. Le filtre « pixel art » les ramenait alors
+## aux couleurs du décor : le pirate du joueur paraissait chauve, torse nu, beige (bug 1.4), sur son écran seulement.
+static var _live: Array[PirateSprite] = []
+static var _palette_dirty := false
+
+## Ses couleurs passent avant celles des autres dans la palette (le pirate du joueur) : elles ne peuvent jamais en être exclues.
+var palette_first := false
 
 ## Ombrage « peint » : les feuilles de sprites sont en niveaux de gris (le ton d'ombre de chaque pixel), et la couleur d'une
 ## pièce en est tirée ici : les ombres tirent vers le violet froid, les lumières vers le chaud (comme dans Eastward), au lieu
@@ -61,6 +70,38 @@ func _init() -> void:
 	var feet: Array = PirateLook.catalog().get("feet", [24, 54])
 	var frame_size: Array = PirateLook.catalog().get("frame", [48, 64])
 	offset = Vector2(0.0, float(feet[1]) - float(frame_size[1]) / 2.0)   # les pieds tombent sur l'origine du noeud
+	_live.append(self)
+	_palette_dirty = true
+
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_PREDELETE:
+		_live.erase(self)
+		_palette_dirty = true
+
+
+## Refait la palette « pirates » à partir des pirates affichés (le joueur d'abord) si un look, une arme ou un pirate a changé.
+## Renvoie vrai si elle a changé. Appelé par le jeu avant d'envoyer la palette au filtre.
+static func refresh_palette() -> bool:
+	if not _palette_dirty:
+		return false
+	_palette_dirty = false
+	palette_colors.clear()
+	var ordered: Array[PirateSprite] = []
+	for s in _live:
+		if is_instance_valid(s) and s.palette_first:
+			ordered.append(s)
+	for s in _live:
+		if is_instance_valid(s) and not s.palette_first:
+			ordered.append(s)
+	for s in ordered:
+		if s.look.is_empty():
+			continue
+		register_colors(s.look)
+		if s.held_weapon != "":
+			register_weapon(s.held_weapon, s.held_skin)
+	palette_version += 1
+	return true
 
 
 ## Direction (0 = vers la caméra, puis tous les 45° vers la droite de l'écran) d'un vecteur d'écran
@@ -72,6 +113,7 @@ static func direction_of(v: Vector2) -> int:
 
 func set_look(new_look: Dictionary) -> void:
 	look = PirateLook.sanitize(new_look)
+	_palette_dirty = true
 	_textures.clear()
 	var sig := _sig()
 	for a: String in FPS:
@@ -88,6 +130,7 @@ func set_weapon(weapon: String, skin: String = WeaponSkins.CLASSIC) -> void:
 		return
 	held_weapon = weapon
 	held_skin = skin
+	_palette_dirty = true
 	var sig := _sig()
 	for a: String in FPS:
 		if WeaponArt.holds(a):

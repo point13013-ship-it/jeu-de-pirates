@@ -18,7 +18,7 @@ var hp := 1
 var max_hp := 1
 var state := State.IDLE
 var timer := 0.0              ## durée restante de la phase (armement, récupération) ou de la mort
-var hurt_t := 0.0             ## clignotement blanc après un coup reçu
+var hurt_t := 0.0             ## flash teinté après un coup reçu (GameConfig.HIT_FLASH_TIME)
 var knock := Vector2.ZERO     ## vitesse de recul
 var wander_t := 0.0
 var wander_to := Vector2.ZERO
@@ -34,6 +34,8 @@ var _walk_phase := 0.0
 var _last_pos := Vector2.ZERO
 var _moving := 0.0
 var _death_t := 0.0
+var _flash: StandardMaterial3D
+var _flash_on := false
 
 
 static func create(p_id: int, p_kind: String, p_island: int, p_home: Vector2, p_cfg: Dictionary) -> IslandEnemy:
@@ -158,7 +160,7 @@ func hurt(dmg: int, from: Vector2, power: float) -> bool:
 	if state == State.DEAD:
 		return false
 	hp -= dmg
-	hurt_t = 0.18
+	hurt_t = GameConfig.HIT_FLASH_TIME
 	var away := pos - from
 	if away.length() > 0.01:
 		knock = away.normalized() * power * float(cfg.get("knockback", 2.0))
@@ -197,7 +199,7 @@ func apply_net(s: Array, snap: bool) -> void:
 	remote_target = Vector2(float(s[0]), float(s[1]))
 	var new_hp := int(s[2])
 	if new_hp < hp:
-		hurt_t = 0.18
+		hurt_t = GameConfig.HIT_FLASH_TIME
 	hp = new_hp
 	var st := int(s[3])
 	if st == State.DEAD and state != State.DEAD:
@@ -473,10 +475,18 @@ func update_visual(delta: float, time: float, authority: bool) -> void:
 		blade.rotation.x = deg_to_rad(-40.0 - 60.0 * strike_k)
 		var head: Node3D = _parts["head"]
 		head.rotation.z = sin(time * 1.4 + id) * 0.04
-	# clignotement blanc quand on le frappe
-	var flash := hurt_t > 0.0
+	# coup reçu : flash teinté court (rouge-orangé, qui s'éteint) au lieu de l'ancien voile blanc opaque qui faisait un fantôme,
+	# un petit recul visuel du corps (chez tout le monde, même si seul l'hôte déplace vraiment l'ennemi) et une gerbe d'étincelles
+	var flash_k := clampf(hurt_t / GameConfig.HIT_FLASH_TIME, 0.0, 1.0)
+	if flash_k > 0.0:
+		var mat := _flash_mat()
+		mat.albedo_color = Color(GameConfig.HIT_FLASH_COLOR, GameConfig.HIT_FLASH_ALPHA * flash_k)
+		node.position -= Vector3(facing.x, 0.0, facing.y) * GameConfig.HIT_RECOIL_VISUAL * flash_k
+		if not _flash_on:
+			_impact_burst()
 	for mi in _meshes:
-		mi.material_overlay = _flash_mat() if flash else null
+		mi.material_overlay = _flash_mat() if flash_k > 0.0 else null
+	_flash_on = flash_k > 0.0
 	var show_bar := hp < max_hp
 	_bar_back.visible = show_bar
 	_bar_fill.visible = show_bar
@@ -497,12 +507,47 @@ func _remaining_windup() -> float:
 	return maxf(timer, 0.0)
 
 
-static var _flash: StandardMaterial3D
-
-static func _flash_mat() -> StandardMaterial3D:
+## Matériau du flash, propre à cet ennemi (son opacité suit SON coup : un matériau partagé ferait clignoter tous les ennemis).
+func _flash_mat() -> StandardMaterial3D:
 	if _flash == null:
 		_flash = StandardMaterial3D.new()
 		_flash.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-		_flash.albedo_color = Color(1, 1, 1, 0.75)
+		_flash.albedo_color = Color(GameConfig.HIT_FLASH_COLOR, GameConfig.HIT_FLASH_ALPHA)
 		_flash.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		_flash.blend_mode = BaseMaterial3D.BLEND_MODE_MIX
 	return _flash
+
+
+## Petites étincelles d'impact (orange et blanches) qui jaillissent du torse et retombent. Joué chez chaque joueur, quand le
+## flash démarre (sur l'hôte au coup, sur les clients quand l'état réseau annonce des PV en moins).
+func _impact_burst() -> void:
+	if node == null or node.get_parent() == null:
+		return
+	var parent := node.get_parent() as Node3D
+	var sc := float(cfg.get("scale", 1.0))
+	var base := node.position + Vector3(0.0, (0.45 if kind == "crab" else 1.2) * sc, 0.0)
+	for k in GameConfig.HIT_SPARKS:
+		var drop := MeshInstance3D.new()
+		var sm := SphereMesh.new()
+		sm.radius = 0.045
+		sm.height = 0.09
+		sm.radial_segments = 6
+		sm.rings = 3
+		drop.mesh = sm
+		var m := StandardMaterial3D.new()
+		m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		m.albedo_color = Color(1.0, 0.55, 0.15) if k % 3 != 0 else Color(1.0, 0.95, 0.8)
+		drop.material_override = m
+		drop.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		parent.add_child(drop)
+		drop.position = base
+		var a := TAU * float(k) / float(GameConfig.HIT_SPARKS) + randf() * 0.6
+		var d := Vector3(cos(a), 0.0, sin(a)) * randf_range(0.25, 0.6)
+		var tw := drop.create_tween()
+		tw.set_parallel(true)
+		tw.tween_property(drop, "position:x", base.x + d.x, 0.3)
+		tw.tween_property(drop, "position:z", base.z + d.z, 0.3)
+		tw.tween_property(drop, "position:y", base.y + randf_range(0.2, 0.5), 0.12).set_ease(Tween.EASE_OUT)
+		tw.tween_property(drop, "scale", Vector3.ONE * 0.2, 0.3)
+		tw.chain().tween_property(drop, "position:y", base.y - 0.3, 0.18).set_ease(Tween.EASE_IN)
+		tw.chain().tween_callback(drop.queue_free)

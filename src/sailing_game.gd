@@ -151,6 +151,7 @@ var _helm_owner := 0                ## id du joueur à la barre (0 = personne)
 var _menu: Node
 var _main_menu: MainMenu
 var _status_label: Label
+var _top_right: VBoxContainer           ## coin haut droit : or puis état du réseau, empilés sans se chevaucher
 var _invite: InvitePanel            ## le cadre « Inviter un ami » de l'hôte (adresse IP, code)
 var _pause: PauseMenu               ## le menu de la touche Échap (retour au menu principal)
 var _quest_panel: QuestPanel        ## le journal de quêtes (J)
@@ -360,6 +361,7 @@ func _start_join(address: String) -> void:
 func _set_status(text: String) -> void:
 	if _status_label != null:
 		_status_label.text = text
+		_status_label.visible = text != ""
 	if _main_menu != null:   # le menu cache le reste : c'est là que le joueur doit lire « Connexion à… » ou l'erreur
 		_main_menu.set_message(text)
 	print("[réseau] ", text)
@@ -842,6 +844,7 @@ func _float_ship() -> void:
 
 func _build_player() -> void:
 	_sprite = PirateSprite.new()
+	_sprite.palette_first = true   # mes couleurs passent en premier dans la palette du filtre : elles n'en sont jamais exclues
 	_sprite.enable_actions()   # mon pirate a aussi ses animations de tir et de pouvoir
 	_sprite.set_look(_local_look())
 	_sprite.set_weapon(_profile.weapon, _profile.skin_of(_profile.weapon))
@@ -1055,17 +1058,26 @@ func _build_hud() -> void:
 	_prompt.add_theme_constant_override("outline_size", 6)
 	_prompt.add_theme_font_size_override("font_size", 18)
 	_hud_root.add_child(_prompt)
-	# état du réseau (adresse à donner aux amis, connexion…), en haut à droite
+	# Coin haut droit : l'or (plusieurs lignes : or, boulets, coffre, trésor porté) puis l'état du réseau, empilés dans une colonne
+	# qui suit la hauteur réelle de chaque bloc. Avant, l'état du réseau était posé à une hauteur fixe et chevauchait les lignes de
+	# l'or dès qu'il y en avait plus d'une (et d'autant plus avec un grand « Taille de l'interface »).
+	_top_right = VBoxContainer.new()
+	_top_right.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_top_right.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT, Control.PRESET_MODE_MINSIZE)
+	_top_right.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	_top_right.offset_right = -GameConfig.HUD_MARGIN
+	_top_right.offset_top = GameConfig.HUD_MARGIN_TOP
+	_top_right.add_theme_constant_override("separation", GameConfig.HUD_STACK_GAP)
+	_hud_root.add_child(_top_right)
+	# état du réseau (adresse à donner aux amis, connexion…), en haut à droite, sous l'or
 	_status_label = Label.new()
-	_status_label.set_anchors_preset(Control.PRESET_TOP_RIGHT)
-	_status_label.grow_horizontal = Control.GROW_DIRECTION_BEGIN
-	_status_label.position = Vector2(-12, 34)
+	_status_label.size_flags_horizontal = Control.SIZE_SHRINK_END
 	_status_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	_status_label.visible = false   # rien à dire : la ligne ne prend pas de place
 	_status_label.add_theme_color_override("font_color", Color(1, 0.9, 0.6))
 	_status_label.add_theme_color_override("font_outline_color", Color(0.05, 0.03, 0.1))
 	_status_label.add_theme_constant_override("outline_size", 6)
 	_status_label.add_theme_font_size_override("font_size", 15)
-	_hud_root.add_child(_status_label)
 	_invite = InvitePanel.new()
 	_invite.visible = false
 	_hud_root.add_child(_invite)
@@ -1098,15 +1110,14 @@ func _build_hud() -> void:
 	_quests = QuestLog.new(_profile)
 	_sync_quest_destination()
 	_gold_label = Label.new()
-	_gold_label.set_anchors_preset(Control.PRESET_TOP_RIGHT)
-	_gold_label.grow_horizontal = Control.GROW_DIRECTION_BEGIN
-	_gold_label.position = Vector2(-12, 8)
+	_gold_label.size_flags_horizontal = Control.SIZE_SHRINK_END
 	_gold_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	_gold_label.add_theme_color_override("font_color", Color(1.0, 0.85, 0.35))
 	_gold_label.add_theme_color_override("font_outline_color", Color(0.05, 0.03, 0.1))
 	_gold_label.add_theme_constant_override("outline_size", 6)
 	_gold_label.add_theme_font_size_override("font_size", 17)
-	_hud_root.add_child(_gold_label)
+	_top_right.add_child(_gold_label)
+	_top_right.add_child(_status_label)   # l'ordre compte : l'or en premier, l'état du réseau dessous
 	_quest_label = Label.new()
 	_quest_label.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
 	_quest_label.grow_vertical = Control.GROW_DIRECTION_BEGIN
@@ -1303,6 +1314,14 @@ func _apply_test_args() -> void:
 			_profile.skin_worn[wid] = str(_args["wskin"])
 		_profile.bullets = maxi(_profile.bullets, 20)
 		_profile.shells = maxi(_profile.shells, 20)
+	if _args.has("fake-remote"):   # essai : --fake-remote=dx,dy fait apparaître un « joueur distant » avec mon apparence, à côté de moi
+		# sur le pont, dans l'ordre du vrai réseau : d'abord sa position (pirate au hasard), puis son apparence et son arme
+		var fr := str(_args["fake-remote"]).split(",")
+		var fr_off := Vector2(float(fr[0]), float(fr[1])) if fr.size() > 1 else Vector2(0.8, 0.0)
+		get_tree().create_timer(1.0).timeout.connect(func() -> void:
+			apply_remote_player(990001, _ppos + fr_off, false, Loc.SHIP, 0.0, 0.0))
+		get_tree().create_timer(1.3).timeout.connect(func() -> void:
+			apply_remote_look(990001, local_look_json()))
 	if _args.has("gold"):   # essai : --gold=150 donne de l'or
 		_profile.gold = int(_args["gold"])
 	if _args.has("quest"):   # essai : --quest=tonnelet met cette quête en cours
@@ -2958,7 +2977,7 @@ func _fall_floor() -> float:
 		var rdeck_l := _raft_deck_y(_lpos)
 		if rdeck_l != INF and _lh + _pz >= rdeck_l - 0.12:
 			return rdeck_l - _lh
-		var g := _land.surface_h(_lpos, _lh)
+		var g := _land.surface_below(_lpos, _lh + _pz)   # la plus haute surface sous les pieds (estrade, plateau), pas seulement le sol de départ
 		if g != Land.NO_SURFACE:
 			return g - _lh
 		if _land.is_over_water(_lpos):
@@ -3014,9 +3033,13 @@ func _touch_down(floor_h: float) -> void:
 		if _raft_deck_y(_lpos) != INF and _lh + _pz >= _raft_deck_y(_lpos) - 0.12:
 			_board_raft()   # on a sauté sur le radeau
 			return
-		var g := _land.surface_h(_lpos, _lh)
+		var g := _land.surface_below(_lpos, _lh + _pz + 0.001)
 		if g != Land.NO_SURFACE:
 			if _stand_on_ground(_lpos, g):
+				return
+			# trop au bord de l'estrade pour y tenir : on retombe sur ce qu'il y a plus bas plutôt que de revenir au départ
+			var lower := _land.surface_below(_lpos, g - _land.step_tol - 0.01)
+			if lower != Land.NO_SURFACE and _stand_on_ground(_lpos, lower):
 				return
 			_return_to_takeoff()
 			return
@@ -3032,8 +3055,13 @@ func _stand_on_ground(w: Vector2, g: float) -> bool:
 	var q := w
 	var h := _land.walk_height(q, g)
 	if h == Land.NO_SURFACE:
-		q = _land.nearest_walkable(w, 1.6)
-		h = _land.walk_height(q, g)
+		# d'abord une place libre tout près, à la même hauteur (bord d'une estrade : on recule un peu sur elle)
+		q = _land.nearest_standable(w, g, GameConfig.LANDING_SEARCH)
+		if q != Vector2.INF:
+			h = _land.walk_height(q, g)
+		else:
+			q = _land.nearest_walkable(w, 1.6)
+			h = _land.walk_height(q, g)
 		if h == Land.NO_SURFACE:
 			return false
 	_loc = Loc.LAND
@@ -3881,6 +3909,8 @@ func _update_remotes(delta: float) -> void:
 func _local_look() -> Dictionary:
 	if _my_look.is_empty():
 		_my_look = PirateLook.load_saved()
+		if _args.has("look-seed"):   # essai : --look-seed=42 donne au pirate un look reconnaissable (sans toucher à celui sauvegardé)
+			_my_look = PirateLook.random_look(int(_args["look-seed"]))
 	return _my_look
 
 
@@ -3964,7 +3994,10 @@ func apply_remote_look(id: int, json: String) -> void:
 
 ## Donne au filtre « palette » les couleurs des pirates (elles changent quand l'apparence change).
 func _sync_pirate_palette() -> void:
-	if _post_mat == null or _palette_version == PirateSprite.palette_version:
+	if _post_mat == null:
+		return
+	PirateSprite.refresh_palette()   # refaite à partir des pirates affichés (mon pirate d'abord), pas seulement allongée
+	if _palette_version == PirateSprite.palette_version:
 		return
 	_palette_version = PirateSprite.palette_version
 	_post_mat.set_shader_parameter("char_palette", PirateSprite.palette_texture())

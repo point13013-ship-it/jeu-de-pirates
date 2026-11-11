@@ -13,6 +13,7 @@ func _initialize() -> void:
 	land.load_town(_json("res://data/town.json"))
 	_test_quay_edge(land)
 	_test_obstacles(land)
+	_test_platform_landing(land)
 	_test_ship_deck()
 	print("RÉSULTAT : %s" % ("tout passe" if _failed == 0 else "%d échec(s)" % _failed))
 	quit(1 if _failed > 0 else 0)
@@ -70,6 +71,30 @@ func _test_obstacles(land: Land) -> void:
 	_check("blocker_at nomme un mur", land.blocker_at(Vector2(float(o[0]) + 0.5, -(float(o[1]) + 0.5))) == "mur")
 	_check("blocker_at nomme un objet", land.blocker_at(post) == "objet")
 	_check("blocker_at ne voit rien sur le quai dégagé", land.blocker_at(Vector2(0.0, -10.0)) == "")
+
+
+## Bug 1.1 : sauter sur une estrade plus haute qu'une marche. On prend dans data/town.json une surface plate, à l'extérieur, entre
+## 0,35 et 1,5 m (une estrade, une terrasse basse) ; en son centre, un pirate parti du sol (hauteur 0) qui retombe d'au-dessus
+## doit s'y poser, et non plus « ne rien trouver » (ce qui le renvoyait à son point de départ).
+func _test_platform_landing(land: Land) -> void:
+	var found := false
+	for s: Dictionary in land.levels:
+		if s.has("axis") or s.get("base", false):
+			continue
+		var h := float(s.get("h", 0.0))
+		if h < 0.35 or h > 1.5:
+			continue
+		var r: Array = s["rect"]
+		var c := Vector2((float(r[0]) + float(r[2])) * 0.5, -(float(r[1]) + float(r[3])) * 0.5)
+		if land.interior_at(c) >= 0 or land.walk_height(c, h) == Land.NO_SURFACE:
+			continue
+		found = true
+		_check("(avant : depuis le sol, l'estrade à %.2f m est invisible)" % h, land.surface_h(c, 0.0) != h)
+		_check("en retombant d'au-dessus, on se pose sur l'estrade à %.2f m" % h, is_equal_approx(land.surface_below(c, h + 0.4), h))
+		_check("… et on y tient debout", land.walk_height(c, land.surface_below(c, h + 0.4)) != Land.NO_SURFACE)
+		_check("trop bas pour la franchir, son flanc arrête le saut", land._raised_wall(c, h - 0.35 - land.step_tol))
+		break
+	_check("une estrade de ville trouvée pour l'essai", found)
 
 
 func _test_ship_deck() -> void:

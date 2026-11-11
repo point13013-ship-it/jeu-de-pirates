@@ -193,9 +193,18 @@ func air_move(from: Vector2, delta: Vector2, alt: float, cur: float) -> Vector2:
 		var r := step(from, delta, cur)
 		return Vector2(r.x, r.y)
 	for t: Vector2 in [from + delta, Vector2(from.x + delta.x, from.y), Vector2(from.x, from.y + delta.y)]:
-		if air_clear(t, alt):
+		if air_clear(t, alt) and not _raised_wall(t, cur + alt):
 			return t
 	return from
+
+
+## Vrai si, en `p`, le seul sol est plus haut que les pieds (`alt` absolue) : le flanc d'une estrade, d'une terrasse ou d'un
+## plateau d'île qu'on n'a pas sauté assez haut pour franchir. On glisse contre, au lieu de passer « dessous » et d'être ensuite
+## renvoyé au point de départ.
+func _raised_wall(p: Vector2, alt: float) -> bool:
+	if is_over_water(p):
+		return false
+	return not _candidates(Vector2(p.x, -p.y)).is_empty() and surface_below(p, alt) == NO_SURFACE
 
 
 ## Ce qui se dresse en `p` (monde x/z) et qu'un crochet peut saisir : « mur » (bâtiment), « objet » (poteau, tonneau, arbre) ou « ».
@@ -253,7 +262,34 @@ func _in_door_cut(m: Vector2) -> bool:
 	return false
 
 
-func _surface_h(m: Vector2, cur: float) -> float:
+## Hauteur de la plus haute surface SOUS un pirate en l'air dont les pieds sont à l'altitude absolue `alt` (une marche de
+## tolérance au-dessus), ou NO_SURFACE. C'est ce qu'il faut à la fin d'un saut : `surface_h` ne cherche qu'à une marche de la
+## hauteur du sol d'où l'on est parti, et ne voyait donc jamais une estrade ou un plateau plus haut que ça. Le jeu renvoyait
+## alors le pirate à son point de départ (bug 1.1 du lot 1).
+func surface_below(p: Vector2, alt: float) -> float:
+	var best := NO_SURFACE
+	for h in _candidates(Vector2(p.x, -p.y)):
+		if h <= alt + step_tol and (best == NO_SURFACE or h > best):
+			best = h
+	return best
+
+
+## Le point le plus proche de `p` (monde x/z) où un pirate tient debout à la hauteur `h`, ou Vector2.INF à plus de `max_dist`.
+func nearest_standable(p: Vector2, h: float, max_dist: float) -> Vector2:
+	if walk_height(p, h) != NO_SURFACE:
+		return p
+	var d := 0.1
+	while d <= max_dist:
+		for k in 16:
+			var q := p + Vector2.from_angle(TAU * k / 16.0) * d
+			if walk_height(q, h) != NO_SURFACE:
+				return q
+		d += 0.1
+	return Vector2.INF
+
+
+## Toutes les hauteurs de sol possibles au point m (coordonnées du fichier), à toutes les hauteurs.
+func _candidates(m: Vector2) -> Array[float]:
 	var cands: Array[float] = []
 	var surfaces: Array = levels
 	var base_ok := false
@@ -279,6 +315,11 @@ func _surface_h(m: Vector2, cur: float) -> float:
 			cands.append(_rect_h(s, m))
 	if base_ok and not carved:
 		cands.append(_ground_level(m))
+	return cands
+
+
+func _surface_h(m: Vector2, cur: float) -> float:
+	var cands := _candidates(m)
 	var best := NO_SURFACE
 	var best_d := step_tol + 0.0001
 	for h in cands:
