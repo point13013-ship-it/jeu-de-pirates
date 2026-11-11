@@ -2,7 +2,7 @@
   "_commentaire": "Les nouveautés affichées dans la salle de jeux (bouton Nouveautés, et après chaque mise à jour). La plus récente d'abord. 'version': 'prochaine' est remplacé par le numéro de la version au moment de la publication (publish.ps1). Les images sont les fichiers de ce dossier ; publish.ps1 les envoie avec la version.",
   "versions": [
     {
-      "version": "prochaine",
+      "version": "2026.11.11-2244",
       "titre": "Clics rétablis, canons 1-2-3, fenêtres agrandissables",
       "points": [
         "Corrigé : le clic gauche, le clic droit (attaques) et la molette enfoncée (rotation de la vue) fonctionnent de nouveau.",
