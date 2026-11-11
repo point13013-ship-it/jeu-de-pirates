@@ -52,6 +52,8 @@ var _sea: MeshInstance3D
 var _sprite: PirateSprite
 var _my_look: Dictionary = {}       ## mon apparence (éditeur de pirate)
 var _remote_looks: Dictionary = {}  ## id du pair -> apparence reçue
+var _remote_held: Dictionary = {}   ## id du pair -> 'arme|skin' qu'il tient
+var _held_sent := ""                ## ce que les autres savent de mon arme en main
 var _prev_ppos := Vector2.INF
 var _editor: CharacterEditor
 var _loc := Loc.SHIP
@@ -451,11 +453,13 @@ func _layout_view() -> void:
 	if _viewport == null:
 		return
 	var win := size
-	var factor := maxi(1, roundi(win.y / float(VIEW_SIZE.y)))
+	var factor := maxi(1, roundi(win.y / float(VIEW_SIZE.y * _hd())))
 	# une marge d'un pixel de jeu de chaque côté : l'image peut être décalée d'une fraction de
 	# pixel (caméra au sous-pixel, voir _update_camera) sans laisser de bord vide
 	var view := Vector2i(ceili(win.x / factor), ceili(win.y / factor)) + Vector2i(2, 2)
 	_factor = factor
+	if _post_mat != null:   # rendu fin : vraies couleurs (la palette fixe salirait les teintes du ciel) ; rendu gros pixels : palette
+		_post_mat.set_shader_parameter("use_palette", _hd() < 2 and not _args.has("no-palette"))
 	_viewport.size = view
 	_post_vp.size = view
 	_post_rect.size = Vector2(view)
@@ -466,9 +470,17 @@ func _layout_view() -> void:
 		_cam.size = float(view.y) / _ppm()
 
 
+## Finesse du rendu : 1 = pixels du jeu de 540 lignes, 2 = deux fois plus fins (net à l'écran 1080p).
+## Par défaut : fin dès que la fenêtre fait au moins 900 lignes (sinon l'image deviendrait minuscule).
+func _hd() -> int:
+	if _args.has("hd"):
+		return maxi(1, int(str(_args["hd"])))
+	return 2 if size.y >= 900.0 else 1
+
+
 ## Pixels de jeu par mètre à l'écran : la caméra s'éloigne (zoom < 1) pour voir plus de mer.
 func _ppm() -> float:
-	return PIXELS_PER_METER * _zoom
+	return PIXELS_PER_METER * _hd() * _zoom
 
 
 ## Le grossissement voulu selon où l'on est : plus loin en mer, un peu plus près à terre, très loin dans le nid de pie.
@@ -812,6 +824,7 @@ func _build_player() -> void:
 	_sprite = PirateSprite.new()
 	_sprite.enable_actions()   # mon pirate a aussi ses animations de tir et de pouvoir
 	_sprite.set_look(_local_look())
+	_sprite.set_weapon(_profile.weapon, _profile.skin_of(_profile.weapon))
 	_ship.add_child(_sprite)
 	_ball_icon = _make_ball(0.14, Color(0.12, 0.12, 0.16))
 	_ball_icon.visible = false
@@ -1051,7 +1064,7 @@ func _build_hud() -> void:
 	_quest_label = Label.new()
 	_quest_label.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
 	_quest_label.grow_vertical = Control.GROW_DIRECTION_BEGIN
-	_quest_label.position = Vector2(12, -96)
+	_quest_label.position = Vector2(12, -150)   # au-dessus de la barre de sorts (à terre), qui occupait le bas de l'écran
 	_quest_label.add_theme_color_override("font_color", Color(0.75, 0.9, 1.0))
 	_quest_label.add_theme_color_override("font_outline_color", Color(0.05, 0.03, 0.1))
 	_quest_label.add_theme_constant_override("outline_size", 6)
@@ -1066,6 +1079,7 @@ func _build_hud() -> void:
 	add_child(_shop_menu)
 	_inventory = InventoryPanel.new()
 	_inventory.use_item.connect(_on_inventory_use)
+	_inventory.closed.connect(_on_inventory_closed)
 	add_child(_inventory)
 	_weapon_label = Label.new()
 	_weapon_label.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
@@ -1176,6 +1190,26 @@ func _apply_test_args() -> void:
 	if _args.has("craft"):   # essai : --craft=raft@3 fabrique cet objet à cet instant (le pirate doit être à terre, près de l'eau)
 		var cr := str(_args["craft"]).split("@")
 		get_tree().create_timer(float(cr[1]) if cr.size() > 1 else 1.0).timeout.connect(func() -> void: _craft(cr[0]))
+	if _args.has("clear-island"):   # essai : --clear-island=t bat les ennemis et ouvre les coffres de l'île sous le pirate à cet instant
+		get_tree().create_timer(float(_args["clear-island"])).timeout.connect(func() -> void:
+			var ci := _islands.island_at(_lpos)
+			if ci >= 0:
+				for en_id: int in (_islands.islands[ci] as Dictionary)["enemies"]:
+					_islands.enemies[en_id].hurt(9999, _lpos, 0.0)
+				for ch_id: int in (_islands.islands[ci] as Dictionary)["chests"]:
+					_islands.open_chest(ch_id))
+	if _args.has("capture"):   # essai : --capture=t hisse le drapeau de l'île sous le pirate à cet instant
+		get_tree().create_timer(float(_args["capture"])).timeout.connect(func() -> void:
+			var ci := _islands.island_at(_lpos)
+			if ci >= 0:
+				_cabin_send("capture", ci, "", 0, Vector2.ZERO))
+	if _args.has("chest-demo"):   # essai : --chest-demo=t range du matériel dans le coffre de la cabane puis l'ouvre
+		get_tree().create_timer(float(_args["chest-demo"])).timeout.connect(func() -> void:
+			var ci := _islands.island_at(_lpos)
+			if ci >= 0 and Outpost.has_cabin(_op(), str((_islands.islands[ci] as Dictionary)["id"])):
+				_open_cabin_chest(ci)
+				_on_chest_use("cab_put", "plank")
+				_on_chest_use("cab_put", "gold"))
 	if _args.has("raft-ride"):   # essai : --raft-ride=t monte sur le radeau à cet instant
 		get_tree().create_timer(float(_args["raft-ride"])).timeout.connect(func() -> void: _board_raft())
 	if _args.has("press"):
@@ -1212,6 +1246,11 @@ func _apply_test_args() -> void:
 		if not (wid in _profile.weapons):
 			_profile.weapons.append(wid)
 		_profile.weapon = wid
+		if _args.has("wskin"):   # essai : --wskin=flibustier pose ce skin sur l'arme en main
+			var wk := WeaponSkins.key(wid, str(_args["wskin"]))
+			if not _profile.skins_owned.has(wk):
+				_profile.skins_owned.append(wk)
+			_profile.skin_worn[wid] = str(_args["wskin"])
 		_profile.bullets = maxi(_profile.bullets, 20)
 		_profile.shells = maxi(_profile.shells, 20)
 	if _args.has("gold"):   # essai : --gold=150 donne de l'or
@@ -1957,6 +1996,7 @@ func _update_islands(delta: float) -> void:
 	_inv_t = maxf(_inv_t - delta, 0.0)
 	for s in BerryBook.SLOTS:
 		_spell_cd[s] = maxf(_spell_cd[s] - delta, 0.0)
+	_sync_outposts(delta)
 	if _is_authority():
 		for ev: Dictionary in _islands.step(delta, _land_targets()):
 			var tid: int = ev["target"]
@@ -2070,7 +2110,9 @@ func _try_attack() -> void:
 	_atk_cd = float(_islands.player_cfg.get("swing_cooldown", 0.45))
 	_sprite.play_action("slash_sabre", _screen_of_face(_face))   # le coup de sabre : bras levé, coup, retour
 	_islands.spawn_slash(_lpos, _face)
-	_send_action("slash", "", _lpos, _face)
+	var sk := WeaponSkins.def_of("sabre", _profile.skin_of("sabre"))
+	WeaponFx.slash(_world_fixed, _lpos, _face, sk, _lh + 0.95)
+	_send_action("slash", _held_code(), _lpos, _face)
 	if _atmo != null:
 		_atmo.on_swing(_lpos, _face)   # les palmiers et buissons devant frémissent
 	if _is_authority():
@@ -2091,8 +2133,8 @@ func _try_shoot(wid: String) -> void:
 	_atk_cd = float(def.get("cooldown", 1.0))
 	var dir := _face.normalized()
 	_sprite.play_action("shoot_" + wid, _screen_of_face(dir))   # le pirate épaule, tire (recul) et reprend sa garde
-	_shot_fx(_lpos, dir, def)
-	_send_action("shot", wid, _lpos, dir)
+	_shot_fx(_lpos, dir, def, INF, WeaponSkins.def_of(wid, _profile.skin_of(wid)))
+	_send_action("shot", "%s|%s" % [wid, _profile.skin_of(wid)], _lpos, dir)
 	_shake_t = maxf(_shake_t, 0.1)
 	if _is_authority():
 		_resolve_shot(_my_id(), wid, _lpos, dir)
@@ -2135,14 +2177,18 @@ func apply_action(peer: int, kind: String, arg: String, pos: Vector2, dir: Vecto
 		print("[action] joueur %d : %s %s vers %s" % [peer, kind, arg, dir])
 	match kind:
 		"slash":
+			var sl := arg.split("|")
+			var ssk := WeaponSkins.def_of("sabre", sl[1] if sl.size() > 1 else WeaponSkins.CLASSIC)
 			sprite.play_action("slash_sabre", screen)
 			_islands.spawn_slash(pos, dir)
+			WeaponFx.slash(_world_fixed, pos, dir, ssk, height + 0.95)
 		"shot":
-			var def := Weapons.get_def(arg)
+			var sp := arg.split("|")
+			var def := Weapons.get_def(sp[0])
 			if def.is_empty():
 				return
-			sprite.play_action("shoot_" + arg, screen)
-			_shot_fx(pos, dir, def, height)
+			sprite.play_action("shoot_" + sp[0], screen)
+			_shot_fx(pos, dir, def, height, WeaponSkins.def_of(sp[0], sp[1] if sp.size() > 1 else WeaponSkins.CLASSIC))
 		"cast":
 			var parts := arg.split("|")
 			if parts.size() < 2:
@@ -2155,54 +2201,10 @@ func apply_action(peer: int, kind: String, arg: String, pos: Vector2, dir: Vecto
 
 
 ## Éclair de bouche, traînées de plomb et fumée d'un tir. `height` : la hauteur du sol du tireur (celui qui tire, sinon moi).
-func _shot_fx(origin: Vector2, dir: Vector2, def: Dictionary, height: float = INF) -> void:
-	var pellets := int(def.get("pellets", 1))
-	var reach := float(def.get("range", 10.0))
-	var spread := float(def.get("spread", 0.0))
-	var color := Color.html(str(def.get("color", "#ffe9a8")))
+func _shot_fx(origin: Vector2, dir: Vector2, def: Dictionary, height: float = INF, skin_def: Dictionary = {}) -> void:
 	var y := (_lh if height == INF else height) + 0.95
-	for k in pellets:
-		var d := dir.rotated(randf_range(-spread, spread)) if spread > 0.0 else dir
-		var from := origin + d * 0.7
-		var to := origin + d * reach
-		var seg := to - from
-		var tracer := MeshInstance3D.new()
-		var bm := BoxMesh.new()
-		bm.size = Vector3(0.06 if pellets > 1 else 0.09, 0.05, seg.length())
-		tracer.mesh = bm
-		var tm := StandardMaterial3D.new()
-		tm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-		tm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-		tm.albedo_color = Color(color.r, color.g, color.b, 0.9)
-		tracer.material_override = tm
-		tracer.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		_world_fixed.add_child(tracer)
-		tracer.position = Vector3((from.x + to.x) * 0.5, y, (from.y + to.y) * 0.5)
-		tracer.rotation.y = atan2(seg.x, seg.y)
-		var tw := tracer.create_tween()
-		tw.tween_property(tm, "albedo_color:a", 0.0, 0.14)
-		tw.tween_callback(tracer.queue_free)
-	var flash := _make_ball(0.3, Color(1.0, 0.85, 0.45))
-	(flash.material_override as StandardMaterial3D).shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	flash.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	_world_fixed.add_child(flash)
-	flash.position = Vector3(origin.x + dir.x * 0.8, y, origin.y + dir.y * 0.8)
-	var ft := flash.create_tween()
-	ft.tween_property(flash, "scale", Vector3.ZERO, 0.12)
-	ft.tween_callback(flash.queue_free)
-	var puff := _make_ball(0.25, Color(0.82, 0.82, 0.85))
-	var pm := puff.material_override as StandardMaterial3D
-	pm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	pm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	puff.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	_world_fixed.add_child(puff)
-	puff.position = Vector3(origin.x + dir.x * 0.9, y, origin.y + dir.y * 0.9)
-	var pt := puff.create_tween()
-	pt.set_parallel(true)
-	pt.tween_property(puff, "position", puff.position + Vector3(dir.x, 0.5, dir.y) * 1.2, 0.8)
-	pt.tween_property(puff, "scale", Vector3.ONE * 2.2, 0.8)
-	pt.tween_property(pm, "albedo_color:a", 0.0, 0.8).from(0.7)
-	pt.chain().tween_callback(puff.queue_free)
+	WeaponFx.shot(_world_fixed, origin, dir, int(def.get("pellets", 1)), float(def.get("range", 10.0)), float(def.get("spread", 0.0)),
+			Color.html(str(def.get("color", "#ffe9a8"))), skin_def, y)
 
 
 ## X : l'arme suivante du sac.
@@ -2228,6 +2230,12 @@ func _inventory_rows() -> Array:
 			right += "   (%d %s)" % [_profile.ammo_count(ammo), Weapons.ammo_label(ammo)]
 		rows.append({"kind": "weapon", "id": str(id), "label": str(def.get("name", id)), "right": right, "enabled": not held,
 				"desc": str(def.get("desc", ""))})
+		var owned_skins := _profile.skins_for(str(id))
+		if owned_skins.size() > 1:   # des skins gagnés ou achetés : une ligne pour changer l'apparence de cette arme
+			var worn := _profile.skin_of(str(id))
+			rows.append({"kind": "wskin", "id": str(id), "label": "      Apparence : %s" % WeaponSkins.skin_name(str(id), worn),
+					"right": "%s   (E : changer)" % WeaponSkins.rarity_label(str(id), worn), "enabled": true,
+					"desc": str(WeaponSkins.def_of(str(id), worn).get("desc", "L'arme d'origine."))})
 	rows.append({"head": true, "label": "Baies des dieux"})
 	if _profile.berries.is_empty():
 		rows.append({"kind": "none", "id": "", "label": "(aucune baie dans le sac)", "right": "", "enabled": false,
@@ -2267,11 +2275,20 @@ func _toggle_inventory() -> void:
 
 
 func _on_inventory_use(kind: String, id: String) -> void:
+	if _chest_island >= 0:   # le panneau montre le coffre d'une cabane
+		_on_chest_use(kind, id)
+		return
 	match kind:
 		"weapon":
 			_profile.weapon = id
 			_profile.save()
 			_say("En main : %s" % Weapons.weapon_name(id), 2.0)
+		"wskin":
+			var list := _profile.skins_for(id)
+			var nxt := str(list[(list.find(_profile.skin_of(id)) + 1) % list.size()])
+			_profile.skin_worn[id] = nxt
+			_profile.save()
+			_say("%s : %s" % [Weapons.weapon_name(id), WeaponSkins.skin_name(id, nxt)], 2.5)
 		"berry":
 			_eat_berry(id)
 		"craft":
@@ -3491,6 +3508,7 @@ func _add_remote(id: int, pos: Vector2) -> void:
 	_ship.add_child(sprite)   # d'abord dans la scène : set_look peut finir tout de suite (feuille déjà en cache) et la boussole a besoin de la transformation globale
 	sprite.enable_actions()   # on doit voir ses tirs, ses pouvoirs et ses coups de sabre
 	sprite.set_look(_remote_looks.get(id, PirateLook.random_look(id)))
+	_apply_held(sprite, str(_remote_held.get(id, "")))
 	var ball := _make_ball(0.14, Color(0.12, 0.12, 0.16))
 	ball.visible = false
 	sprite.add_child(ball)
@@ -3564,9 +3582,35 @@ func apply_ship_skin_json(json: String) -> void:
 		ShipSkin.apply(_ship, _ship_skin)
 
 
+## « arme|skin » de ce que je tiens en main : envoyé aux autres joueurs avec mon apparence.
+func _held_code() -> String:
+	return "%s|%s" % [_profile.weapon, _profile.skin_of(_profile.weapon)]
+
+
+## Met dans la main d'un sprite l'arme décrite par « arme|skin » (vide : rien).
+func _apply_held(sprite: PirateSprite, code: String) -> void:
+	var p := code.split("|")
+	if p.size() == 2 and Weapons.exists(p[0]) and WeaponSkins.exists(p[0], p[1]):
+		sprite.set_weapon(p[0], p[1])
+
+
+## Chaque image : l'arme en main (et son skin) se voit sur mon pirate ; si elle change, les autres joueurs la voient aussi.
+func _sync_held_weapon() -> void:
+	if _sprite == null:
+		return
+	_sprite.set_weapon(_profile.weapon, _profile.skin_of(_profile.weapon))
+	var code := _held_code()
+	if code != _held_sent:
+		_held_sent = code
+		if _net != null and _net.active:
+			_net.broadcast_look()
+
+
 ## Mon apparence, à envoyer aux autres joueurs.
 func local_look_json() -> String:
-	return PirateLook.key(_local_look())
+	var d: Dictionary = (_local_look() as Dictionary).duplicate(true)
+	d["held"] = _held_code()
+	return JSON.stringify(d, "", true)
 
 
 ## Reçoit l'apparence d'un autre joueur.
@@ -3576,8 +3620,11 @@ func apply_remote_look(id: int, json: String) -> void:
 		return
 	var look := PirateLook.sanitize(parsed)
 	_remote_looks[id] = look
+	_remote_held[id] = str((parsed as Dictionary).get("held", ""))
 	if _remotes.has(id):
-		(_remotes[id]["sprite"] as PirateSprite).set_look(look)
+		var rs := _remotes[id]["sprite"] as PirateSprite
+		rs.set_look(look)
+		_apply_held(rs, _remote_held[id])
 
 
 ## Donne au filtre « palette » les couleurs des pirates (elles changent quand l'apparence change).
@@ -3729,7 +3776,27 @@ func _update_atmosphere(delta: float) -> void:
 				battle = true
 	_atmo.update(delta, {"pos": pos, "where": where, "speed": _sim.speed / maxf(_sim.max_speed, 0.1) * 8.0, "moved": moved,
 			"face": _face, "focus": _cam_focus, "paused": _pause.is_open(), "battle": battle})
+	_apply_grade()
 	_spawn_castaways()
+
+
+## Envoie l'étalonnage du ciel (heure, météo) au filtre d'image ; dans la cale, l'image reste neutre.
+func _apply_grade() -> void:
+	if _post_mat == null:
+		return
+	var g: Dictionary = _atmo.sky.grade
+	if g.is_empty() or _loc == Loc.HOLD or not _atmo.sky.enabled:
+		g = {"tint": Vector3.ONE, "shadow": Vector3.ZERO, "high": Vector3.ZERO, "sat": 1.0, "contrast": 1.0,
+				"vignette": 0.12, "haze_color": Vector3(0.8, 0.8, 0.8), "haze": 0.0}
+	_post_mat.set_shader_parameter("grade_tint", g["tint"])
+	_post_mat.set_shader_parameter("grade_shadow", g["shadow"])
+	_post_mat.set_shader_parameter("grade_high", g["high"])
+	_post_mat.set_shader_parameter("grade_sat", g["sat"])
+	_post_mat.set_shader_parameter("grade_contrast", g["contrast"])
+	_post_mat.set_shader_parameter("vignette", g["vignette"])
+	_post_mat.set_shader_parameter("haze_color", g["haze_color"])
+	_post_mat.set_shader_parameter("haze_amount", g["haze"])
+	_post_mat.set_shader_parameter("flash", _atmo.sky.flash)
 
 
 ## Les naufragés des îles (camps tirés avec l'île) : leur PNJ naît quand l'île est posée dans le monde.
@@ -4093,6 +4160,8 @@ func _interact(secondary: bool) -> void:
 				_read_lore(lore)
 			elif berry >= 0:
 				_pick_berry(berry)
+			elif _outpost_interact():
+				pass
 			elif not _try_board_raft_from_land():
 				_try_board()
 		return
@@ -4251,6 +4320,11 @@ func apply_item_got(kind: String) -> void:
 		_profile.gold += n
 		_profile.save()
 		_popup("+%d or" % n, here, Color(1.0, 0.85, 0.3))
+	elif kind.begins_with("n:"):   # sorti du coffre d'une cabane : « n:plank:5 »
+		var parts := kind.split(":")
+		if parts.size() == 3:
+			_receive_supply(parts[1], int(parts[2]))
+	_refresh_chest_ui()
 
 
 ## Où je suis dans le monde (x, z), quel que soit l'endroit.
@@ -5099,6 +5173,7 @@ func _update_hud() -> void:
 		_gold_label.text += "\nCoffre : %d trésor(s), %d or" % [_stash.size(), Treasure.total_value(_stash)]
 	if _carry_kind == "treasure":
 		_gold_label.text += "\nTu portes : %s (%d or)" % [Treasure.name_of(_carry_item), Treasure.value_of(_carry_item)]
+	_sync_held_weapon()
 	_weapon_label.visible = _loc == Loc.LAND
 	if _weapon_label.visible:
 		var wid: String = _profile.weapon
@@ -5156,6 +5231,8 @@ func _update_hud() -> void:
 		elif _islands.nearest_berry(_lpos) >= 0:
 			var spot: Dictionary = _islands.berry_spots[_islands.nearest_berry(_lpos)]
 			_prompt.text = "E : cueillir la %s (elle va dans ton sac : Tab pour la manger)" % BerryBook.berry_name(str(spot["berry"]))
+		elif _outpost_prompt() != "":
+			_prompt.text = _outpost_prompt()
 		else:
 			var base := "E : monter à bord   Espace : sauter" if _nearest_ship_ladder_from_land() >= 0 else "Espace : sauter"
 			_prompt.text = base + ("   F / clic : frapper" if _islands.island_at(_lpos, 2.0) >= 0 else "")
@@ -5219,7 +5296,12 @@ var _remote_rafts: Dictionary = {}    ## id du joueur -> son radeau vu de loin (
 
 ## Fabrique `id` (voir data/crafting.json) avec ce qu'il y a dans le sac. Le radeau se pose sur l'eau libre la plus proche.
 func _craft(id: String) -> void:
-	if Crafting.get_def(id).is_empty() or id != "raft":
+	if Crafting.get_def(id).is_empty():
+		return
+	if id == "cabin":
+		_craft_cabin()
+		return
+	if id != "raft":
 		return
 	if _raft != null:
 		_say("Tu as déjà un radeau, à %d m d'ici" % int(_raft.sim.position.distance_to(_my_world_pos())), 3.5)
@@ -5240,6 +5322,341 @@ func _craft(id: String) -> void:
 	_dbg("radeau fabriqué en (%.1f, %.1f), cap %.0f°, planches restantes %d" % [spot["pos"].x, spot["pos"].y, rad_to_deg(spot["yaw"]), _profile.planks])
 	_splash_burst(spot["pos"])
 	_say("Radeau fabriqué ! Monte dessus : E ou saute (Espace). A/D : barrer   W/S : hisser / affaler la voile", 7.0)
+
+
+# ------------------------------------------------------------------ îles capturées et cabanes (voir Outpost)
+# L'état (îles capturées, cabanes, contenu des coffres) vit chez l'hôte (son profil) ; les invités en reçoivent une copie
+# (`_client_outposts`) et lui demandent tout par `apply_cabin`. Le coffre d'une cabane est donc partagé par tout l'équipage.
+
+var _outpost_nodes: Dictionary = {}   ## id d'île -> {"flag": Node3D, "flag_captured": bool, "cabin": Node3D}
+var _outpost_t := 0.0                 ## s avant la prochaine mise à jour des drapeaux et cabanes
+var _client_outposts := _outposts_holder()   ## chez un invité : la copie de l'état de l'hôte (jamais enregistrée)
+var _chest_island := -1               ## indice de l'île dont le coffre est ouvert dans le panneau (-1 : c'est le sac habituel)
+
+
+static func _outposts_holder() -> Profile:
+	var p := Profile.new()
+	p.persistent = false
+	return p
+
+
+## Le profil qui fait foi pour les îles capturées et les cabanes : le mien si je suis l'hôte (ou seul), sinon la copie reçue.
+func _op() -> Profile:
+	return _profile if _is_authority() else _client_outposts
+
+
+## Hôte -> invités : l'état des îles capturées et des cabanes.
+func outposts_net_state() -> Dictionary:
+	return Outpost.export_state(_profile)
+
+
+func apply_outposts_state(s: Dictionary) -> void:
+	Outpost.import_state(_client_outposts, s)
+	_outpost_t = 0.0
+	_refresh_chest_ui()
+
+
+## Toutes les demi-secondes : les îles capturées ne se repeuplent plus, et chaque île vaincue ou capturée montre son
+## drapeau (blanc, puis noir) ; chaque cabane bâtie est posée (et bloque le passage) dès que son île existe.
+func _sync_outposts(delta: float) -> void:
+	_outpost_t -= delta
+	if _outpost_t > 0.0:
+		return
+	_outpost_t = 0.5
+	var op := _op()
+	for cid: Variant in op.captured:
+		_islands.held[str(cid)] = true
+	for i in _islands.islands.size():
+		var isl: Dictionary = _islands.islands[i]
+		if isl["node"] == null:
+			continue
+		var id := str(isl["id"])
+		var captured := Outpost.is_captured(op, id)
+		var rec: Dictionary = _outpost_nodes.get(id, {})
+		var show_flag := captured or _islands.is_cleared(i)
+		var flag: Node3D = rec.get("flag", null)
+		if flag != null and (not show_flag or bool(rec.get("flag_captured", false)) != captured):
+			flag.queue_free()
+			flag = null
+		if flag == null and show_flag:
+			var fp := Outpost.flag_pos(_islands, i)
+			flag = Outpost.make_flag(_world_fixed, fp, _islands.ground_h(fp), captured)
+		rec["flag"] = flag
+		rec["flag_captured"] = captured
+		if Outpost.has_cabin(op, id) and rec.get("cabin", null) == null:
+			var cp := Outpost.cabin_pos(op, id)
+			if cp != Vector2.INF:
+				rec["cabin"] = Outpost.make_cabin(_world_fixed, cp, _islands.ground_h(cp))
+				var h := Outpost.CABIN_HALF
+				_land.obstacles.append([cp.x - h, -(cp.y + h), cp.x + h, -(cp.y - h)])
+		_outpost_nodes[id] = rec
+
+
+## E à terre près d'une cabane (ouvrir son coffre) ou d'un drapeau (capturer l'île). Faux s'il n'y a rien à portée.
+func _outpost_interact() -> bool:
+	var ci := Outpost.cabin_near(_islands, _op(), _lpos)
+	if ci >= 0:
+		_open_cabin_chest(ci)
+		return true
+	var fi := Outpost.flag_near(_islands, _op(), _lpos)
+	if fi >= 0:
+		_interact_flag(fi)
+		return true
+	return false
+
+
+func _interact_flag(i: int) -> void:
+	var id := str((_islands.islands[i] as Dictionary)["id"])
+	if Outpost.is_captured(_op(), id):
+		_say("Cette île est à vous. Fabrique-y une cabane pour ranger vos affaires (Tab, Fabrication : %s)" % Crafting.cost_text("cabin"), 5.0)
+		return
+	_cabin_send("capture", i, "", 0, Vector2.ZERO)
+
+
+## Une action sur les îles capturées : chez l'hôte on l'applique, chez un invité on la lui demande.
+func _cabin_send(op: String, island: int, kind: String, n: int, pos: Vector2) -> void:
+	if _is_authority():
+		apply_cabin(_my_id(), op, island, kind, n, pos)
+	elif _net != null and _net.active:
+		_net.send_cabin(op, island, kind, n, pos)
+
+
+## Hôte (ou solo) : applique l'action de `peer` sur l'île `island` : « capture » (drapeau hissé), « build » (cabane posée en
+## `pos`), « put » (range `n` de `kind` : l'invité les a déjà sortis de son sac) ou « take » (en sort jusqu'à `n` et les lui donne).
+func apply_cabin(peer: int, op: String, island: int, kind: String, n: int, pos: Vector2) -> void:
+	if not _is_authority() or island < 0 or island >= _islands.islands.size():
+		return
+	var isl: Dictionary = _islands.islands[island]
+	var id := str(isl["id"])
+	match op:
+		"capture":
+			if Outpost.is_captured(_profile, id) or not _islands.is_cleared(island):
+				return
+			Outpost.capture(_profile, id)
+			_islands.held[id] = true
+			var reward := Outpost.capture_reward(_islands, island)
+			_give_loot(peer, reward, Outpost.flag_pos(_islands, island))
+			_announce("%s est capturée ! Plus rien n'y reviendra. Fabriquez-y une cabane (Tab) pour ranger vos affaires" % str(isl["name"]))
+		"build":
+			if not Outpost.is_captured(_profile, id) or Outpost.has_cabin(_profile, id) or pos == Vector2.INF:
+				return
+			if _islands.sdf(island, pos) < Outpost.CABIN_HALF + 0.6:
+				return
+			Outpost.build_cabin(_profile, id, pos)
+			_announce("Une cabane est bâtie sur %s : son coffre est à tout l'équipage" % str(isl["name"]))
+		"put":
+			Outpost.deposit(_profile, id, kind, n)
+		"take":
+			var got := Outpost.withdraw(_profile, id, kind, n)
+			if got > 0:
+				if kind.begins_with("t:") or kind.begins_with("b:"):
+					for k in got:
+						_give_item(peer, kind)
+				else:
+					_give_item(peer, "n:%s:%d" % [kind, got])
+		_:
+			return
+	_outpost_t = 0.0
+	if _net != null and _net.active:
+		_net.broadcast_outposts()
+	_refresh_chest_ui()
+
+
+## Un message pour tout l'équipage (et pour moi).
+func _announce(text: String) -> void:
+	_say(text, 6.0)
+	if _net != null and _net.active and _net.is_host:
+		_net.broadcast_notice(text)
+
+
+## Le texte d'invite près d'un drapeau ou d'une cabane, ou "" s'il n'y en a pas à portée.
+func _outpost_prompt() -> String:
+	var op := _op()
+	var ci := Outpost.cabin_near(_islands, op, _lpos)
+	if ci >= 0:
+		return "E : ouvrir le coffre de la cabane (partagé)   —   %s" % Outpost.stash_text(op, str((_islands.islands[ci] as Dictionary)["id"]))
+	var fi := Outpost.flag_near(_islands, op, _lpos)
+	if fi >= 0:
+		var fid := str((_islands.islands[fi] as Dictionary)["id"])
+		if Outpost.is_captured(op, fid):
+			return "Votre île — Tab, Fabrication : bâtir une cabane (%s)" % Crafting.cost_text("cabin")
+		return "E : hisser le drapeau et capturer l'île (+%d or)" % Outpost.capture_reward(_islands, fi)
+	return ""
+
+
+## Bâtit la cabane de l'île où l'on se tient (capturée, assez de planches, un emplacement plat) un peu devant soi.
+func _craft_cabin() -> void:
+	if _loc != Loc.LAND:
+		_say("La cabane se bâtit à terre, sur une île capturée", 3.5)
+		return
+	var op := _op()
+	var i := _islands.island_at(_lpos)
+	var id := str((_islands.islands[i] as Dictionary)["id"]) if i >= 0 else ""
+	if i < 0 or not Outpost.is_captured(op, id):
+		_say("Une cabane ne se bâtit que sur une île capturée : bats tous ses ennemis, ouvre ses coffres, puis hisse le drapeau", 5.5)
+		return
+	if Outpost.has_cabin(op, id):
+		_say("Il y a déjà une cabane sur cette île", 3.0)
+		return
+	if not Crafting.can_afford(_profile, "cabin"):
+		var lack := Crafting.missing(_profile, "cabin")
+		_say("Il te manque %d planche(s) pour la cabane (%s en tout)" % [int(lack.get("plank", 0)), Crafting.cost_text("cabin")], 5.0)
+		return
+	var spot := Outpost.cabin_spot(_islands, i, _lpos)
+	if spot == Vector2.INF:
+		_say("Pas assez de place ici : cherche un coin plat et dégagé de l'île", 4.5)
+		return
+	Crafting.pay(_profile, "cabin")
+	_cabin_send("build", i, "", 0, spot)
+
+
+# --- le coffre partagé : le panneau du sac, rempli avec ce qu'on peut ranger et ce que le coffre contient
+
+func _open_cabin_chest(island: int) -> void:
+	if _inventory.is_open() or _dialog.is_open() or _shop_menu.is_open() or _chart.is_open() or _pause.is_open():
+		return
+	_chest_island = island
+	_inventory.set_texts("Coffre de la cabane — à tout l'équipage", "Haut/Bas : choisir     E : ranger / reprendre     R / Échap : fermer")
+	_inventory.open(_chest_rows())
+
+
+func _on_inventory_closed() -> void:
+	_chest_island = -1
+	_inventory.set_texts()
+
+
+func _refresh_chest_ui() -> void:
+	if _chest_island >= 0 and _inventory.is_open():
+		_inventory.set_rows(_chest_rows())
+
+
+## Combien j'ai de `kind` sur moi (les trésors : celui que je porte ; les baies : celles du sac).
+func _have_of(kind: String) -> int:
+	if kind.begins_with("t:"):
+		return 1 if _carry_kind == "treasure" and _carry_item == kind.substr(2) else 0
+	if kind.begins_with("b:"):
+		return int(_profile.berries.get(kind.substr(2), 0))
+	match kind:
+		"plank":
+			return _profile.planks
+		"ball":
+			return _profile.balls
+		"bullets":
+			return _profile.bullets
+		"shells":
+			return _profile.shells
+		"gold":
+			return _profile.gold
+	return 0
+
+
+## Combien de `kind` je peux encore recevoir (la caisse est limitée ; les trésors ont besoin de mains libres).
+func _room_for(kind: String) -> int:
+	if kind.begins_with("t:"):
+		return 0 if _carrying else 1
+	if kind == "plank":
+		return SUPPLY_MAX - _profile.planks
+	if kind == "ball":
+		return SUPPLY_MAX - _profile.balls
+	return 1000000
+
+
+## Retire `n` de `kind` de mes affaires (ils partent dans le coffre).
+func _remove_have(kind: String, n: int) -> void:
+	if kind.begins_with("t:"):
+		_drop_carried()
+		return
+	if kind.begins_with("b:"):
+		_profile.add_berry(kind.substr(2), -n)
+		return
+	match kind:
+		"plank":
+			_profile.planks -= n
+		"ball":
+			_profile.balls -= n
+		"bullets":
+			_profile.bullets -= n
+		"shells":
+			_profile.shells -= n
+		"gold":
+			_profile.gold -= n
+	_profile.save()
+
+
+func _chest_rows() -> Array:
+	var rows: Array = []
+	if _chest_island < 0 or _chest_island >= _islands.islands.size():
+		return rows
+	var op := _op()
+	var id := str((_islands.islands[_chest_island] as Dictionary)["id"])
+	rows.append({"head": true, "label": "Dans ton sac — E : ranger"})
+	var mine: Array = []
+	if _carry_kind == "treasure":
+		mine.append("t:" + _carry_item)
+	var berry_ids: Array = _profile.berries.keys()
+	berry_ids.sort()
+	for bid in berry_ids:
+		mine.append("b:" + str(bid))
+	mine.append_array(Outpost.SUPPLY_KINDS)
+	var any := false
+	for kind: String in mine:
+		var have := _have_of(kind)
+		if have <= 0:
+			continue
+		any = true
+		var n := mini(Outpost.step_of(kind), have)
+		rows.append({"kind": "cab_put", "id": kind, "label": "%s  x%d" % [Outpost.kind_name(kind), have], "right": "ranger %d" % n,
+				"enabled": true, "desc": "Le coffre est à tout l'équipage : chacun peut y ranger et y reprendre ce qu'il veut."})
+	if not any:
+		rows.append({"kind": "none", "id": "", "label": "(rien à ranger)", "right": "", "enabled": false, "desc": ""})
+	rows.append({"head": true, "label": "Dans le coffre — E : reprendre"})
+	var items := Outpost.items_of(op, id)
+	var kinds: Array = items.keys()
+	kinds.sort()
+	if kinds.is_empty():
+		rows.append({"kind": "none", "id": "", "label": "(le coffre est vide)", "right": "", "enabled": false, "desc": ""})
+	for kind: String in kinds:
+		var inside := int(items[kind])
+		var take := mini(mini(Outpost.step_of(kind), inside), _room_for(kind))
+		rows.append({"kind": "cab_take", "id": kind, "label": "%s  x%d" % [Outpost.kind_name(kind), inside],
+				"right": "reprendre %d" % take if take > 0 else ("mains prises" if kind.begins_with("t:") else "sac plein"),
+				"enabled": take > 0, "desc": "Les trésors se reprennent un par un, à mains libres."})
+	return rows
+
+
+func _on_chest_use(kind: String, item: String) -> void:
+	if _chest_island < 0:
+		return
+	var id := str((_islands.islands[_chest_island] as Dictionary)["id"])
+	if kind == "cab_put":
+		var n := mini(Outpost.step_of(item), _have_of(item))
+		if n > 0 and Outpost.valid_kind(item):
+			_remove_have(item, n)
+			_cabin_send("put", _chest_island, item, n, Vector2.ZERO)
+	elif kind == "cab_take":
+		var n2 := mini(mini(Outpost.step_of(item), Outpost.count_of(_op(), id, item)), _room_for(item))
+		if n2 > 0:
+			_cabin_send("take", _chest_island, item, n2, Vector2.ZERO)
+	_refresh_chest_ui()
+
+
+## Je reçois `n` de `what` (« plank », « ball », « bullets », « shells », « gold ») sorti du coffre.
+func _receive_supply(what: String, n: int) -> void:
+	match what:
+		"plank":
+			_profile.planks = mini(_profile.planks + n, SUPPLY_MAX)
+		"ball":
+			_profile.balls = mini(_profile.balls + n, SUPPLY_MAX)
+		"bullets":
+			_profile.bullets += n
+		"shells":
+			_profile.shells += n
+		"gold":
+			_profile.gold += n
+		_:
+			return
+	_profile.save()
+	_popup("+%d %s" % [n, Outpost.kind_name(what).to_lower()], _my_world_pos(), Color(0.85, 0.85, 0.95))
 
 
 ## Un emplacement d'eau libre pour un radeau près de `from` : {pos, yaw} (l'étrave vers le large), ou {}.

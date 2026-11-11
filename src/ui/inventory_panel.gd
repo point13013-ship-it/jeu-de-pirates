@@ -57,6 +57,12 @@ func _label(pos: Vector2, font_size: int, color: Color) -> Label:
 	return l
 
 
+## Change le titre et la ligne d'aide (le panneau sert aussi de coffre de cabane) ; sans argument : ceux du sac.
+func set_texts(title: String = "Sac du pirate", foot: String = "Haut/Bas : choisir     E : utiliser     Tab / R : fermer") -> void:
+	_title.text = title
+	_foot.text = foot
+
+
 func is_open() -> bool:
 	return _open
 

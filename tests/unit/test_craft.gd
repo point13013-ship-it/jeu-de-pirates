@@ -23,7 +23,7 @@ func _profile(planks: int) -> Profile:
 
 func _test_recipe() -> void:
 	_check("la recette du radeau existe", not Crafting.get_def("raft").is_empty())
-	_check("le radeau est la seule recette listée", Crafting.order() == ["raft"])
+	_check("les recettes listées : radeau puis cabane", Crafting.order() == ["raft", "cabin"])
 	_check("le radeau est fait de planches", Crafting.cost_of("raft").has("plank") and Crafting.cost_of("raft").size() == 1)
 	_check("le radeau coûte plus de planches qu'on n'en a au départ", int(Crafting.cost_of("raft")["plank"]) > Profile.START_PLANKS)
 	_check("le coût s'écrit en toutes lettres", Crafting.cost_text("raft") == "%d planches" % int(Crafting.cost_of("raft")["plank"]))

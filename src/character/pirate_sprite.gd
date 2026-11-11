@@ -46,6 +46,8 @@ var _forced_frame := -1
 var _actions_on := false          ## les feuilles d'action sont fabriquées pour ce pirate (voir enable_actions)
 var _action := ""                 ## l'action en cours ("" : aucune)
 var _textures: Dictionary = {}   ## animation -> Texture2D
+var held_weapon := ""            ## l'arme en main (data/weapons.json) : dessinée sur toutes les feuilles où les mains sont libres (voir WeaponArt)
+var held_skin := WeaponSkins.CLASSIC
 
 
 func _init() -> void:
@@ -69,20 +71,42 @@ static func direction_of(v: Vector2) -> int:
 func set_look(new_look: Dictionary) -> void:
 	look = PirateLook.sanitize(new_look)
 	_textures.clear()
-	var key := PirateLook.key(look)
+	var sig := _sig()
 	for a: String in FPS:
-		_request(a, key)
+		_request(a, sig)
 	if _actions_on:
 		for a: String in ACTION_FPS:
-			_request(a, key)
+			_request(a, sig)
+
+
+## Met une arme (et son skin) dans la main du pirate : les feuilles où les mains sont libres sont refaites avec elle. Les anciennes
+## images restent affichées le temps que les nouvelles soient prêtes.
+func set_weapon(weapon: String, skin: String = WeaponSkins.CLASSIC) -> void:
+	if weapon == held_weapon and skin == held_skin:
+		return
+	held_weapon = weapon
+	held_skin = skin
+	var sig := _sig()
+	for a: String in FPS:
+		if WeaponArt.holds(a):
+			_request(a, sig)
+	if _actions_on:
+		for a: String in ACTION_FPS:
+			if WeaponArt.holds(a):
+				_request(a, sig)
+
+
+## Ce qui fait la différence d'une feuille : l'apparence et l'arme tenue.
+func _sig() -> String:
+	return "%s|%s:%s" % [PirateLook.key(look), held_weapon, held_skin]
 
 
 ## Fabrique aussi les feuilles de pouvoir et de tir (réservé au pirate du joueur : les autres n'en ont pas besoin).
 func enable_actions() -> void:
 	_actions_on = true
-	var key := PirateLook.key(look)
+	var sig := _sig()
 	for a: String in ACTION_FPS:
-		_request(a, key)
+		_request(a, sig)
 
 
 ## Joue une animation d'action une fois (« cast », « shoot_pistolet »…) en regardant vers `screen_dir` (vecteur d'écran).
@@ -141,9 +165,9 @@ func drive(delta: float, screen_move: Vector2, carrying: bool, at_helm: bool, he
 	_apply()
 
 
-func _request(a: String, key: String) -> void:
-	var tex: Texture2D = await texture_for(look, a)
-	if tex == null or not is_instance_valid(self) or PirateLook.key(look) != key:
+func _request(a: String, sig: String) -> void:
+	var tex: Texture2D = await texture_for(look, a, held_weapon, held_skin)
+	if tex == null or not is_instance_valid(self) or _sig() != sig:
 		return
 	_textures[a] = tex
 	_apply()
@@ -166,10 +190,12 @@ func _apply() -> void:
 
 
 ## La feuille d'une animation pour un look : calculée une fois puis gardée.
-static func texture_for(p_look: Dictionary, a: String) -> Texture2D:
+static func texture_for(p_look: Dictionary, a: String, weapon: String = "", skin: String = WeaponSkins.CLASSIC) -> Texture2D:
 	if not PirateLook.catalog().get("anims", {}).has(a):
 		return null
-	var key := PirateLook.key(p_look) + "|" + a
+	# l'arme n'entre dans la feuille que là où elle est dessinée (mains libres, et la bonne arme pour une animation de tir)
+	var sheets := WeaponArt.sheets(weapon, skin, a) if weapon != "" else {}
+	var key := PirateLook.key(p_look) + "|" + a + ("" if sheets.is_empty() else "|" + weapon + ":" + skin)
 	var tree := Engine.get_main_loop() as SceneTree
 	if _cache.has(key):
 		return _cache[key]
@@ -179,7 +205,9 @@ static func texture_for(p_look: Dictionary, a: String) -> Texture2D:
 		return _cache[key]
 	_building[key] = true
 	register_colors(PirateLook.sanitize(p_look))
-	var tex: Texture2D = await _compose(PirateLook.sanitize(p_look), a)
+	if not sheets.is_empty():
+		register_weapon(weapon, skin)
+	var tex: Texture2D = await _compose(PirateLook.sanitize(p_look), a, sheets)
 	_cache[key] = tex
 	_building.erase(key)
 	return tex
@@ -243,7 +271,19 @@ static func palette_texture() -> Texture2D:
 	return ImageTexture.create_from_image(img)
 
 
-static func _compose(p_look: Dictionary, a: String) -> Texture2D:
+## Ajoute à la palette « pirates » les couleurs d'une arme et de son skin (le filtre gros pixels ne doit pas les déformer).
+static func register_weapon(weapon: String, skin: String) -> void:
+	var added := false
+	for c: Color in WeaponArt.colors_of(weapon, skin):
+		var col := Color.from_rgba8(c.r8, c.g8, c.b8)
+		if palette_colors.size() < PALETTE_MAX and not palette_colors.has(col):
+			palette_colors.append(col)
+			added = true
+	if added:
+		palette_version += 1
+
+
+static func _compose(p_look: Dictionary, a: String, weapon_sheets: Dictionary = {}) -> Texture2D:
 	var cat := PirateLook.catalog()
 	var frame_size: Array = cat["frame"]
 	var frames: int = int(cat["anims"][a])
@@ -257,8 +297,12 @@ static func _compose(p_look: Dictionary, a: String) -> Texture2D:
 	var sequence: Array = []
 	for c: String in cat["order"]:
 		sequence.append([c, str(p_look["parts"].get(c, "none"))])
-	if a.begins_with("shoot_") or a.begins_with("slash_"):
-		sequence.append(["weapon", a.substr(6)])
+	# l'arme (dessinée par WeaponArt) : derrière le corps quand le pirate tourne le dos, sinon par-dessus tout
+	if weapon_sheets.get("back") is Image:
+		var back_rect := TextureRect.new()
+		back_rect.texture = ImageTexture.create_from_image(weapon_sheets["back"])
+		back_rect.stretch_mode = TextureRect.STRETCH_KEEP
+		vp.add_child(back_rect)
 	for entry: Array in sequence:
 		var c: String = entry[0]
 		var variant: String = entry[1]
@@ -274,6 +318,11 @@ static func _compose(p_look: Dictionary, a: String) -> Texture2D:
 			rect.stretch_mode = TextureRect.STRETCH_KEEP
 			rect.material = _shade_material(Color.html(color_spec if color_spec.begins_with("#") else p_look["colors"][color_spec]))
 			vp.add_child(rect)
+	if weapon_sheets.get("front") is Image:
+		var front_rect := TextureRect.new()
+		front_rect.texture = ImageTexture.create_from_image(weapon_sheets["front"])
+		front_rect.stretch_mode = TextureRect.STRETCH_KEEP
+		vp.add_child(front_rect)
 	var tree := Engine.get_main_loop() as SceneTree
 	tree.root.add_child.call_deferred(vp)
 	await tree.process_frame

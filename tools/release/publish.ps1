@@ -25,7 +25,22 @@ if ($LASTEXITCODE -ne 0) {
     if ($LASTEXITCODE -ne 0) { throw "Impossible d'initialiser le dépôt (existe-t-il ?)." }
 }
 
-& $Gh release create "v$version" (Join-Path $Out 'version.json') (Join-Path $Out 'JeuDePirates.pck') (Join-Path $Out 'JeuDePirates.exe') `
+# Les nouveautés (patchnotes) pour la salle de jeux : tools/release/patchnotes/patchnotes.json (la plus récente d'abord) et ses images.
+# L'entrée « prochaine » prend le numéro de cette version ; le fichier du dépôt est mis à jour pour garder l'historique.
+$PatchDir = Join-Path $PSScriptRoot 'patchnotes'
+$extras = @()
+$patchJson = Join-Path $PatchDir 'patchnotes.json'
+if (Test-Path $patchJson) {
+    $texte = [System.IO.File]::ReadAllText($patchJson, [System.Text.Encoding]::UTF8)
+    $texte = $texte.Replace('"version": "prochaine"', "`"version`": `"$version`"")
+    $utf8 = New-Object System.Text.UTF8Encoding($false)
+    [System.IO.File]::WriteAllText($patchJson, $texte, $utf8)
+    [System.IO.File]::WriteAllText((Join-Path $Out 'patchnotes.json'), $texte, $utf8)
+    $extras += (Join-Path $Out 'patchnotes.json')
+    $extras += @(Get-ChildItem $PatchDir -Filter *.png | ForEach-Object { $_.FullName })
+}
+
+& $Gh release create "v$version" (Join-Path $Out 'version.json') (Join-Path $Out 'JeuDePirates.pck') (Join-Path $Out 'JeuDePirates.exe') @extras `
     --repo $Repo --title "Version $version" --notes $Notes --latest
 if ($LASTEXITCODE -ne 0) { throw 'La publication a échoué.' }
 Write-Host "Publié : https://github.com/$Repo/releases/tag/v$version"

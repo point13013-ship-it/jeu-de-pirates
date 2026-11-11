@@ -1,0 +1,47 @@
+{
+  "_commentaire": "Les nouveautés affichées dans la salle de jeux (bouton Nouveautés, et après chaque mise à jour). La plus récente d'abord. 'version': 'prochaine' est remplacé par le numéro de la version au moment de la publication (publish.ps1). Les images sont les fichiers de ce dossier ; publish.ps1 les envoie avec la version.",
+  "versions": [
+    {
+      "version": "prochaine",
+      "titre": "Armes en main, skins d'armes et un jeu plus net",
+      "points": [
+        "Jeu plus net : sur un écran de 1080p ou plus, l'image est calculée avec des pixels deux fois plus fins, en vraies couleurs.",
+        "Ciel refait : lumière chaude le jour, or et violet au crépuscule, nuit de lune, brume en nuages qui dérivent, orage sombre, lanternes qui brillent.",
+        "L'arme que tu tiens se voit dans la main de ton pirate, et tous les joueurs la voient aussi, avec ses tirs et ses coups.",
+        "17 skins d'armes (sabre, pistolet, tromblon, fusil) : forme, couleurs, geste de tir et effets différents (pièces, foudre, aurore, notes de musique, confettis, fantôme...).",
+        "Les skins s'achètent chez Prosper le Doreur, sur la place, avec l'or des coffres. Change de skin dans le sac (Tab), sous l'arme."
+      ],
+      "images": []
+    },
+    {
+      "version": "2026.11.09-2241",
+      "titre": "Capturez des îles et bâtissez une cabane",
+      "points": [
+        "Capture d'île : bats tous les ennemis d'une île et ouvre tous ses coffres, un drapeau blanc apparaît. Hisse-le (E) pour capturer l'île et gagner de l'or (80 par crâne de danger). Le drapeau devient noir à tête de mort.",
+        "Une île capturée est à vous : ses ennemis et ses coffres ne reviennent plus (les tonneaux et les caisses, eux, repoussent toujours : de quoi faire des planches).",
+        "Cabane : sur une île capturée, ouvre le sac (Tab), rubrique Fabrication, et bâtis une cabane pour 12 planches. Une cabane par île.",
+        "Coffre partagé : le coffre de la cabane est à tout l'équipage. On peut y ranger tout ce qu'on veut : trésors, baies des dieux, planches, boulets, balles, cartouches et or. Chacun peut y ranger et y reprendre.",
+        "Jouable à plusieurs : tout le monde peut capturer, bâtir et utiliser le coffre. Tout l'équipage doit avoir la même version du jeu."
+      ],
+      "images": [
+        {"fichier": "capture-drapeau-blanc.png", "legende": "L'île est vaincue : le drapeau blanc attend d'être hissé"},
+        {"fichier": "capture-cabane.png", "legende": "Île capturée : drapeau noir et cabane avec son coffre"},
+        {"fichier": "capture-coffre-partage.png", "legende": "Le coffre partagé : ranger à gauche, reprendre à droite (E)"}
+      ]
+    },
+    {
+      "version": "2026.11.09-0002",
+      "titre": "Sauter, viser le grappin, naviguer sur un radeau",
+      "points": [
+        "Saut libre : saute du quai vers l'eau, du ponton vers le bateau, par-dessus les obstacles (Espace).",
+        "Grappin du bateau : au canon de l'étrave, vise à la souris tout autour du bateau et lance-le. Tu choisis ensuite de haler ton bateau ou de ramener un butin.",
+        "Radeau à voile : pour ne plus rester bloqué sur une île, fabrique-le avec 6 planches (Tab, Fabrication) au bord de l'eau."
+      ],
+      "images": [
+        {"fichier": "grappin-vise.png", "legende": "Viser le grappin du bateau"},
+        {"fichier": "saut-quai-eau.png", "legende": "Sauter du quai vers l'eau"},
+        {"fichier": "radeau-navigue.png", "legende": "Le radeau à voile"}
+      ]
+    }
+  ]
+}

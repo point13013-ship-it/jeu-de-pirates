@@ -7,6 +7,8 @@ func _initialize() -> void:
 		var p := a.split("=", true, 1)
 		args[p[0]] = p[1] if p.size() > 1 else "1"
 	var look := PirateLook.load_saved()
+	if args.has("default"):
+		look = PirateLook.default_look()
 	if args.has("seed"):
 		look = PirateLook.random_look(int(args["seed"]))
 	var tex: Texture2D = await PirateSprite.texture_for(look, "idle")

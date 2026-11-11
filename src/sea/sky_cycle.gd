@@ -24,7 +24,8 @@ var mist := 0.0
 var flash := 0.0                 ## éclair en cours (0…1)
 var lightning := false           ## vrai à l'image où un éclair part (le jeu lance alors le tonnerre)
 var enabled := true
-var phase := 0.4                 ## heure du jour, 0…1 (0,5 = midi, 0 = minuit)
+var grade := {}                  ## étalonnage de l'image pour le filtre (voir _compute_grade)
+var phase := 0.4               ## heure du jour, 0…1 (0,5 = midi, 0 = minuit)
 
 var _env: Environment
 var _sun: DirectionalLight3D
@@ -151,5 +152,38 @@ func _apply(_delta: float) -> void:
 	var fog_amount := clampf(mist + rain * 0.35, 0.0, 1.0)
 	_env.fog_enabled = fog_amount > 0.02
 	_env.fog_light_color = Color(0.25, 0.28, 0.40).lerp(Color(0.74, 0.80, 0.84), daylight)
-	_env.fog_density = 0.0012 + 0.0052 * fog_amount
+	_env.fog_density = 0.0004 + 0.0018 * fog_amount   # le gros de la brume est dans le filtre d'image (nuages de brume animés)
 	_env.fog_sun_scatter = 0.0
+	# lueur (bloom) : discrète le jour, nette la nuit pour les lanternes et les fenêtres
+	_env.glow_enabled = true
+	_env.glow_intensity = lerpf(0.95, 0.35, daylight)
+	_env.glow_bloom = lerpf(0.10, 0.02, daylight)
+	_env.glow_hdr_threshold = lerpf(0.85, 1.0, daylight)
+	_env.glow_blend_mode = Environment.GLOW_BLEND_MODE_SCREEN
+	_compute_grade(daylight, dusk, fog_amount)
+
+
+## Étalonnage de l'image (lu par le jeu et envoyé au filtre) : lumière chaude et ombres froides le jour, or et violet
+## au crépuscule, nuit de lune bleue et contrastée, brume en nuages qui dérivent, orage sombre et délavé.
+func _compute_grade(day: float, dusk: float, fog_amount: float) -> void:
+	var tint := Vector3(0.80, 0.90, 1.06).lerp(Vector3(1.03, 1.0, 0.95), day)
+	tint = tint.lerp(Vector3(1.13, 0.94, 0.84), dusk * 0.85)
+	var shadow := Vector3(0.0, 0.012, 0.055).lerp(Vector3(0.0, 0.008, 0.035), day)
+	shadow = shadow.lerp(Vector3(0.035, 0.0, 0.075), dusk)
+	var high := Vector3(0.0, 0.02, 0.07).lerp(Vector3(0.045, 0.028, 0.0), day)
+	high = high.lerp(Vector3(0.11, 0.05, -0.02), dusk)
+	var sat := lerpf(0.66, 1.12, day) + 0.1 * dusk
+	var con := lerpf(1.12, 1.06, day) + 0.04 * dusk
+	var vig := lerpf(0.55, 0.2, day) + 0.1 * dusk
+	var haze_c := Vector3(0.11, 0.14, 0.24).lerp(Vector3(0.80, 0.85, 0.88), day)
+	haze_c = haze_c.lerp(Vector3(0.95, 0.66, 0.58), dusk * 0.5)
+	var dark := clampf(maxf(storm, rain * 0.6), 0.0, 1.0)
+	tint *= 1.0 - 0.3 * dark
+	sat *= 1.0 - 0.28 * dark - 0.12 * mist
+	con *= 1.0 - 0.1 * mist
+	vig += 0.25 * dark
+	haze_c = haze_c.lerp(Vector3(0.30, 0.33, 0.40) * lerpf(0.4, 1.0, day), dark * 0.7)
+	grade = {
+		"tint": tint, "shadow": shadow, "high": high, "sat": sat, "contrast": con, "vignette": vig,
+		"haze_color": haze_c, "haze": fog_amount * 0.62,
+	}

@@ -11,6 +11,10 @@
       { "label": "Boîte de 6 cartouches", "desc": "Pour le tromblon", "stock": "shells", "qty": 6, "price": 20, "max": 36 }
     ]
   },
+  "prosper": {
+    "title": "Chez Prosper : skins d'armes",
+    "kind": "wskins"
+  },
   "armand": {
     "title": "L'Armurerie",
     "kind": "weapons"

@@ -22,8 +22,12 @@ var known_spells: Array = []       ## sorts déjà lancés (« baie:emplacement 
 var berries: Dictionary = {}       ## baies des dieux ramassées et gardées dans le sac, pas encore mangées : id de baie -> nombre
 var weapons: Array = ["sabre"]     ## armes possédées (data/weapons.json) ; le sabre est offert
 var weapon := "sabre"              ## l'arme en main
+var skins_owned: Array = []          ## skins d'armes possédés, « arme:id » (voir WeaponSkins) ; « classique » est toujours à nous
+var skin_worn: Dictionary = {}      ## arme -> skin posé dessus (absent : classique)
 var bullets := START_BULLETS       ## balles (pistolet, fusil de précision)
 var shells := START_SHELLS         ## cartouches (tromblon)
+var captured: Array = []           ## îles capturées (identifiants de data/islands.json) : plus d'ennemis ni de coffres qui reviennent (voir Outpost)
+var cabins: Dictionary = {}        ## cabanes bâties : id d'île -> {"at": [x, z], "stash": [trésors rangés dans le coffre]}
 var persistent := true
 
 const START_BULLETS := 12
@@ -61,10 +65,18 @@ func load_file() -> void:
 		var ws: Variant = d.get("weapons", ["sabre"])
 		weapons = (ws as Array).duplicate() if ws is Array and not (ws as Array).is_empty() else ["sabre"]
 		weapon = str(d.get("weapon", "sabre"))
+		var so: Variant = d.get("skins_owned", [])
+		skins_owned = (so as Array).duplicate() if so is Array else []
+		var sw: Variant = d.get("skin_worn", {})
+		skin_worn = (sw as Dictionary).duplicate() if sw is Dictionary else {}
 		if not weapons.has(weapon):
 			weapon = "sabre"
 		bullets = int(d.get("bullets", START_BULLETS))
 		shells = int(d.get("shells", START_SHELLS))
+		var cp: Variant = d.get("captured", [])
+		captured = (cp as Array).duplicate() if cp is Array else []
+		var cb: Variant = d.get("cabins", {})
+		cabins = (cb as Dictionary).duplicate(true) if cb is Dictionary else {}
 
 
 func save() -> void:
@@ -72,7 +84,7 @@ func save() -> void:
 		return
 	var f := FileAccess.open(PATH, FileAccess.WRITE)
 	if f != null:
-		f.store_string(JSON.stringify({"gold": gold, "quests": quests, "planks": planks, "balls": balls, "owned": owned, "ship_skin": ship_skin, "ships": ships, "ship": ship, "discovered": discovered, "berry": berry, "known_spells": known_spells, "berries": berries, "weapons": weapons, "weapon": weapon, "bullets": bullets, "shells": shells}, "\t"))
+		f.store_string(JSON.stringify({"gold": gold, "quests": quests, "planks": planks, "balls": balls, "owned": owned, "ship_skin": ship_skin, "ships": ships, "ship": ship, "discovered": discovered, "berry": berry, "known_spells": known_spells, "berries": berries, "weapons": weapons, "weapon": weapon, "skins_owned": skins_owned, "skin_worn": skin_worn, "bullets": bullets, "shells": shells, "captured": captured, "cabins": cabins}, "\t"))
 
 
 ## Ajoute (ou retire, n < 0) des baies `id` au sac.
@@ -109,5 +121,36 @@ func take_supply(kind: String) -> bool:
 		balls -= 1
 	else:
 		return false
+	save()
+	return true
+
+
+## Le skin posé sur l'arme `w` (« classique » par défaut ou si on ne le possède plus).
+func skin_of(w: String) -> String:
+	var s := str(skin_worn.get(w, WeaponSkins.CLASSIC))
+	return s if s == WeaponSkins.CLASSIC or skins_owned.has(WeaponSkins.key(w, s)) else WeaponSkins.CLASSIC
+
+
+func owns_skin(w: String, s: String) -> bool:
+	return s == WeaponSkins.CLASSIC or skins_owned.has(WeaponSkins.key(w, s))
+
+
+## Les skins qu'on peut poser sur l'arme `w` : classique, puis ceux qu'on possède.
+func skins_for(w: String) -> Array:
+	var out: Array = [WeaponSkins.CLASSIC]
+	for id in WeaponSkins.ids_of(w):
+		if skins_owned.has(WeaponSkins.key(w, str(id))):
+			out.append(str(id))
+	return out
+
+
+## Gagne un skin (« arme:id ») et le pose tout de suite. Faux si on l'avait déjà.
+func gain_skin(k: String) -> bool:
+	if skins_owned.has(k):
+		return false
+	skins_owned.append(k)
+	var p := k.split(":")
+	if p.size() == 2:
+		skin_worn[p[0]] = p[1]
 	save()
 	return true

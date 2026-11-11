@@ -189,3 +189,16 @@ depuis le sac puis navigué vent arrière, E pour débarquer, plonger puis remon
 Arguments d'essai ajoutés : `--aim=°` (impose la visée), `--planks=N`, `--craft=raft@t`, `--raft-ride=t`, `--log` (traces `[essai …]`).
 Pas encore regardé : prise de la barre / mât en même temps que le grappin, radeau contre une île générée, équilibre du radeau (planches),
 plusieurs joueurs sur un même radeau (un seul pirate se tient dessus pour l'instant).
+
+## Capture d'île et cabane (9 nov)
+
+- **Île vaincue** : plus aucun ennemi vivant et tous les coffres ouverts (`IslandWorld.is_cleared`). Un drapeau blanc apparaît près du centre.
+- **Capture** : E devant le drapeau (hôte ou solo seulement) → +80 or par crâne de danger, drapeau noir à tête de mort. L'île est dans `Profile.captured` ; `IslandWorld.held` empêche ennemis et coffres de revenir. Tonneaux et caisses repoussent toujours (planches).
+- **Cabane** : Tab → Fabrication → « Cabane » (12 planches), sur une île capturée, posée dans un coin plat un peu devant le joueur (`Outpost.cabin_spot`). Elle bloque le passage. Une par île, dans `Profile.cabins`.
+- **Coffre de la cabane** : E devant la porte range le trésor porté ou reprend le dernier rangé (même logique que le coffre du capitaine). Personnel au profil, pas partagé entre joueurs.
+- Code : `src/outpost.gd` (logique + modèles), branchement dans `sailing_game.gd` (section « îles capturées et cabanes »), test `tests/unit/test_outpost.gd` (écrit, jamais lancé).
+
+### Coffre partagé (mise à jour)
+
+- Le coffre de la cabane est **à tout l'équipage** et prend **tout** : trésors, baies, planches, boulets, balles, cartouches, or. E devant la porte ouvre un panneau (celui du sac) : « Dans ton sac — ranger » / « Dans le coffre — reprendre ». Paquets de 5 planches/boulets, 6 balles, 3 cartouches, 100 or ; trésors et baies un par un ; un trésor ne se reprend qu'à mains libres.
+- L'état (îles capturées, cabanes, contenu) vit dans le profil de l'**hôte** ; les invités reçoivent une copie (`outposts_net_state`, message `_outposts_state`, protocole 9) et demandent tout à l'hôte par `send_cabin` / `apply_cabin` (capture, build, put, take). Les invités peuvent donc capturer une île et bâtir une cabane (ils paient leurs planches).

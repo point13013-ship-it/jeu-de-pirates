@@ -29,6 +29,11 @@ func _init(p_profile: Profile, def: Dictionary, p_look: Dictionary) -> void:
 		for id in Weapons.order():
 			if int(Weapons.get_def(str(id)).get("price", 0)) > 0:
 				items.append({"weapon": str(id), "price": int(Weapons.get_def(str(id))["price"])})
+	if kind == "wskins":   # la boutique des skins d'armes : tous les skins, rangés par arme
+		items = []
+		for e: Dictionary in WeaponSkins.all():
+			if WeaponSkins.in_shop(e["weapon"], e["id"]):
+				items.append({"skin": WeaponSkins.key(e["weapon"], e["id"]), "weapon": e["weapon"], "id": e["id"], "price": WeaponSkins.price_of(e["weapon"], e["id"])})
 	look = p_look.duplicate(true)
 
 
@@ -47,6 +52,18 @@ func _worn(item: Dictionary) -> bool:
 ## Une ligne du menu : {label, desc, right (texte à droite), enabled}.
 func row(i: int) -> Dictionary:
 	var it: Dictionary = items[i]
+	if kind == "wskins":
+		var sw := str(it["weapon"])
+		var sid := str(it["id"])
+		var slabel := "%s  (%s)" % [WeaponSkins.skin_name(sw, sid), Weapons.weapon_name(sw)]
+		var sdesc := "%s  [%s]" % [str(WeaponSkins.def_of(sw, sid).get("desc", "")), WeaponSkins.rarity_label(sw, sid)]
+		if not profile.weapons.has(sw):
+			return {"label": slabel, "desc": "Il te faut d'abord : %s" % Weapons.weapon_name(sw), "right": "%d or" % int(it["price"]), "enabled": false}
+		if profile.skin_of(sw) == sid:
+			return {"label": slabel, "desc": sdesc, "right": "posé", "enabled": false}
+		if profile.owns_skin(sw, sid):
+			return {"label": slabel, "desc": sdesc, "right": "poser", "enabled": true}
+		return {"label": slabel, "desc": sdesc, "right": "%d or" % int(it["price"]), "enabled": profile.gold >= int(it["price"])}
 	if kind == "weapons":
 		var wid := str(it["weapon"])
 		var wdef := Weapons.get_def(wid)
@@ -86,6 +103,8 @@ func row(i: int) -> Dictionary:
 
 ## Réserves affichées en bas du menu.
 func stock_text() -> String:
+	if kind == "wskins":
+		return "Skins possédés : %d / %d" % [profile.skins_owned.size(), WeaponSkins.all().size()]
 	if kind == "weapons":
 		return "Balles : %d   Cartouches : %d" % [profile.bullets, profile.shells]
 	if kind != "supply":
@@ -96,6 +115,8 @@ func stock_text() -> String:
 ## Achète (ou remet) l'article `i`. Renvoie {ok, msg, look_changed}.
 func activate(i: int) -> Dictionary:
 	var it: Dictionary = items[i]
+	if kind == "wskins":
+		return _activate_weapon_skin(it)
 	if kind == "weapons":
 		return _activate_weapon(it)
 	if kind == "ships":
@@ -113,6 +134,25 @@ func activate(i: int) -> Dictionary:
 	profile.set(stock, int(profile.get(stock)) + int(it["qty"]))
 	profile.save()
 	return {"ok": true, "msg": "Acheté : %s" % str(it["label"]), "look_changed": false}
+
+
+## Boutique des skins : un skin d'arme s'achète une fois (il faut avoir l'arme), puis se repose gratuitement.
+func _activate_weapon_skin(it: Dictionary) -> Dictionary:
+	var w := str(it["weapon"])
+	var id := str(it["id"])
+	var sname := WeaponSkins.skin_name(w, id)
+	if not profile.weapons.has(w):
+		return {"ok": false, "msg": "Achète d'abord : %s." % Weapons.weapon_name(w), "look_changed": false}
+	if profile.skin_of(w) == id:
+		return {"ok": false, "msg": "Ce skin est déjà posé.", "look_changed": false}
+	if not profile.owns_skin(w, id):
+		if profile.gold < int(it["price"]):
+			return {"ok": false, "msg": "Pas assez d'or.", "look_changed": false}
+		profile.gold -= int(it["price"])
+		profile.skins_owned.append(WeaponSkins.key(w, id))
+	profile.skin_worn[w] = id
+	profile.save()
+	return {"ok": true, "msg": "Posé : %s" % sname, "look_changed": false}
 
 
 ## Armurerie : on paie une arme une fois, on la reprend ensuite gratuitement. Les munitions s'achètent au Magasin Général.

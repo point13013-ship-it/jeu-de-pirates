@@ -22,7 +22,7 @@ const ISLAND_RATE := 12.0   ## fois par seconde : état des ennemis et des coffr
 const LOOT_RATE := 6.0      ## fois par seconde : butin du monde
 const FLEET_RATE := 10.0    ## fois par seconde : bateaux ennemis
 const META_RATE := 2.0      ## fois par seconde : coffres, baies, tonneaux, îles générées
-const PROTOCOL := 8   # 8 : grappin visé (choix de s'attirer, état du crochet + propriétaire), radeaux des joueurs
+const PROTOCOL := 9   # 9 : îles capturées et cabanes (coffre partagé) ; 8 : grappin visé (choix de s'attirer, état du crochet + propriétaire), radeaux des joueurs
 
 var game: Node
 var active := false
@@ -246,6 +246,7 @@ func tick(delta: float) -> void:
 		if _meta_timer >= 1.0 / META_RATE:
 			_meta_timer = 0.0
 			_islands_static.rpc(game.islands_static_state())
+			_outposts_state.rpc(game.outposts_net_state())
 		_loot_timer += delta
 		if _loot_timer >= 1.0 / LOOT_RATE:
 			_loot_timer = 0.0
@@ -439,6 +440,29 @@ func broadcast_skin() -> void:
 func broadcast_look() -> void:
 	if active and multiplayer.multiplayer_peer != null and not multiplayer.get_peers().is_empty():
 		_look.rpc(game.local_look_json())
+
+
+## Hôte -> tous : îles capturées et cabanes avec le contenu de leur coffre (voir Outpost). Envoyé aussi à chaque changement.
+@rpc("authority", "call_remote", "reliable")
+func _outposts_state(s: Dictionary) -> void:
+	game.apply_outposts_state(s)
+
+
+func broadcast_outposts() -> void:
+	if active and is_host and multiplayer.multiplayer_peer != null and not multiplayer.get_peers().is_empty():
+		_outposts_state.rpc(game.outposts_net_state())
+
+
+## Client : capturer l'île `island` (« capture »), y bâtir une cabane en `pos` (« build »), ranger (« put ») ou reprendre
+## (« take ») `n` de `kind` dans son coffre.
+func send_cabin(op: String, island: int, kind: String, n: int, pos: Vector2) -> void:
+	_cabin.rpc_id(1, op, island, kind, n, pos)
+
+
+@rpc("any_peer", "call_remote", "reliable")
+func _cabin(op: String, island: int, kind: String, n: int, pos: Vector2) -> void:
+	if is_host:
+		game.apply_cabin(multiplayer.get_remote_sender_id(), op, island, kind, n, pos)
 
 
 ## Client : demande une action à l'hôte (barre, voiles, ancre, canons).

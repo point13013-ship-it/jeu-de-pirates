@@ -36,6 +36,7 @@ var chests: Array = []
 var berry_spots: Array = []
 var player_cfg: Dictionary = {}
 var kinds: Dictionary = {}
+var held: Dictionary = {}          ## îles capturées (id -> true) : leurs ennemis et leurs coffres ne reviennent plus
 var respawn_secs := 150.0
 var chest_respawn_secs := 600.0
 var active_range := 70.0
@@ -827,11 +828,12 @@ func step(delta: float, players: Array) -> Array:
 				near.append(p)
 			if sdf(i, p["pos"]) >= -1.0:
 				on_island.append(p)
+		var held_here := held.has(str(isl["id"]))   # île capturée : ni ennemis ni coffres ne reviennent
 		for en_id: int in isl["enemies"]:
 			var en := enemies[en_id]
 			if en.is_dead():
 				en.step(delta, on_island, self, _rng)
-				if en.timer <= 0.0 and on_island.is_empty() and near.is_empty():
+				if en.timer <= 0.0 and on_island.is_empty() and near.is_empty() and not held_here:
 					en.revive()
 				continue
 			if near.is_empty():
@@ -841,7 +843,7 @@ func step(delta: float, players: Array) -> Array:
 			var ch: Dictionary = chests[ch_id]
 			if ch["open"]:
 				ch["timer"] = float(ch["timer"]) - delta
-				if float(ch["timer"]) <= 0.0 and near.is_empty():
+				if float(ch["timer"]) <= 0.0 and near.is_empty() and not held_here:
 					ch["open"] = false
 		for k: int in isl["breakable_ids"]:
 			var b: Dictionary = breakables[k]
@@ -1422,6 +1424,14 @@ func chests_left(i: int) -> int:
 		if not (chests[ch_id] as Dictionary)["open"]:
 			n += 1
 	return n
+
+
+## Île vaincue : elle a des ennemis ou des coffres, et il n'en reste ni vivant ni fermé (voir Outpost).
+func is_cleared(i: int) -> bool:
+	var isl: Dictionary = islands[i]
+	if (isl["enemies"] as Array).is_empty() and (isl["chests"] as Array).is_empty():
+		return false
+	return enemies_alive(i) == 0 and chests_left(i) == 0
 
 
 func enemies_alive(i: int) -> int:

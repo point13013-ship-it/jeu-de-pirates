@@ -1,11 +1,17 @@
 {
-  "order": ["raft"],
+  "order": ["raft", "cabin"],
   "recipes": {
     "raft": {
       "name": "Radeau à voile",
       "cost": { "plank": 6 },
       "needs": "shore",
       "desc": "Pour quitter une île sans bateau : des planches liées, un mât, une voile de fortune. Se fabrique au bord de l'eau (planches : tonneaux et caisses des îles, étagère de la cale, Magasin Général)."
+    },
+    "cabin": {
+      "name": "Cabane",
+      "cost": { "plank": 12 },
+      "needs": "captured",
+      "desc": "Une cabane sur une île capturée (bats tous ses ennemis, ouvre ses coffres, hisse le drapeau). Son coffre garde tes trésors : E devant la porte pour les ranger ou les reprendre. Une seule par île."
     }
   }
 }

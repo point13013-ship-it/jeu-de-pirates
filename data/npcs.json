@@ -28,6 +28,9 @@
     { "id": "petronille", "name": "Mère Pétronille", "role": "marchande", "pos": [-12.5, 13.3], "h": 0.0, "facing": 0, "seed": 71,
       "parts": { "hat": "none", "hair": "bun" },
       "lines": ["Planches, boulets, biscuits... Tout ce qu'il faut pour ne pas finir au fond."] },
+    { "id": "prosper", "name": "Prosper le Doreur", "role": "doreur d'armes", "pos": [-22.4, 22.6], "h": 0.0, "facing": 0, "seed": 131,
+      "parts": { "hat": "plume", "mustache": "walrus", "coat": "captain" },
+      "lines": ["Un pistolet qui brille, ça fait trembler l'ennemi avant même le tir. Passe voir mes skins d'armes !"] },
     { "id": "armand", "name": "Armand Poudre-Noire", "role": "armurier", "pos": [-25.0, 21.8], "h": 0.0, "facing": 0, "seed": 113,
       "parts": { "hat": "bicorn", "beard": "forked", "coat": "vest" },
       "lines": ["Pistolets, tromblons, fusils de précision : tout ce qui fait du bruit et du vilain. Les balles et les cartouches, c'est chez Mère Pétronille."] }
