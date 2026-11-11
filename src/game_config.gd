@@ -39,9 +39,11 @@ const RAIN_FALL_SPEED := 16.0         ## m/s
 const RAIN_TOP := 14.0                ## m au-dessus de la mer d'où partent les gouttes
 const RAIN_DROP_WIDTH := 0.05         ## m : épaisseur d'un trait (l'image est en basse résolution : plus fin, il disparaît)
 const RAIN_DROP_LENGTH := 0.8         ## m
-const RAIN_ALPHA := 0.4
+const RAIN_ALPHA := 0.28            ## (0,4 au premier essai : un peu trop opaque selon Jimmy)
 const RAIN_RENDER_PRIORITY := 10      ## dessinée après la surface de la mer (transparente), sinon la mer la cache
 
 ## 1.7 Coque : un saut ne se pose plus de l'autre côté d'un mur (cabine) ni à travers le toit de la cabine. Quand il ne peut se
 ## poser nulle part sur le pont, le pirate tombe à l'eau à cette distance (unités du modèle) à l'extérieur de la coque.
 const HULL_OUTSIDE_MARGIN := 0.15
+## À la nage, on ne remonte à bord que par une échelle de coque : à moins de cette distance (m) de son pied.
+const LADDER_SWIM_REACH := 1.8

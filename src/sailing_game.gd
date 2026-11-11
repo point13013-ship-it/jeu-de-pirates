@@ -3247,19 +3247,22 @@ func _update_swim(move: Vector2, delta: float) -> void:
 	_lpos = next
 
 
-## E à la nage : si la coque est à portée, on se hisse sur le pont au point libre le plus proche.
+## E (ou Espace) à la nage : on ne remonte à bord QUE par une échelle de coque (demande 4.6, avancée au lot 1). Avant, n'importe
+## quel point de la coque suffisait, et le pirate était posé au point libre du pont le plus proche… parfois dans la cabine, à travers
+## son mur (le passage « du ponton à la cabine » signalé après le lot 1).
 func _try_board_from_water() -> void:
-	var bp := _world_to_ship(_lpos)
-	var hw := _ship.half_width(clampf(bp.x, -_ship.length * 0.5 + 0.2, _ship.length * 0.5 - 0.2))
-	var edge_dist := (absf(bp.y) - hw) * ShipModel.SCALE
-	var along_ok := bp.x > -_ship.length * 0.5 - 1.0 and bp.x < _ship.length * 0.5 + 1.0
-	if not along_ok or edge_dist > BOARD_REACH:
-		_say("Trop loin du bateau : nage jusqu'à la coque", 2.5)
+	var i := _nearest_ladder_from_water()
+	if i < 0:
+		var bp := _world_to_ship(_lpos)
+		var hw := _ship.half_width(clampf(bp.x, -_ship.length * 0.5 + 0.2, _ship.length * 0.5 - 0.2))
+		var near_hull := (absf(bp.y) - hw) * ShipModel.SCALE <= BOARD_REACH and bp.x > -_ship.length * 0.5 - 1.0 and bp.x < _ship.length * 0.5 + 1.0
+		_say("On ne remonte à bord que par l'échelle : nage jusqu'à elle" if near_hull else "Trop loin du bateau : nage jusqu'à l'échelle", 2.5)
 		return
 	if absf(_sim.speed) > 3.2:
 		_say("Le bateau va trop vite pour s'y accrocher", 2.5)
 		return
-	var deck := _ship.nearest_walkable(Vector2(clampf(bp.x, -_ship.length * 0.35, _ship.bow_x - 0.3), signf(bp.y) * maxf(hw - 0.5, 0.3)), 3.5)
+	var l: Array = _ship.ladders[i]
+	var deck := _ship.nearest_walkable(Vector2(float(l[0]), float(l[1])))
 	if not _ship.is_walkable(deck):
 		_say("Pas de place pour monter ici", 2.5)
 		return
@@ -3662,6 +3665,20 @@ func _try_disembark(i: int) -> void:
 	_climb = {"kind": "hull", "t": 0.0, "dur": 1.1, "from": _ship_to_world(_ppos), "to": target, "board": false}
 	_lpos = _climb["from"]
 	_mode = Mode.WALK
+
+
+## L'échelle de coque au pied de laquelle nage le pirate (à moins de GameConfig.LADDER_SWIM_REACH m), ou -1.
+func _nearest_ladder_from_water() -> int:
+	var best := -1
+	var best_d := GameConfig.LADDER_SWIM_REACH
+	for i in _ship.ladders.size():
+		var l: Array = _ship.ladders[i]
+		var foot := _ship_to_world(Vector2(float(l[0]), float(l[3]) + float(l[2]) * 0.3))   # le bas de l'échelle, contre la coque
+		var d := _lpos.distance_to(foot)
+		if d < best_d:
+			best_d = d
+			best = i
+	return best
 
 
 func _nearest_ship_ladder_from_land() -> int:
@@ -5799,7 +5816,15 @@ func _update_hud() -> void:
 		var hw := _ship.half_width(clampf(bp.x, -_ship.length * 0.5 + 0.2, _ship.length * 0.5 - 0.2))
 		var near_hull := (absf(bp.y) - hw) * ShipModel.SCALE <= BOARD_REACH and bp.x > -_ship.length * 0.5 - 1.0 and bp.x < _ship.length * 0.5 + 1.0
 		var near_raft := _raft != null and Raft.covers(_raft.sim.position, _raft.sim.yaw, _lpos, 1.6)
-		_prompt.text = "À la nage — E : monter sur ton radeau" if near_raft else ("À la nage — E : remonter à bord" if near_hull else "À la nage — rejoins la coque, une plage ou un quai")
+		var at_ladder := _nearest_ladder_from_water() >= 0
+		if near_raft:
+			_prompt.text = "À la nage — E : monter sur ton radeau"
+		elif at_ladder:
+			_prompt.text = "À la nage — E : monter à l'échelle"
+		elif near_hull:
+			_prompt.text = "À la nage — rejoins l'échelle pour remonter à bord"
+		else:
+			_prompt.text = "À la nage — rejoins l'échelle du bateau, une plage ou un quai"
 		return
 	if _loc == Loc.SHIP and _mode == Mode.SAILS:
 		_prompt.text = "Au mât — Q/D : orienter les voiles   Z/S : hisser / affaler   E : lâcher"
