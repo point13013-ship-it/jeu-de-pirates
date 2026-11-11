@@ -22,11 +22,13 @@ var known_spells: Array = []       ## sorts déjà lancés (« baie:emplacement 
 var berries: Dictionary = {}       ## baies des dieux ramassées et gardées dans le sac, pas encore mangées : id de baie -> nombre
 var weapons: Array = ["sabre"]     ## armes possédées (data/weapons.json) ; le sabre est offert
 var weapon := "sabre"              ## l'arme en main
+var weapon2 := ""                   ## l'arme secondaire (clic droit) ; vide : la première autre arme possédée
 var skins_owned: Array = []          ## skins d'armes possédés, « arme:id » (voir WeaponSkins) ; « classique » est toujours à nous
 var skin_worn: Dictionary = {}      ## arme -> skin posé dessus (absent : classique)
 var bullets := START_BULLETS       ## balles (pistolet, fusil de précision)
 var shells := START_SHELLS         ## cartouches (tromblon)
 var captured: Array = []           ## îles capturées (identifiants de data/islands.json) : plus d'ennemis ni de coffres qui reviennent (voir Outpost)
+var reputation := 0                ## points de réputation de pirate (voir Reputation) : ils débloquent des skins de bateau
 var cabins: Dictionary = {}        ## cabanes bâties : id d'île -> {"at": [x, z], "stash": [trésors rangés dans le coffre]}
 var persistent := true
 
@@ -65,6 +67,7 @@ func load_file() -> void:
 		var ws: Variant = d.get("weapons", ["sabre"])
 		weapons = (ws as Array).duplicate() if ws is Array and not (ws as Array).is_empty() else ["sabre"]
 		weapon = str(d.get("weapon", "sabre"))
+		weapon2 = str(d.get("weapon2", ""))
 		var so: Variant = d.get("skins_owned", [])
 		skins_owned = (so as Array).duplicate() if so is Array else []
 		var sw: Variant = d.get("skin_worn", {})
@@ -77,6 +80,7 @@ func load_file() -> void:
 		captured = (cp as Array).duplicate() if cp is Array else []
 		var cb: Variant = d.get("cabins", {})
 		cabins = (cb as Dictionary).duplicate(true) if cb is Dictionary else {}
+		reputation = maxi(int(d.get("reputation", 0)), 0)
 
 
 func save() -> void:
@@ -84,7 +88,50 @@ func save() -> void:
 		return
 	var f := FileAccess.open(PATH, FileAccess.WRITE)
 	if f != null:
-		f.store_string(JSON.stringify({"gold": gold, "quests": quests, "planks": planks, "balls": balls, "owned": owned, "ship_skin": ship_skin, "ships": ships, "ship": ship, "discovered": discovered, "berry": berry, "known_spells": known_spells, "berries": berries, "weapons": weapons, "weapon": weapon, "skins_owned": skins_owned, "skin_worn": skin_worn, "bullets": bullets, "shells": shells, "captured": captured, "cabins": cabins}, "\t"))
+		f.store_string(JSON.stringify({"gold": gold, "quests": quests, "planks": planks, "balls": balls, "owned": owned, "ship_skin": ship_skin, "ships": ships, "ship": ship, "discovered": discovered, "berry": berry, "known_spells": known_spells, "berries": berries, "weapons": weapons, "weapon": weapon, "weapon2": weapon2, "skins_owned": skins_owned, "skin_worn": skin_worn, "bullets": bullets, "shells": shells, "captured": captured, "cabins": cabins, "reputation": reputation}, "\t"))
+
+
+## Gagne `n` points de réputation. Renvoie {from, to, rank_from, rank_to} (pour l'animation de progression), ou {} si rien n'a changé.
+func add_reputation(n: int) -> Dictionary:
+	if n <= 0:
+		return {}
+	var before := reputation
+	reputation += n
+	save()
+	return {"from": before, "to": reputation, "rank_from": Reputation.rank_of(before), "rank_to": Reputation.rank_of(reputation)}
+
+
+## Le rang actuel (numéro).
+func rank() -> int:
+	return Reputation.rank_of(reputation)
+
+
+## Prend l'arme `id` en main principale (clic gauche). Si c'était l'arme secondaire, elle prend l'ancienne arme principale.
+func set_main_weapon(id: String) -> void:
+	if id == weapon:
+		return
+	if id == weapon2:
+		weapon2 = weapon
+	weapon = id
+
+
+## Fait de l'arme possédée `id` l'arme secondaire (clic droit). Si c'était l'arme principale, elles échangent leur place.
+func set_secondary_weapon(id: String) -> void:
+	if not weapons.has(id) or id == weapon2 or (id == weapon and weapons.size() < 2):
+		return
+	if id == weapon:
+		weapon = secondary_weapon()
+	weapon2 = id
+
+
+## L'arme du clic droit : celle choisie si on la possède encore, sinon la première autre arme du sac, sinon l'arme principale.
+func secondary_weapon() -> String:
+	if weapon2 != "" and weapon2 != weapon and weapons.has(weapon2):
+		return weapon2
+	for w: Variant in weapons:
+		if str(w) != weapon:
+			return str(w)
+	return weapon
 
 
 ## Ajoute (ou retire, n < 0) des baies `id` au sac.

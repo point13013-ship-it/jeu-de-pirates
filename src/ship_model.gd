@@ -5,8 +5,8 @@ extends Node3D
 ## avant mise à l'échelle) ; to_local3() convertit vers la scène Godot.
 
 const SCALE := 1.5            ## mètres de jeu par unité du modèle
-const WALK_RADIUS := 0.12     ## rayon du personnage, en unités du modèle
-const RAIL_MARGIN := 0.28      ## distance minimale du pirate au plat-bord
+const WALK_RADIUS := 0.08     ## rayon du personnage, en unités du modèle
+const RAIL_MARGIN := 0.18      ## distance minimale du pirate au plat-bord
 const MIN_LANE := 0.45        ## demi-largeur minimale du couloir de marche (vers l'étrave)
 
 var ship_name: String = ""
@@ -228,9 +228,13 @@ func move_air(from: Vector2, delta: Vector2, h: float) -> Vector2:
 
 
 ## Vrai si le point est au-dessus de la coque (pont, plat-bord compris) et pas au-dessus de l'eau.
+## Tout point où l'on peut marcher compte comme coque : vers l'étrave, la coque est plus étroite que le couloir de
+## marche (MIN_LANE), et sans cela le pirate qui marche jusqu'à la pointe tombait à l'eau sans avoir sauté.
 func over_hull(bp: Vector2) -> bool:
 	var u := (bp.x + length * 0.5) / length
-	return u > 0.0 and u < 1.0 and absf(bp.y) <= half_width(bp.x)
+	if u > 0.0 and u < 1.0 and absf(bp.y) <= half_width(bp.x):
+		return true
+	return is_walkable(bp)
 
 
 ## Où retombe un pirate qui touche le pont en bp : le point lui-même s'il est libre, le point libre voisin s'il
@@ -257,6 +261,14 @@ func nearest_walkable(bp: Vector2, max_dist: float = 3.0) -> Vector2:
 				return q
 		d += 0.1
 	return bp
+
+
+## Vrai si le point monde `p` (x/z) est au-dessus de cette coque quand le bateau est en `sim_pos` avec le cap `yaw`
+## (même repère que hull_points_world : sert aux collisions entre bateaux).
+func contains_world(sim_pos: Vector2, yaw: float, p: Vector2) -> bool:
+	var rel := p - sim_pos
+	var local := Basis(Vector3.UP, -yaw) * Vector3(rel.x, 0.0, rel.y)
+	return over_hull(Vector2(local.x / SCALE - shift, -local.z / SCALE))
 
 
 ## Les points de la coque (repère monde, x/z) pour tester la rencontre avec la terre : le contour,

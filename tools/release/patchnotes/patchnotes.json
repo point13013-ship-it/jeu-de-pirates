@@ -2,6 +2,23 @@
   "_commentaire": "Les nouveautés affichées dans la salle de jeux (bouton Nouveautés, et après chaque mise à jour). La plus récente d'abord. 'version': 'prochaine' est remplacé par le numéro de la version au moment de la publication (publish.ps1). Les images sont les fichiers de ce dossier ; publish.ps1 les envoie avec la version.",
   "versions": [
     {
+      "version": "prochaine",
+      "titre": "Réputation de pirate, canon à la souris et caméra tournante",
+      "points": [
+        "Réputation de pirate : ramène des trésors, rends des quêtes, coule des bateaux, capture des îles. Une barre s'anime à chaque gain, et chaque nouveau rang débloque des skins de bateau gratuits à la voilerie : 4 proues (dragon, lion, aigle, crâne d'or), voiles, coques et pavillons.",
+        "Canon : E pour viser à la souris, clic gauche pour tirer (clic sur un canon vide : recharge depuis la caisse).",
+        "Les bateaux ennemis sont solides : on ne passe plus à travers, et les boulets les touchent plus fiablement.",
+        "Clic gauche / clic droit : arme principale / arme secondaire, dans la direction du clic (Q dans le sac pour choisir la secondaire).",
+        "Maj pour courir. Molette enfoncée + souris : tourner la caméra (un clic la remet droite).",
+        "Le bruit de la coque sur les vagues suit la vitesse du bateau.",
+        "Planches et boulets : on peut les prendre et les ranger en haut comme en bas, et ils suivent quand on change d'étage.",
+        "Grappin plus facile : prise de plus loin, aide à la visée, clics souris. Le pont est plus dégagé (la cabine est collée à la poupe), les postes ont des anneaux dorés.",
+        "Pseudo au-dessus des pirates (menu principal), taille de l'interface réglable, vie visible à la nage, et on ne tombe plus du bateau sans sauter.",
+        "Version réseau 10 : tout l'équipage doit mettre à jour."
+      ],
+      "images": []
+    },
+    {
       "version": "2026.11.11-2146",
       "titre": "Choisis ton mode d'affichage",
       "points": [

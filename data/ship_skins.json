@@ -1,5 +1,6 @@
 {
-  "order": ["sail", "hull", "flag"],
+  "_commentaire": "Une variante avec « rank » est réservée à ce rang de réputation (voir reputation.json) et gratuite une fois débloquée. « model » : un modèle posé à la place de la figure de proue d'origine.",
+  "order": ["sail", "hull", "flag", "figurehead"],
   "categories": {
     "sail": {
       "label": "Voiles",
@@ -11,7 +12,10 @@
         { "id": "navy", "label": "Voiles bleu marine", "price": 50, "color": "#4a68a0" },
         { "id": "green", "label": "Voiles vert mousse", "price": 60, "color": "#5f9a5c" },
         { "id": "black", "label": "Voiles noires", "price": 90, "color": "#46414e" },
-        { "id": "purple", "label": "Voiles pourpres", "price": 120, "color": "#8a5aa8" }
+        { "id": "purple", "label": "Voiles pourpres", "price": 120, "color": "#8a5aa8" },
+        { "id": "silver", "label": "Voiles d'argent", "price": 0, "rank": 3, "color": "#cfd3dc" },
+        { "id": "gold", "label": "Voiles d'or", "price": 0, "rank": 4, "color": "#d8b04a" },
+        { "id": "tempest", "label": "Voiles de tempête", "price": 0, "rank": 5, "color": "#35506e" }
       ]
     },
     "hull": {
@@ -22,7 +26,9 @@
         { "id": "navy", "label": "Coque bleu nuit", "price": 70, "color": "#34497a" },
         { "id": "crimson", "label": "Coque rouge sang", "price": 70, "color": "#8a3232" },
         { "id": "forest", "label": "Coque vert forêt", "price": 70, "color": "#38683f" },
-        { "id": "ivory", "label": "Coque d'ivoire", "price": 140, "color": "#b9a889" }
+        { "id": "ivory", "label": "Coque d'ivoire", "price": 140, "color": "#b9a889" },
+        { "id": "royal", "label": "Coque royale", "price": 0, "rank": 4, "color": "#5b2a7a" },
+        { "id": "gilded", "label": "Coque dorée", "price": 0, "rank": 6, "color": "#b8902f" }
       ]
     },
     "flag": {
@@ -33,7 +39,20 @@
         { "id": "red", "label": "Pavillon rouge", "price": 25, "color": "#b03232" },
         { "id": "white", "label": "Pavillon blanc", "price": 25, "color": "#ece8dc" },
         { "id": "blue", "label": "Pavillon bleu", "price": 25, "color": "#4572b8" },
-        { "id": "gold", "label": "Pavillon doré", "price": 80, "color": "#d8b04a" }
+        { "id": "gold", "label": "Pavillon doré", "price": 80, "color": "#d8b04a" },
+        { "id": "emerald", "label": "Pavillon émeraude", "price": 0, "rank": 2, "color": "#2f8a5a" },
+        { "id": "violet", "label": "Pavillon violet", "price": 0, "rank": 5, "color": "#7a3fa0" }
+      ]
+    },
+    "figurehead": {
+      "label": "Proue",
+      "mats": {},
+      "variants": [
+        { "id": "skull", "label": "Tête de mort", "price": 0 },
+        { "id": "dragon", "label": "Dragon de jade", "price": 0, "rank": 2, "model": "res://assets/models/ship/figurehead_dragon.glb" },
+        { "id": "lion", "label": "Lion d'or", "price": 0, "rank": 3, "model": "res://assets/models/ship/figurehead_lion.glb" },
+        { "id": "eagle", "label": "Aigle royal", "price": 0, "rank": 4, "model": "res://assets/models/ship/figurehead_eagle.glb" },
+        { "id": "goldskull", "label": "Crâne d'or", "price": 0, "rank": 6, "model": "res://assets/models/ship/figurehead_goldskull.glb" }
       ]
     }
   }

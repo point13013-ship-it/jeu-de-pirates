@@ -5,6 +5,7 @@ extends Control
 ## transmettre le choix. Haut/Bas (ou Z/S) : choisir, E : utiliser, Tab, R ou Échap : fermer.
 
 signal use_item(kind: String, id: String)
+signal alt_item(kind: String, id: String)   ## Q sur une arme : en faire l'arme secondaire
 signal closed
 
 const MAX_ROWS := 14
@@ -45,7 +46,7 @@ func _init() -> void:
 	_desc.size = Vector2(580, 40)
 	_desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_foot = _label(Vector2(20, 490), 14, Color(0.7, 0.85, 1.0))
-	_foot.text = "Haut/Bas : choisir     E : utiliser     Tab / R : fermer"
+	_foot.text = "Haut/Bas : choisir     E : utiliser     Q : arme secondaire     Tab / R : fermer"
 
 
 func _label(pos: Vector2, font_size: int, color: Color) -> Label:
@@ -58,7 +59,7 @@ func _label(pos: Vector2, font_size: int, color: Color) -> Label:
 
 
 ## Change le titre et la ligne d'aide (le panneau sert aussi de coffre de cabane) ; sans argument : ceux du sac.
-func set_texts(title: String = "Sac du pirate", foot: String = "Haut/Bas : choisir     E : utiliser     Tab / R : fermer") -> void:
+func set_texts(title: String = "Sac du pirate", foot: String = "Haut/Bas : choisir     E : utiliser     Q : arme secondaire     Tab / R : fermer") -> void:
 	_title.text = title
 	_foot.text = foot
 
@@ -113,6 +114,11 @@ func key(code: int) -> void:
 				var r: Dictionary = _rows[_sel]
 				if bool(r.get("enabled", false)):
 					use_item.emit(str(r["kind"]), str(r["id"]))
+		KEY_Q:   # une arme : la mettre en arme secondaire (clic droit)
+			if not _rows.is_empty():
+				var r2: Dictionary = _rows[_sel]
+				if str(r2.get("kind", "")) == "weapon":
+					alt_item.emit(str(r2["kind"]), str(r2["id"]))
 		KEY_R, KEY_TAB, KEY_ESCAPE:
 			close()
 

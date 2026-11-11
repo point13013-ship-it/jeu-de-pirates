@@ -50,7 +50,25 @@ static func items() -> Array:
 	var out: Array = []
 	for cat: String in data()["order"]:
 		for v: Dictionary in _variants(cat):
-			out.append({"cat": cat, "variant": v["id"], "price": int(v["price"])})
+			out.append({"cat": cat, "variant": v["id"], "price": int(v["price"]), "rank": int(v.get("rank", 0))})
+	return out
+
+
+## Le rang de réputation qu'il faut pour cette variante (0 : libre d'accès ; voir Reputation).
+static func rank_of(cat: String, variant: String) -> int:
+	for v: Dictionary in _variants(cat):
+		if v["id"] == variant:
+			return int(v.get("rank", 0))
+	return 0
+
+
+## Les variantes qui se débloquent en atteignant exactement le rang `rank` : [{cat, variant, label}].
+static func unlocked_at(rank: int) -> Array:
+	var out: Array = []
+	for cat: String in data()["order"]:
+		for v: Dictionary in _variants(cat):
+			if int(v.get("rank", 0)) == rank:
+				out.append({"cat": cat, "variant": str(v["id"]), "label": str(v["label"])})
 	return out
 
 
@@ -90,6 +108,43 @@ static func apply(root: Node, skin: Dictionary) -> void:
 			touched[m] = true
 	var cache := {}
 	_apply_rec(root, over, touched, cache)
+	_apply_figurehead(root, sanitize(skin))
+
+
+## Pose la proue choisie : un modèle (figurehead_*.glb) à la place du crâne d'origine (« skull », « jaw », « eye ») ; l'origine revient si on la reprend.
+static func _apply_figurehead(root: Node, skin: Dictionary) -> void:
+	var skull := _find_named(root, "skull")
+	if skull == null:
+		return
+	var parent := skull.get_parent()
+	var old := parent.get_node_or_null("FigureheadSkin")
+	if old != null:
+		parent.remove_child(old)
+		old.queue_free()
+	var path := ""
+	for v: Dictionary in _variants("figurehead"):
+		if v["id"] == str(skin.get("figurehead", "")):
+			path = str(v.get("model", ""))
+	var scene := load(path) as PackedScene if path != "" and ResourceLoader.exists(path) else null
+	for c in parent.get_children():
+		var n := String(c.name)
+		if c is Node3D and (n == "skull" or n == "jaw" or n.begins_with("eye")):
+			(c as Node3D).visible = scene == null
+	if scene != null:
+		var fh := scene.instantiate() as Node3D
+		fh.name = "FigureheadSkin"
+		parent.add_child(fh)
+		fh.position = (skull as Node3D).position
+
+
+static func _find_named(node: Node, node_name: String) -> Node:
+	if String(node.name) == node_name:
+		return node
+	for c in node.get_children():
+		var found := _find_named(c, node_name)
+		if found != null:
+			return found
+	return null
 
 
 static func _apply_rec(node: Node, over: Dictionary, touched: Dictionary, cache: Dictionary) -> void:

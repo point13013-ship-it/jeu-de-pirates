@@ -36,6 +36,7 @@ var fire_cb: Callable = Callable()       ## (id, indice du canon, départ Vector
 var loot_cb: Callable = Callable()       ## (genre, position Vector2, vitesse Vector2) : du butin est posé
 var water_free_cb: Callable = Callable() ## (position Vector2) -> vrai si l'eau est libre (ni terre, ni quai, ni récif)
 var wave_cb: Callable = Callable()       ## (position Vector2) -> hauteur de la houle
+var blocker_cb: Callable = Callable()    ## (modèle ShipModel, position Vector2, cap) -> vrai si le bateau toucherait celui des joueurs : il s'arrête
 var sunk_cb: Callable = Callable()       ## (id, nom) : un ennemi vient de couler
 var spawn_origin := Vector2.ZERO         ## le port : pas d'apparition à moins de PORT_SAFE
 var spawn_enabled := true                ## faux : plus d'apparition spontanée (essais, ou `--no-enemies`)
@@ -162,7 +163,15 @@ func _host_step(delta: float, target: Dictionary) -> void:
 		sim.wind_angle = (sim.wind_dir as Vector2).angle()
 		_ai(s, delta, target)
 		sim.sail_trim_target = sim.optimal_trim()
+		var prev_pos := sim.position
+		var prev_yaw := sim.yaw
 		sim.step(delta)
+		var model := s["model"] as ShipModel
+		if model != null and blocker_cb.is_valid() and bool(blocker_cb.call(model, sim.position, sim.yaw)) \
+				and not bool(blocker_cb.call(model, prev_pos, prev_yaw)):
+			sim.position = prev_pos   # solide : il ne passe pas à travers le bateau des joueurs (s'ils se touchent déjà, il peut s'en dégager)
+			sim.yaw = prev_yaw
+			sim.speed *= 0.4
 		_fire_queue(s, delta)
 
 
@@ -304,9 +313,9 @@ func ball_hit(pos: Vector3) -> int:
 		var loc := model.to_local(_root.to_global(pos))
 		var bx := loc.x / ShipModel.SCALE - model.shift
 		var by := -loc.z / ShipModel.SCALE
-		if absf(bx) > model.length * 0.5 or absf(by) > model.half_width(bx) + 0.12:
+		if absf(bx) > model.length * 0.5 or absf(by) > model.half_width(bx) + 0.3:
 			continue
-		if loc.y < -1.7 or loc.y > model.deck_height(bx) + 0.8:
+		if loc.y < -2.2 or loc.y > model.deck_height(bx) + 1.6:
 			continue
 		return int(s["id"])
 	return -1

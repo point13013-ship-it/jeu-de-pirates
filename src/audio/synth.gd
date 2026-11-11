@@ -129,6 +129,23 @@ static func wind() -> AudioStreamWAV:
 		return _to_stream(_loopify(_normalize(out, 0.7), 4000), true))
 
 
+## La coque qui fend les vagues : un chuintement d'eau qui frotte le bois (bruit filtré) et des claques de vague sourdes qui
+## reviennent irrégulièrement. Le jeu règle son volume et sa hauteur d'après la vitesse du bateau.
+static func hull() -> AudioStreamWAV:
+	return _cached("hull", func() -> AudioStreamWAV:
+		var n := int(6.0 * RATE)
+		var rub := _highpass(_lowpass(_noise(n + 4000, 31), 2600.0), 380.0)   # le frottement
+		var slap := _lowpass(_noise(n + 4000, 32), 260.0)                      # les claques de vague
+		var out := PackedFloat32Array()
+		out.resize(n + 4000)
+		for i in out.size():
+			var t := float(i) / RATE
+			var flow := 0.55 + 0.25 * sin(TAU * t / 6.0 + 0.4) + 0.2 * sin(TAU * t / 2.0 + 1.9)
+			var hit := pow(maxf(0.0, sin(TAU * t / 1.5 + 0.6) * sin(TAU * t / 2.4 + 2.1)), 2.0)   # une claque de temps en temps
+			out[i] = rub[i] * 2.2 * flow + slap[i] * 3.2 * (0.25 + 1.6 * hit)
+		return _to_stream(_loopify(_normalize(out, 0.75), 4000), true))
+
+
 ## Un feu de camp : un ronflement sourd et des craquements au hasard.
 static func fire() -> AudioStreamWAV:
 	return _cached("fire", func() -> AudioStreamWAV:

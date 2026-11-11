@@ -23,6 +23,7 @@ var ship := "brigantin"
 var _ship_buttons: Dictionary = {}
 var _join_row: HBoxContainer
 var _code_edit: LineEdit
+var _name_edit: LineEdit
 var _message: Label
 var _hint: Label
 var _volume_panel: VolumePanel
@@ -102,6 +103,21 @@ func _build_left() -> Control:
 	sub.add_theme_font_size_override("font_size", 18)
 	box.add_child(sub)
 	box.add_child(_gap(4))
+	PlayerName.load_saved()
+	var name_row := HBoxContainer.new()   # le pseudo, affiché en petit au-dessus de ton pirate
+	name_row.add_theme_constant_override("separation", 8)
+	box.add_child(name_row)
+	var name_label := Label.new()
+	name_label.text = "Ton pseudo"
+	name_label.add_theme_color_override("font_color", CREAM)
+	name_row.add_child(name_label)
+	_name_edit = LineEdit.new()
+	_name_edit.placeholder_text = "Choisis un pseudo"
+	_name_edit.max_length = PlayerName.MAX_LENGTH
+	_name_edit.text = PlayerName.value
+	_name_edit.custom_minimum_size = Vector2(240, 32)
+	_name_edit.text_changed.connect(func(t: String) -> void: PlayerName.set_name_value(t))
+	name_row.add_child(_name_edit)
 	var ship_label := Label.new()
 	ship_label.text = "Ton bateau"
 	ship_label.add_theme_color_override("font_color", CREAM)
@@ -153,7 +169,7 @@ func _build_left() -> Control:
 	box.add_child(_big_button("Sons, musique et affichage", func() -> void: _volume_panel.visible = not _volume_panel.visible))
 	box.add_child(_big_button("Quitter", func() -> void: quit_game.emit()))
 	var tips := Label.new()
-	tips.text = "ZQSD / flèches : marcher   Espace : sauter   E : agir   R : agir autrement\nÉchap : menu (retour au menu)   B : boussole   J : quêtes   I : invitation (hôte)   M : couper le son"
+	tips.text = "ZQSD / flèches : marcher   Espace : sauter   Maj : courir   E : agir   R : agir autrement\nÉchap : menu (retour au menu)   B : boussole   J : quêtes   I : invitation (hôte)   M : couper le son\nMolette enfoncée + souris : tourner la caméra (un clic la remet droite)   Clic gauche / droit : arme principale / secondaire"
 	tips.add_theme_color_override("font_color", Color(0.8, 0.85, 0.9))
 	tips.add_theme_font_size_override("font_size", 13)
 	box.add_child(tips)

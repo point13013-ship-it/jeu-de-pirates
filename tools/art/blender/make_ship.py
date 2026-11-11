@@ -269,7 +269,9 @@ for side in (-1, 1):
 x_s, hw_s, dz_s, _ = station(0.10)
 cw = hw_s * 2
 c = CFG["castle"]
-cx0 = -L / 2 + 2.0 + 0.5 * c
+# la cabine est collée à l'arrière du bateau (sa face arrière à ~0,4 de la poupe) : tout le pont devant elle est libre
+CABIN_BACK = 0.35 + 0.25 * c
+cx0 = -L / 2 + 2.0 + 0.5 * c - CABIN_BACK
 ln0 = 2.2 + c * 0.5
 wid0 = cw * 0.86
 H0 = 1.75
@@ -336,8 +338,8 @@ for lvl in range(1, c):
 roof_len = (2.4 + 0.5) if c > 1 else ln0 + 0.5
 roof_wid = cw * 0.78 if c > 1 else wid0 + 0.3
 box("cut_roof", cabin_cx, 0, top + 0.1, roof_len, roof_wid, 0.22, "red")
-cyl("cut_lamp_post", wx - 0.3, 0, top + 0.5, 0.07, 1.0, "dark")
-box("cut_lamp", wx - 0.3, 0, top + 1.15, 0.3, 0.3, 0.4, "glow")
+cyl("cut_lamp_post", wx + 0.3, 0, top + 0.5, 0.07, 1.0, "dark")
+box("cut_lamp", wx + 0.3, 0, top + 1.15, 0.3, 0.3, 0.4, "glow")
 # barre à roue, devant la cabine, sur le côté
 HELM = (ex + 0.9, -1.1)
 cyl("helm", HELM[0], HELM[1], fz + 1.35, 0.5, 0.1, "mast", rot=(math.radians(90), 0, 0), verts=14)

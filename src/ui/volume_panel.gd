@@ -8,6 +8,8 @@ const CREAM := Color("fff1d6")
 
 var _sliders: Dictionary = {}
 var _display_buttons: Dictionary = {}
+var _hud_slider: HSlider
+var _hud_pct: Label
 
 
 func _init() -> void:
@@ -71,9 +73,14 @@ func _build_display() -> void:
 	title.add_theme_color_override("font_color", GOLD)
 	add_child(title)
 	var group := ButtonGroup.new()
+	var modes_row := HBoxContainer.new()   # les trois modes sur une ligne : le menu Échap tient dans une fenêtre de 540 px
+	modes_row.add_theme_constant_override("separation", 4)
+	add_child(modes_row)
 	for m: String in DisplaySettings.MODES:
 		var b := Button.new()
-		b.text = str(DisplaySettings.LABELS[m])
+		b.text = str(DisplaySettings.SHORT[m])
+		b.tooltip_text = str(DisplaySettings.LABELS[m])
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		b.toggle_mode = true
 		b.button_group = group
 		b.button_pressed = DisplaySettings.mode == m
@@ -81,8 +88,35 @@ func _build_display() -> void:
 		b.toggled.connect(func(on: bool) -> void:
 			if on:
 				DisplaySettings.set_mode.call_deferred(m))
-		add_child(b)
+		modes_row.add_child(b)
 		_display_buttons[m] = b
+	var size_label := Label.new()
+	size_label.text = "Taille de l'interface"
+	size_label.add_theme_font_size_override("font_size", 16)
+	size_label.add_theme_color_override("font_color", CREAM)
+	add_child(size_label)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 8)
+	add_child(row)
+	_hud_slider = HSlider.new()
+	_hud_slider.min_value = DisplaySettings.HUD_MIN
+	_hud_slider.max_value = DisplaySettings.HUD_MAX
+	_hud_slider.step = 0.05
+	_hud_slider.value = DisplaySettings.hud_scale
+	_hud_slider.custom_minimum_size = Vector2(220, 28)
+	_hud_slider.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_hud_slider.focus_mode = Control.FOCUS_NONE
+	row.add_child(_hud_slider)
+	_hud_pct = Label.new()
+	_hud_pct.text = "%d %%" % roundi(_hud_slider.value * 100.0)
+	_hud_pct.custom_minimum_size = Vector2(52, 0)
+	_hud_pct.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	_hud_pct.add_theme_color_override("font_color", CREAM)
+	row.add_child(_hud_pct)
+	_hud_slider.value_changed.connect(func(v: float) -> void:
+		DisplaySettings.set_hud_scale(v, false)
+		_hud_pct.text = "%d %%" % roundi(v * 100.0))
+	_hud_slider.drag_ended.connect(func(_changed: bool) -> void: DisplaySettings.save())
 
 
 ## Remet les curseurs d'après les réglages en cours (à l'ouverture du menu).
@@ -91,3 +125,5 @@ func refresh() -> void:
 		(_sliders[key] as HSlider).set_value_no_signal(float(AudioSettings.volumes[key]))
 	for m: String in _display_buttons:
 		(_display_buttons[m] as Button).set_pressed_no_signal(DisplaySettings.mode == m)
+	_hud_slider.set_value_no_signal(DisplaySettings.hud_scale)
+	_hud_pct.text = "%d %%" % roundi(DisplaySettings.hud_scale * 100.0)

@@ -6,6 +6,7 @@ extends Control
 var hp := 6
 var hp_max := 6
 var show_hearts := false
+var hearts_y := 108.0      ## hauteur des cœurs à l'écran
 var dest_name := ""
 var dest_dist := 0.0
 var dest_angle := 0.0      ## angle de la flèche, 0 = vers le haut de l'écran, dans le sens des aiguilles d'une montre
@@ -32,7 +33,7 @@ func _draw() -> void:
 		draw_rect(Rect2(Vector2.ZERO, size), Color(0.8, 0.05, 0.05, 0.38 * flash))
 	if show_hearts:
 		for i in hp_max:
-			var c := Vector2(30 + i * 30, 108)
+			var c := Vector2(30 + i * 30, hearts_y)
 			var full := i < hp
 			var col := Color(0.9, 0.12, 0.16) if full else Color(0.2, 0.1, 0.12, 0.8)
 			if blink and full and int(Time.get_ticks_msec() / 90) % 2 == 0:

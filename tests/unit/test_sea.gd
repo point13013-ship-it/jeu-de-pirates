@@ -344,7 +344,7 @@ func _test_jump() -> void:
 		for m: Array in ship.masts:
 			_check(not ship.is_walkable_air(Vector2(float(m[0]), 0.0), 1.2), "%s : un mât ne s'enjambe pas" % ship_name)
 		if not ship.cabin.is_empty():
-			var wall := Vector2((float(ship.cabin["x0"]) + float(ship.cabin["x1"])) * 0.5, float(ship.cabin["y1"]) - 0.08)
+			var wall := Vector2((float(ship.cabin["x0"]) + float(ship.cabin["x1"])) * 0.5, float(ship.cabin["y1"]) - 0.04)
 			_check(not ship.is_walkable_air(wall, 1.2), "%s : un mur de cabine ne s'enjambe pas" % ship_name)
 		# un barrage de caisse : on l'enjambe en l'air
 		for i: int in ship.low_boxes:

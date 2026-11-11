@@ -83,8 +83,14 @@ func row(i: int) -> Dictionary:
 	if kind == "skin":
 		var label := ShipSkin.label_of(str(it["cat"]), str(it["variant"]))
 		var cat_label := ShipSkin.category_label(str(it["cat"]))
+		var need := int(it.get("rank", 0))
+		if need > profile.rank():   # réservé à un rang de réputation qu'on n'a pas encore
+			return {"label": label, "desc": "%s — se débloque au rang %s (réputation %d / %d)" % [cat_label, Reputation.rank_name(need), profile.reputation, Reputation.points_for(need)],
+					"right": "rang : %s" % Reputation.rank_name(need), "enabled": false}
 		if _worn(it):
 			return {"label": label, "desc": cat_label, "right": "posé", "enabled": false}
+		if need > 0:
+			return {"label": label, "desc": "%s — débloqué par ta réputation" % cat_label, "right": "poser", "enabled": true}
 		if int(it["price"]) == 0 or profile.owned.has(_key(it)):
 			return {"label": label, "desc": cat_label, "right": "poser", "enabled": true}
 		return {"label": label, "desc": cat_label, "right": "%d or" % int(it["price"]), "enabled": profile.gold >= int(it["price"])}
@@ -166,7 +172,7 @@ func _activate_weapon(it: Dictionary) -> Dictionary:
 			return {"ok": false, "msg": "Pas assez d'or.", "look_changed": false}
 		profile.gold -= int(it["price"])
 		profile.weapons.append(id)
-	profile.weapon = id
+	profile.set_main_weapon(id)
 	profile.save()
 	return {"ok": true, "msg": "En main : %s" % wname, "look_changed": false}
 
@@ -191,6 +197,8 @@ func _activate_ship(it: Dictionary) -> Dictionary:
 func _activate_skin(it: Dictionary) -> Dictionary:
 	var key := _key(it)
 	var label := ShipSkin.label_of(str(it["cat"]), str(it["variant"]))
+	if int(it.get("rank", 0)) > profile.rank():
+		return {"ok": false, "msg": "Il faut le rang %s." % Reputation.rank_name(int(it["rank"])), "look_changed": false, "skin_changed": false}
 	if _worn(it):
 		return {"ok": false, "msg": "C'est déjà posé.", "look_changed": false, "skin_changed": false}
 	if int(it["price"]) > 0 and not profile.owned.has(key):

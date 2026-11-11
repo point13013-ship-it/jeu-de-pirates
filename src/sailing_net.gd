@@ -22,7 +22,7 @@ const ISLAND_RATE := 12.0   ## fois par seconde : état des ennemis et des coffr
 const LOOT_RATE := 6.0      ## fois par seconde : butin du monde
 const FLEET_RATE := 10.0    ## fois par seconde : bateaux ennemis
 const META_RATE := 2.0      ## fois par seconde : coffres, baies, tonneaux, îles générées
-const PROTOCOL := 9   # 9 : îles capturées et cabanes (coffre partagé) ; 8 : grappin visé (choix de s'attirer, état du crochet + propriétaire), radeaux des joueurs
+const PROTOCOL := 10   # 10 : réputation (points envoyés par l'hôte), tir de canon visé (angle dans l'événement de tir) ; 9 : îles capturées et cabanes (coffre partagé) ; 8 : grappin visé, radeaux des joueurs
 
 var game: Node
 var active := false
@@ -397,6 +397,16 @@ func _loot(gold: int, at: Vector2) -> void:
 	game.apply_loot(gold, at)
 
 
+## Hôte -> un joueur : des points de réputation gagnés (trésors vendus, bateau coulé, île capturée…).
+func send_rep(peer: int, n: int, why: String) -> void:
+	_rep.rpc_id(peer, n, why)
+
+
+@rpc("authority", "call_remote", "reliable")
+func _rep(n: int, why: String) -> void:
+	game.apply_rep(n, why)
+
+
 ## Hôte -> un joueur : un objet qu'il reçoit (trésor « t:<id> », « ball », « plank », bourse « g:<or> »).
 func send_item(peer: int, kind: String) -> void:
 	_item.rpc_id(peer, kind)
@@ -477,13 +487,13 @@ func _request(kind: String, value: int) -> void:
 
 
 ## Hôte : fait partir le boulet du canon `i` chez tout le monde.
-func broadcast_fire(i: int, human: bool = false) -> void:
-	_fire_event.rpc(i, human)
+func broadcast_fire(i: int, human: bool = false, aim: float = 0.0) -> void:
+	_fire_event.rpc(i, human, aim)
 
 
 @rpc("authority", "call_local", "reliable")
-func _fire_event(i: int, human: bool) -> void:
-	game.fire_visual(i, human)
+func _fire_event(i: int, human: bool, aim: float) -> void:
+	game.fire_visual(i, human, aim)
 
 
 ## Hôte : un choc a ouvert des voies d'eau ; chez tout le monde, secousse, éclats de bois et message.

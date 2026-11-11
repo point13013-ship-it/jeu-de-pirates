@@ -1,0 +1,19 @@
+{
+  "_commentaire": "Réputation de pirate : des points gagnés en ramenant des trésors, en rendant des quêtes, en coulant des bateaux et en capturant des îles. Chaque rang passe un seuil et débloque des skins de bateau (voir ship_skins.json, champ « rank »).",
+  "ranks": [
+    { "name": "Mousse", "at": 0 },
+    { "name": "Matelot", "at": 40 },
+    { "name": "Boucanier", "at": 120 },
+    { "name": "Corsaire", "at": 280 },
+    { "name": "Capitaine", "at": 550 },
+    { "name": "Terreur des mers", "at": 900 },
+    { "name": "Légende", "at": 1500 }
+  ],
+  "gains": {
+    "treasure_per_gold": 0.1,
+    "quest": 30,
+    "enemy_ship": 25,
+    "capture_per_gold": 0.25,
+    "chest": 3
+  }
+}

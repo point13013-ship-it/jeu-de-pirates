@@ -7,9 +7,13 @@ const PATH := "user://affichage.json"
 static var path := PATH   ## (les essais le détournent pour ne pas toucher aux réglages du joueur)
 const MODES := ["windowed", "fullscreen", "borderless"]
 const LABELS := {"windowed": "Fenêtré", "fullscreen": "Plein écran", "borderless": "Fenêtre sans bordure"}
+const SHORT := {"windowed": "Fenêtré", "fullscreen": "Plein écran", "borderless": "Sans bordure"}
 const DEFAULT := "windowed"
 
+const HUD_MIN := 0.8
+const HUD_MAX := 1.8
 static var mode: String = DEFAULT
+static var hud_scale := 1.0   ## taille de l'interface en jeu (texte, cadran, cœurs…) : 1 = taille d'origine
 static var _inited := false
 
 
@@ -22,8 +26,10 @@ static func setup() -> void:
 		var f := FileAccess.open(path, FileAccess.READ)
 		if f != null:
 			var data: Variant = JSON.parse_string(f.get_as_text())
-			if data is Dictionary and MODES.has(str((data as Dictionary).get("mode", ""))):
-				mode = str((data as Dictionary)["mode"])
+			if data is Dictionary:
+				if MODES.has(str((data as Dictionary).get("mode", ""))):
+					mode = str((data as Dictionary)["mode"])
+				hud_scale = clampf(float((data as Dictionary).get("hud_scale", 1.0)), HUD_MIN, HUD_MAX)
 	if mode != DEFAULT:
 		apply()
 
@@ -35,6 +41,13 @@ static func set_mode(m: String) -> void:
 	mode = m
 	apply()
 	save()
+
+
+## Règle la taille de l'interface (le jeu la lit à chaque image) ; `save_now` faux pendant qu'on tire le curseur.
+static func set_hud_scale(v: float, save_now: bool = true) -> void:
+	hud_scale = clampf(v, HUD_MIN, HUD_MAX)
+	if save_now:
+		save()
 
 
 ## Pose le mode sur la fenêtre. Sans fenêtre réelle (essais sans tête), ne fait rien.
@@ -65,4 +78,4 @@ static func apply() -> void:
 static func save() -> void:
 	var f := FileAccess.open(path, FileAccess.WRITE)
 	if f != null:
-		f.store_string(JSON.stringify({"mode": mode}, "\t"))
+		f.store_string(JSON.stringify({"mode": mode, "hud_scale": hud_scale}, "\t"))

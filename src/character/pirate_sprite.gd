@@ -16,6 +16,7 @@ static var _building: Dictionary = {}  ## clé -> true pendant la composition
 ## Couleurs exactes de tous les pirates à l'écran, pour que le filtre « palette » ne les déforme pas.
 static var palette_colors: Array[Color] = []
 static var palette_version := 0
+static var view_yaw := 0.0   ## rad : de combien la caméra a tourné (réglé par le jeu) ; les directions du monde sont relues à l'écran en conséquence
 const PALETTE_MAX := 512
 
 ## Ombrage « peint » : les feuilles de sprites sont en niveaux de gris (le ton d'ombre de chaque pixel), et la couleur d'une
@@ -65,6 +66,7 @@ func _init() -> void:
 ## Direction (0 = vers la caméra, puis tous les 45° vers la droite de l'écran) d'un vecteur d'écran
 ## (x vers la droite, y vers le bas).
 static func direction_of(v: Vector2) -> int:
+	v = v.rotated(view_yaw)   # la caméra a pu tourner : une direction du monde se lit autrement à l'écran
 	return posmod(roundi(atan2(v.x, v.y) / (PI / 4.0)), 8)
 
 

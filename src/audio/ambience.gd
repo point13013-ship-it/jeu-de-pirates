@@ -26,7 +26,7 @@ var _rng := RandomNumberGenerator.new()
 func setup(p_islands: IslandWorld) -> void:
 	islands = p_islands
 	_rng.randomize()
-	for spec: Array in [["waves", Synth.waves()], ["wind", Synth.wind()], ["fire", Synth.fire()], ["rain", Synth.rain()],
+	for spec: Array in [["waves", Synth.waves()], ["wind", Synth.wind()], ["hull", Synth.hull()], ["fire", Synth.fire()], ["rain", Synth.rain()],
 			["insects", Synth.insects()]]:
 		var p := AudioStreamPlayer.new()
 		p.stream = spec[1]
@@ -106,6 +106,15 @@ func update(delta: float, ctx: Dictionary) -> void:
 		fire = pow(1.0 - fd / 18.0, 1.6) * 0.8
 	_vol("waves", 0.0 if muted else waves)
 	_vol("wind", 0.0 if muted else wind)
+	# la coque qui frotte les vagues : de plus en plus fort et aigu avec la vitesse du bateau (étouffée dans la cale, absente à terre et à la nage)
+	var pace := clampf(float(ctx.get("speed", 0.0)) / 8.0, 0.0, 1.0)
+	var hull := pow(pace, 1.3) * 0.75
+	if where == "land" or where == "swim":
+		hull = 0.0
+	elif in_hold:
+		hull *= 0.55
+	_vol("hull", 0.0 if muted else hull)
+	((_loops["hull"] as Dictionary)["player"] as AudioStreamPlayer).pitch_scale = 0.8 + 0.5 * pace
 	_vol("insects", 0.0 if muted else insects)
 	_vol("fire", 0.0 if muted else fire)
 	_vol("rain", 0.0 if muted else rain * (0.45 if in_hold else 0.8))

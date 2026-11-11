@@ -15,6 +15,7 @@ const SHOULDER_ELEV_DEG := 22.0       ## vue « épaule » (touche V) : la camé
 const SHOULDER_ZOOM := 1.6            ## … et se rapproche (multiplie le grossissement)
 const SEA_Y := -1.45
 const WALK_SPEED := 3.6
+const SPRINT_MULT := 1.7               ## facteur de vitesse de marche en maintenant Maj
 const INTERACT_RANGE := 1.5
 const STATS_PATH := "res://data/ship_stats.json"
 
@@ -47,12 +48,17 @@ var _sim := ShipSim.new()
 var _world: Node3D
 var _cam: Camera3D
 var _shoulder := false            ## vue « épaule » (touche V) : caméra plus basse et plus proche
-var _elev_deg := ELEVATION_DEG    ## inclinaison actuelle de la caméra (lissée entre la vue normale et la vue épaule)
+var _cam_yaw := 0.0               ## rad : cap de la caméra autour du pirate (molette enfoncée + souris ; clic simple sur la molette : remet droit)
+var _cam_drag := false            ## la molette est enfoncée
+var _cam_drag_moved := 0.0        ## px parcourus pendant l'appui (un appui sans mouvement remet la caméra droite)
+var _elev_deg := ELEVATION_DEG   ## inclinaison actuelle de la caméra (lissée entre la vue normale et la vue épaule)
 var _sea: MeshInstance3D
 var _sprite: PirateSprite
 var _my_look: Dictionary = {}       ## mon apparence (éditeur de pirate)
 var _remote_looks: Dictionary = {}  ## id du pair -> apparence reçue
 var _remote_held: Dictionary = {}   ## id du pair -> 'arme|skin' qu'il tient
+var _remote_names: Dictionary = {}  ## id du pair -> son pseudo
+var _name_tag: Label3D              ## mon pseudo, au-dessus de mon pirate
 var _held_sent := ""                ## ce que les autres savent de mon arme en main
 var _prev_ppos := Vector2.INF
 var _editor: CharacterEditor
@@ -82,7 +88,10 @@ var _cannon_in := -1                ## le canon dans lequel je suis glissé (je 
 var _cannon_aim := 0.0              ## rad : orientation du tir autour de la sortie du canon
 var _pface := Vector2(1, 0)         ## direction où je regarde sur le pont (repère du bateau)
 var _target: Dictionary = {}        ## l'objet du pont que E actionnerait (devant moi, à portée), ou {}
-var _target_marker: Node3D          ## la flèche qui le désigne
+var _post_rings: Array = []         ## un anneau doré par poste du pont (voir _update_post_rings)
+var _ring_mat: StandardMaterial3D
+var _ring_mat_hot: StandardMaterial3D
+var _target_marker: Node3D         ## la flèche qui le désigne
 var _zoom := ZOOM_SEA               ## grossissement actuel de la caméra (lissé)
 var _zoom_user := 1.0               ## réglage du joueur (molette) : multiplie le grossissement du lieu
 var _stuck_t := 0.0                 ## s pendant lesquelles le bateau est bloqué voiles hissées
@@ -110,6 +119,11 @@ var _sail_hud: SailHud              ## le cadran du vent et des vergues
 var _projectiles: Array = []
 var _cam_focus := Vector3.ZERO
 var _hud: Label
+var _hud_root: Control               ## porte tout l'affichage de jeu ; sa taille d'affichage suit DisplaySettings.hud_scale
+var _hand_wid := ""                  ## arme secondaire montrée dans la main après un clic droit (vide : l'arme principale)
+var _hand_t := 0.0                   ## s : combien de temps elle y reste
+var _hud_scale_applied := 0.0
+var _hud_size_applied := Vector2.ZERO
 var _prompt: Label
 var _time := 0.0
 var _walkto := Vector2.INF
@@ -196,6 +210,7 @@ var _atmo_prev_kind := ""
 var _castaways_made: Dictionary = {}   ## graines des naufragés dont le PNJ existe déjà
 var _chart: SeaChart                 ## la carte des mers, sur la table de la cabine
 var _island_hud: IslandHud           ## cœurs, flèche vers l'île choisie, voile rouge des coups reçus
+var _rep_hud: ReputationHud          ## rang de réputation et animation de progression
 var _destination := -1               ## l'île choisie sur la carte, ou -1
 var _quest_dest := -1                ## l'île vers laquelle une quête d'expédition m'envoie, ou -1
 var _hp := 6                         ## mes points de vie (chacun les siens)
@@ -306,6 +321,7 @@ func _setup_ship(ship_name: String) -> void:
 	_rng.randomize()
 	_fleet.setup(_world_fixed)
 	_fleet.wave_cb = _wave_height
+	_fleet.blocker_cb = _enemy_would_hit_player
 	_fleet.water_free_cb = _water_free
 	_fleet.fire_cb = _on_enemy_fire
 	_fleet.loot_cb = _on_enemy_loot
@@ -826,6 +842,9 @@ func _build_player() -> void:
 	_sprite.set_look(_local_look())
 	_sprite.set_weapon(_profile.weapon, _profile.skin_of(_profile.weapon))
 	_ship.add_child(_sprite)
+	PlayerName.load_saved()
+	_name_tag = _make_name_tag(PlayerName.value)
+	_sprite.add_child(_name_tag)
 	_ball_icon = _make_ball(0.14, Color(0.12, 0.12, 0.16))
 	_ball_icon.visible = false
 	_sprite.add_child(_ball_icon)
@@ -891,6 +910,8 @@ func _build_islands() -> void:
 ## La table de cartes de la cabine : un parchemin posé dessus, et le point d'interaction.
 func _build_chart_table() -> void:
 	var table_pos := Vector2(-2.1, 0.0)
+	if not _ship.cabin.is_empty():   # la table du modèle est à 0,35 devant le centre de la cabine (voir make_ship.py)
+		table_pos = Vector2((float(_ship.cabin["x0"]) + float(_ship.cabin["x1"])) * 0.5 + 0.35, 0.0)
 	_interactables.append({"kind": "chart", "pos": table_pos})
 	var sheet := MeshInstance3D.new()
 	var quad := QuadMesh.new()
@@ -991,14 +1012,35 @@ func _build_target_marker() -> void:
 	_ship.add_child(_target_marker)
 
 
+## Met l'affichage de jeu à l'échelle choisie (si elle ou la fenêtre ont changé) : le bloc est plus petit que la fenêtre
+## de ce facteur, puis agrandi du même facteur, et remplit donc exactement la fenêtre.
+func _apply_hud_scale() -> void:
+	if _hud_root == null:
+		return
+	var s := DisplaySettings.hud_scale
+	if is_equal_approx(s, _hud_scale_applied) and size == _hud_size_applied:
+		return
+	_hud_scale_applied = s
+	_hud_size_applied = size
+	_hud_root.position = Vector2.ZERO
+	_hud_root.size = size / s
+	_hud_root.scale = Vector2(s, s)
+
+
 func _build_hud() -> void:
+	# Tout l'affichage de jeu (texte, cadran, cœurs, barre de sorts) vit dans _hud_root, qu'on agrandit d'un bloc (curseur
+	# « Taille de l'interface ») : il garde la taille de la fenêtre divisée par l'échelle, donc les ancres tombent juste.
+	_hud_root = Control.new()
+	_hud_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_hud_root)
+	_apply_hud_scale()
 	_hud = Label.new()
 	_hud.position = Vector2(12, 8)
 	_hud.add_theme_color_override("font_color", Color(1, 0.95, 0.85))
 	_hud.add_theme_color_override("font_outline_color", Color(0.05, 0.03, 0.1))
 	_hud.add_theme_constant_override("outline_size", 6)
 	_hud.add_theme_font_size_override("font_size", 16)
-	add_child(_hud)
+	_hud_root.add_child(_hud)
 	_prompt = Label.new()
 	_prompt.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
 	_prompt.grow_horizontal = Control.GROW_DIRECTION_BOTH
@@ -1008,7 +1050,7 @@ func _build_hud() -> void:
 	_prompt.add_theme_color_override("font_outline_color", Color(0.05, 0.03, 0.1))
 	_prompt.add_theme_constant_override("outline_size", 6)
 	_prompt.add_theme_font_size_override("font_size", 18)
-	add_child(_prompt)
+	_hud_root.add_child(_prompt)
 	# état du réseau (adresse à donner aux amis, connexion…), en haut à droite
 	_status_label = Label.new()
 	_status_label.set_anchors_preset(Control.PRESET_TOP_RIGHT)
@@ -1019,17 +1061,17 @@ func _build_hud() -> void:
 	_status_label.add_theme_color_override("font_outline_color", Color(0.05, 0.03, 0.1))
 	_status_label.add_theme_constant_override("outline_size", 6)
 	_status_label.add_theme_font_size_override("font_size", 15)
-	add_child(_status_label)
+	_hud_root.add_child(_status_label)
 	_invite = InvitePanel.new()
 	_invite.visible = false
-	add_child(_invite)
+	_hud_root.add_child(_invite)
 	# jauge de la cale
 	_gauge_back = ColorRect.new()
 	_gauge_back.color = Color(0.05, 0.03, 0.1, 0.75)
 	_gauge_back.position = Vector2(12, 62)
 	_gauge_back.size = Vector2(190, 16)
 	_gauge_back.visible = false
-	add_child(_gauge_back)
+	_hud_root.add_child(_gauge_back)
 	_gauge_fill = ColorRect.new()
 	_gauge_fill.position = Vector2(2, 2)
 	_gauge_fill.size = Vector2(0, 12)
@@ -1041,11 +1083,11 @@ func _build_hud() -> void:
 	_gauge_label.add_theme_constant_override("outline_size", 6)
 	_gauge_label.add_theme_font_size_override("font_size", 14)
 	_gauge_label.visible = false
-	add_child(_gauge_label)
+	_hud_root.add_child(_gauge_label)
 	# cadran du vent et des voiles
 	_sail_hud = SailHud.new()
 	_sail_hud.position = Vector2(12, 108)
-	add_child(_sail_hud)
+	_hud_root.add_child(_sail_hud)
 	# or et quête en cours
 	_profile.persistent = not _args.has("fresh")
 	_profile.load_file()
@@ -1060,7 +1102,7 @@ func _build_hud() -> void:
 	_gold_label.add_theme_color_override("font_outline_color", Color(0.05, 0.03, 0.1))
 	_gold_label.add_theme_constant_override("outline_size", 6)
 	_gold_label.add_theme_font_size_override("font_size", 17)
-	add_child(_gold_label)
+	_hud_root.add_child(_gold_label)
 	_quest_label = Label.new()
 	_quest_label.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
 	_quest_label.grow_vertical = Control.GROW_DIRECTION_BEGIN
@@ -1069,7 +1111,7 @@ func _build_hud() -> void:
 	_quest_label.add_theme_color_override("font_outline_color", Color(0.05, 0.03, 0.1))
 	_quest_label.add_theme_constant_override("outline_size", 6)
 	_quest_label.add_theme_font_size_override("font_size", 14)
-	add_child(_quest_label)
+	_hud_root.add_child(_quest_label)
 	_dialog = DialogueBox.new()
 	_dialog.closed.connect(_on_dialog_closed)
 	add_child(_dialog)
@@ -1080,6 +1122,7 @@ func _build_hud() -> void:
 	_inventory = InventoryPanel.new()
 	_inventory.use_item.connect(_on_inventory_use)
 	_inventory.closed.connect(_on_inventory_closed)
+	_inventory.alt_item.connect(_on_inventory_alt)
 	add_child(_inventory)
 	_weapon_label = Label.new()
 	_weapon_label.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
@@ -1091,9 +1134,12 @@ func _build_hud() -> void:
 	_weapon_label.add_theme_color_override("font_outline_color", Color(0.05, 0.03, 0.1))
 	_weapon_label.add_theme_constant_override("outline_size", 6)
 	_weapon_label.add_theme_font_size_override("font_size", 15)
-	add_child(_weapon_label)
+	_hud_root.add_child(_weapon_label)
 	_island_hud = IslandHud.new()
-	add_child(_island_hud)
+	_hud_root.add_child(_island_hud)
+	_rep_hud = ReputationHud.new()   # la réputation : rang, barre de progression et bannière de rang
+	_rep_hud.set_points(_profile.reputation)
+	_hud_root.add_child(_rep_hud)
 	_chart = SeaChart.new()
 	_chart.destination_chosen.connect(func(i: int) -> void: _destination = i)
 	add_child(_chart)
@@ -1574,6 +1620,7 @@ func _on_dialog_closed(accepted: bool) -> void:
 		var reward := _quests.complete(str(ctx["turn_in"]))
 		if reward > 0:
 			_say("Quête terminée ! +%d pièces d'or" % reward, 4.5)
+			apply_rep(int(Reputation.gain("quest")), "quête terminée")
 		_sync_quest_destination()
 	elif bool(ctx.get("sell", false)):
 		if accepted:
@@ -1634,7 +1681,7 @@ func _enter_hold(instant: bool = false) -> void:
 	if _loc != Loc.SHIP or _fade_busy:
 		return
 	_mode = Mode.WALK
-	_drop_carried(true)
+	# (ce qu'on porte monte et descend avec nous : boulet, planche ou trésor)
 	_transition(func() -> void:
 		_loc = Loc.HOLD
 		_hpos = _hold_layout.spawn_pos()
@@ -1649,7 +1696,7 @@ func _leave_hold(instant: bool = false) -> void:
 		return
 	if _fade_busy and not instant:
 		return
-	_drop_carried(true)
+	# (ce qu'on porte monte et descend avec nous)
 	_transition(func() -> void:
 		_loc = Loc.SHIP
 		_ppos = _ship.nearest_walkable(_ship.hatch_pos() + Vector2(0.0, 1.05))
@@ -1818,6 +1865,8 @@ func _on_enemy_loot(kind: String, pos: Vector2, vel: Vector2) -> void:
 
 
 func _on_enemy_sunk(_id: int, ship_name: String) -> void:
+	for crew_id in _crew_ids():
+		_give_rep(int(crew_id), int(Reputation.gain("enemy_ship")), "bateau ennemi coulé")
 	_notify_all("%s coulé ! Son butin flotte à la surface : nage jusqu'à lui ou lance le grappin" % ship_name)
 
 
@@ -1882,6 +1931,8 @@ func _collide_ship_with_land(prev_pos: Vector2, prev_yaw: float) -> void:
 			_sim.position = o
 			_sim.speed *= 0.5
 			return
+	if not _touch_enemy_ship(prev_pos, prev_yaw).is_empty():
+		return   # on se touchait déjà (un bateau ennemi vient de nous aborder) : on peut s'en dégager au lieu de rester collé
 	_sim.position = prev_pos
 	_sim.yaw = prev_yaw
 	_sim.speed = 0.0
@@ -1900,6 +1951,9 @@ func _touch(pos: Vector2, yaw: float) -> Dictionary:
 		if ii >= 0:
 			var iinfo := _ship.contour_hit_info(ii)
 			return {"kind": HIT_WALL, "bx": iinfo["bx"], "side": iinfo["side"]}
+	var enemy_touch := _touch_enemy_ship(pos, yaw)
+	if not enemy_touch.is_empty():
+		return enemy_touch
 	if not _rocks.rocks.is_empty():
 		var h := _rocks.hit(_ship.hull_points_dense(pos, yaw))
 		if h.x >= 0:
@@ -1909,6 +1963,40 @@ func _touch(pos: Vector2, yaw: float) -> Dictionary:
 				side = 1 if (h.x % 2 == 0) else -1
 			return {"kind": HIT_ROCK, "bx": info["bx"], "side": side}
 	return {}
+
+
+## Les bateaux ennemis sont solides : si ma coque (en `pos`, cap `yaw`) en touche un, {kind, bx, side} comme _touch, sinon {}.
+## On teste mes points de contour dans leur coque, et les leurs dans la mienne (deux étraves qui se croisent).
+func _touch_enemy_ship(pos: Vector2, yaw: float) -> Dictionary:
+	for es: Dictionary in _fleet.ships:
+		var model := es.get("model") as ShipModel
+		if model == null or es["state"] == "sinking":
+			continue
+		var esim: ShipSim = es["sim"]
+		if esim.position.distance_to(pos) > (model.length + _ship.length) * ShipModel.SCALE * 0.6:
+			continue   # trop loin pour se toucher
+		var mine := _ship.hull_points_world(pos, yaw)
+		for i in mine.size():
+			if model.contains_world(esim.position, esim.yaw, mine[i]):
+				var info := _ship.contour_hit_info(i)
+				return {"kind": HIT_WALL, "bx": info["bx"], "side": info["side"]}
+		for p: Vector2 in model.hull_points_world(esim.position, esim.yaw):
+			if _ship.contains_world(pos, yaw, p):
+				var rel := p - pos
+				var local := Basis(Vector3.UP, -yaw) * Vector3(rel.x, 0.0, rel.y)
+				return {"kind": HIT_WALL, "bx": local.x / ShipModel.SCALE - _ship.shift, "side": 1 if local.z <= 0.0 else -1}
+	return {}
+
+
+## Un bateau ennemi en `pos`/`yaw` toucherait-il le mien ? (Le bateau ennemi s'arrête alors : voir EnemyFleet.blocked_by.)
+func _enemy_would_hit_player(model: ShipModel, pos: Vector2, yaw: float) -> bool:
+	for p: Vector2 in model.hull_points_world(pos, yaw):
+		if _ship.contains_world(_sim.position, _sim.yaw, p):
+			return true
+	for p: Vector2 in _ship.hull_points_world(_sim.position, _sim.yaw):
+		if model.contains_world(pos, yaw, p):
+			return true
+	return false
 
 
 ## Hôte : la cale est pleine, le bateau coule. Remorqué au port, remis à neuf.
@@ -2044,7 +2132,8 @@ func _update_island_hud(delta: float) -> void:
 	var h := _island_hud
 	h.hp = _hp
 	h.hp_max = _hp_max
-	h.show_hearts = _loc == Loc.LAND or _hp < _hp_max
+	h.show_hearts = _loc == Loc.LAND or _loc == Loc.SWIM or _loc == Loc.RAFT or _hp < _hp_max   # la vie reste affichée à la nage et sur le radeau
+	h.hearts_y = 108.0 if _loc == Loc.LAND else 108.0 + SailHud.SIZE + 40.0   # hors de la terre, le cadran du vent occupe le haut à gauche
 	h.blink = _inv_t > 0.0
 	h.show_spells = _loc == Loc.LAND and _profile.berry != ""
 	if h.show_spells:
@@ -2100,12 +2189,29 @@ func _nearest_closed_chest_vec() -> Vector2:
 	return best
 
 
+## Tourne le pirate vers le point de l'écran `click` : la direction va de ses pieds (là où il est affiché, caméra, zoom et
+## secousse compris) au pointeur ; la profondeur est écrasée par l'inclinaison de la caméra, on la rétablit.
+func _aim_at_click(click: Vector2) -> void:
+	var origin := get_viewport().get_visible_rect().size * 0.5   # (le pirate est au centre de l'écran, à défaut de mieux)
+	if _cam != null and _container != null:
+		var feet := _cam.unproject_position(_land_point(_lpos, _lh))
+		origin = _container.position + feet * float(_factor)
+	var d := click - origin
+	if d.length() > 4.0:
+		_face = Vector2(d.x, d.y / sin(deg_to_rad(_elev_deg))).rotated(-_cam_yaw).normalized()   # (écran -> monde, caméra tournée comprise)
+
+
 ## Coup de sabre vers `_face` : le croissant s'affiche tout de suite, l'hôte décide qui est touché.
-func _try_attack() -> void:
+func _try_attack(secondary: bool = false) -> void:
 	if _loc != Loc.LAND or _atk_cd > 0.0 or _hp <= 0 or _dialog.is_open() or _shop_menu.is_open() or _chart.is_open() or _jump_wind > 0.0:
 		return
-	if Weapons.is_gun(_profile.weapon):
-		_try_shoot(_profile.weapon)
+	var wid: String = _profile.secondary_weapon() if secondary else _profile.weapon   # clic gauche : arme principale ; clic droit : secondaire
+	if wid != _profile.weapon:
+		_hand_wid = wid   # l'arme du clic droit passe dans la main le temps de servir
+		_hand_t = 2.0
+		_sync_held_weapon()   # l'arme est dans la main avant que le geste commence
+	if Weapons.is_gun(wid):
+		_try_shoot(wid)
 		return
 	_atk_cd = float(_islands.player_cfg.get("swing_cooldown", 0.45))
 	_sprite.play_action("slash_sabre", _screen_of_face(_face))   # le coup de sabre : bras levé, coup, retour
@@ -2209,9 +2315,10 @@ func _shot_fx(origin: Vector2, dir: Vector2, def: Dictionary, height: float = IN
 
 ## X : l'arme suivante du sac.
 func _cycle_weapon() -> void:
-	_profile.weapon = Weapons.next_owned(_profile.weapon, _profile.weapons)
+	_profile.set_main_weapon(Weapons.next_owned(_profile.weapon, _profile.weapons))
 	_profile.save()
-	_say("En main : %s" % Weapons.weapon_name(_profile.weapon), 2.0)
+	_hand_wid = ""
+	_say("Arme principale (clic gauche) : %s" % Weapons.weapon_name(_profile.weapon), 2.0)
 
 
 # ------------------------------------------------------------------ sac du pirate
@@ -2224,7 +2331,8 @@ func _inventory_rows() -> Array:
 			continue
 		var def := Weapons.get_def(str(id))
 		var held: bool = _profile.weapon == str(id)
-		var right := "en main" if held else "prendre en main"
+		var second: bool = _profile.secondary_weapon() == str(id) and not held
+		var right := "principale (clic gauche)" if held else ("secondaire (clic droit)" if second else "E : principale, Q : secondaire")
 		var ammo := Weapons.ammo_of(str(id))
 		if ammo != "":
 			right += "   (%d %s)" % [_profile.ammo_count(ammo), Weapons.ammo_label(ammo)]
@@ -2274,15 +2382,29 @@ func _toggle_inventory() -> void:
 		_inventory.open(_inventory_rows())
 
 
+## Q sur une arme du sac : elle devient l'arme secondaire (clic droit).
+func _on_inventory_alt(kind: String, id: String) -> void:
+	if kind != "weapon" or _chest_island >= 0:
+		return
+	if _profile.weapons.size() < 2:
+		_say("Il te faut une deuxième arme pour avoir une arme secondaire", 2.5)
+		return
+	_profile.set_secondary_weapon(id)
+	_profile.save()
+	_say("Arme secondaire (clic droit) : %s" % Weapons.weapon_name(_profile.secondary_weapon()), 2.5)
+	_inventory.set_rows(_inventory_rows())
+
+
 func _on_inventory_use(kind: String, id: String) -> void:
 	if _chest_island >= 0:   # le panneau montre le coffre d'une cabane
 		_on_chest_use(kind, id)
 		return
 	match kind:
 		"weapon":
-			_profile.weapon = id
+			_profile.set_main_weapon(id)
 			_profile.save()
-			_say("En main : %s" % Weapons.weapon_name(id), 2.0)
+			_hand_wid = ""
+			_say("Arme principale (clic gauche) : %s" % Weapons.weapon_name(id), 2.0)
 		"wskin":
 			var list := _profile.skins_for(id)
 			var nxt := str(list[(list.find(_profile.skin_of(id)) + 1) % list.size()])
@@ -2433,6 +2555,34 @@ func apply_loot(gold: int, at: Vector2) -> void:
 	_popup("+%d or" % gold, at, Color(1.0, 0.85, 0.3))
 
 
+## Hôte (ou solo) : `n` points de réputation pour `peer`, qui les voit s'ajouter à sa barre.
+func _give_rep(peer: int, n: int, why: String) -> void:
+	if n <= 0:
+		return
+	if peer == _my_id():
+		apply_rep(n, why)
+	elif _net != null and _net.active:
+		_net.send_rep(peer, n, why)
+
+
+## Je gagne `n` points de réputation (`why` : d'où ils viennent) : la barre se remplit en s'animant ; un nouveau rang ouvre une
+## bannière qui liste les skins de bateau débloqués (à la voilerie).
+func apply_rep(n: int, why: String) -> void:
+	var info := _profile.add_reputation(n)
+	if info.is_empty():
+		return
+	_rep_hud.gain(int(info["from"]), int(info["to"]), n)
+	if int(info["rank_to"]) > int(info["rank_from"]):
+		var unlocked: Array = []
+		for r in range(int(info["rank_from"]) + 1, int(info["rank_to"]) + 1):
+			for u: Dictionary in ShipSkin.unlocked_at(r):
+				unlocked.append("%s (%s)" % [u["label"], ShipSkin.category_label(str(u["cat"])).to_lower()])
+		_rep_hud.rank_up(Reputation.rank_name(int(info["rank_to"])), unlocked)
+		_say("Nouveau rang : %s !%s" % [Reputation.rank_name(int(info["rank_to"])), "  Skins débloqués à la voilerie." if not unlocked.is_empty() else ""], 5.0)
+	else:
+		_say("+%d réputation (%s)" % [n, why], 2.5)
+
+
 func _popup(text: String, at: Vector2, color: Color) -> void:
 	var l := Label3D.new()
 	l.text = text
@@ -2533,6 +2683,8 @@ func _process(delta_raw: float) -> void:
 	if _ship == null:
 		return
 	_time += delta
+	_hand_t = maxf(_hand_t - delta, 0.0)
+	_apply_hud_scale()
 	_impact_cd = maxf(_impact_cd - delta, 0.0)
 	_bail_cd = maxf(_bail_cd - delta, 0.0)
 	if _is_authority():
@@ -2568,6 +2720,7 @@ func _process(delta_raw: float) -> void:
 	_place_pirate()
 	_update_target(delta)
 	_update_aim_line()
+	_update_gun_aim(delta)
 	_loot.step(delta, _is_authority())
 	_update_loot_pickup(delta)
 	_update_grapple_visual()
@@ -2642,7 +2795,7 @@ func _update_player(delta: float) -> void:
 		_update_nest(move, delta)
 		return
 	if _loc == Loc.SWIM:
-		_update_swim(move, delta)
+		_update_swim(move.rotated(-_cam_yaw), delta)   # (les flèches suivent l'écran, même si la caméra a tourné)
 		return
 	if _loc == Loc.FLIGHT:
 		_update_flight(delta)
@@ -2661,10 +2814,11 @@ func _update_player(delta: float) -> void:
 	if _loc == Loc.SHIP and _mode == Mode.CANNON:
 		_cannon_aim = clampf(_cannon_aim + move.x * 0.9 * delta, -0.7, 0.7)
 		return
+	move = move.rotated(-_cam_yaw)   # marche à pied : les flèches suivent l'écran, même si la caméra a tourné (molette)
 	if _loc == Loc.HOLD:
 		if move != Vector2.ZERO:
 			var slow := 1.0 - _hull.walk_slow_in_water * _hull.fill()   # on patauge
-			_hpos = _hold_layout.move_with_slide(_hpos, move.normalized() * WALK_SPEED * slow * delta)
+			_hpos = _hold_layout.move_with_slide(_hpos, move.normalized() * WALK_SPEED * _sprint_factor() * slow * delta)
 		return
 	if _jump_wind > 0.0:
 		return   # accroupi avant de sauter
@@ -2672,7 +2826,7 @@ func _update_player(delta: float) -> void:
 	if _loc == Loc.LAND:
 		if move != Vector2.ZERO and not _dialog.is_open() and not _shop_menu.is_open():
 			_face = move.normalized()
-			var step_l := move.normalized() * WALK_SPEED * delta
+			var step_l := move.normalized() * WALK_SPEED * _sprint_factor() * delta
 			if airborne:
 				# en plein saut on n'est plus tenu par le bord du quai ni de la plage : on franchit le vide, on passe
 				# au-dessus des poteaux et des tonneaux (seuls les murs arrêtent)
@@ -2682,7 +2836,7 @@ func _update_player(delta: float) -> void:
 				_lpos = Vector2(r.x, r.y)
 				_lh = r.z
 		return
-	var step_units := WALK_SPEED / ShipModel.SCALE * delta
+	var step_units := WALK_SPEED * _sprint_factor() / ShipModel.SCALE * delta
 	if _walkto != Vector2.INF:
 		var d := _walkto - _ppos
 		if d.length() > 0.04:
@@ -2729,6 +2883,11 @@ func _land_point(w: Vector2, h: float) -> Vector3:
 	return Vector3(w.x - _world_origin.x, h, w.y - _world_origin.z)
 
 
+## Maj maintenue : on court (marche du pont, de la cale et de la terre).
+func _sprint_factor() -> float:
+	return SPRINT_MULT if Input.is_physical_key_pressed(KEY_SHIFT) else 1.0
+
+
 ## Saut : un temps d'accroupissement, puis une parabole. Possible à terre comme sur le pont.
 func _update_jump(delta: float) -> void:
 	_land_t = maxf(_land_t - delta, 0.0)
@@ -2745,6 +2904,8 @@ func _update_jump(delta: float) -> void:
 	if _loc != Loc.SHIP and _loc != Loc.LAND:
 		_vz = 0.0   # sur une échelle, dans le nid, à la nage ou en vol : pas de gravité de saut, la hauteur est dictée ailleurs
 		return
+	if _loc == Loc.SHIP and _vz == 0.0 and _pz <= 0.05 and _jump_wind <= 0.0 and not _ship.over_hull(_ppos) and _raft_deck_y(_ship_to_world(_ppos)) == INF:
+		_ppos = _ship.nearest_walkable(_ppos)   # filet de sécurité : on ne tombe du bateau qu'en sautant
 	var floor_h := _fall_floor()
 	if _vz != 0.0 or _pz > floor_h + 0.001:
 		_pz += _vz * delta
@@ -3113,6 +3274,124 @@ func _update_aim_line() -> void:
 		im.surface_add_vertex(end + Vector3(cos(a0), 0.0, sin(a0)) * 1.1)
 		im.surface_add_vertex(end + Vector3(cos(a1), 0.0, sin(a1)) * 1.1)
 	im.surface_end()
+
+
+# --- viser et tirer au canon, à la souris ---
+
+const GUN_ARC := 0.78            ## rad : de combien le canon peut se tourner de chaque côté de sa sortie (~45°)
+const GUN_RELOAD := 0.7          ## s : délai entre deux tirs au même canon
+
+var _gun_i := -1                 ## le canon que je vise à la souris (-1 : aucun)
+var _gun_cd := 0.0
+var _gun_line: MeshInstance3D
+
+
+## E au canon `i` : on le prend en main pour viser à la souris.
+func _gun_enter(i: int) -> void:
+	_gun_i = i
+	_cannon_aim = 0.0
+
+
+## On lâche le canon : le tube reprend sa place.
+func _gun_leave() -> void:
+	if _gun_i >= 0 and _gun_i < _cannon_nodes.size():
+		(_cannon_nodes[_gun_i]["barrel"] as Node3D).rotation.y = 0.0
+	_gun_i = -1
+	_cannon_aim = 0.0
+
+
+## La sortie du canon `i` dans le monde (x/z, unitaire) : perpendiculaire au bord.
+func _gun_out(i: int) -> Vector2:
+	var side := float((_ship.cannons[i] as Array)[2])
+	var out3 := (_ship.global_transform.basis * Vector3(0.0, 0.0, -side)).normalized()
+	return Vector2(out3.x, out3.z).normalized()
+
+
+## Chaque image : le tube suit le pointeur (dans l'arc permis) et le tracé du boulet montre où il tombera (vert : il toucherait un ennemi).
+func _update_gun_aim(delta: float) -> void:
+	_gun_cd = maxf(_gun_cd - delta, 0.0)
+	if _gun_line == null:
+		_gun_line = MeshInstance3D.new()
+		_gun_line.mesh = ImmediateMesh.new()
+		var mat := StandardMaterial3D.new()
+		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		mat.vertex_color_use_as_albedo = true
+		mat.no_depth_test = true
+		mat.render_priority = 6
+		_gun_line.material_override = mat
+		_gun_line.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		_gun_line.extra_cull_margin = 80.0
+		_world.add_child(_gun_line)
+	if _gun_i >= 0:
+		var busy := _dialog.is_open() or _shop_menu.is_open() or _chart.is_open() or _pause.is_open() or _inventory.is_open()
+		var cpos := Vector2.INF
+		if _gun_i < _ship.cannons.size():
+			cpos = Vector2(float((_ship.cannons[_gun_i] as Array)[0]), float((_ship.cannons[_gun_i] as Array)[1]))
+		if busy or _loc != Loc.SHIP or _mode != Mode.WALK or cpos == Vector2.INF or _ppos.distance_to(cpos) > 3.2:
+			_gun_leave()   # on s'est éloigné du canon, ou autre chose prend la main
+	_gun_line.visible = _gun_i >= 0
+	if _gun_i < 0:
+		return
+	var muzzle := _ship.to_global(ShipCannons.muzzle_local(_cannon_nodes[_gun_i]))
+	var out2 := _gun_out(_gun_i)
+	var hit3 := _mouse_ground_point(muzzle.y)
+	if hit3 != Vector3.INF:
+		var to := Vector2(hit3.x - muzzle.x, hit3.z - muzzle.z)
+		if to.length() > 0.5:
+			_cannon_aim = clampf(out2.angle_to(to), -GUN_ARC, GUN_ARC)
+	(_cannon_nodes[_gun_i]["barrel"] as Node3D).rotation.y = -_cannon_aim
+	# trajectoire prévue : mêmes lois que le boulet (voir fire_visual et _update_projectiles)
+	var dir := out2.rotated(_cannon_aim)
+	var fwd := _sim.forward()
+	var vel := Vector3(dir.x, 0.0, dir.y) * 28.0 + Vector3.UP * 5.0 + Vector3(fwd.x, 0.0, fwd.y) * _sim.speed
+	var pos := muzzle
+	var pts: Array[Vector3] = [pos]
+	var hits := false
+	for k in 70:
+		vel.y -= 16.0 * 0.04
+		pos += vel * 0.04
+		pts.append(pos)
+		if _fleet.ball_hit(pos) >= 0:
+			hits = true
+			break
+		if pos.y < SEA_Y:
+			break
+	var col := Color(0.45, 1.0, 0.5) if hits else (Color(1.0, 0.86, 0.2) if _cannon_loaded[_gun_i] else Color(1.0, 0.45, 0.35))
+	var im := _gun_line.mesh as ImmediateMesh
+	im.clear_surfaces()
+	im.surface_begin(Mesh.PRIMITIVE_LINES)
+	im.surface_set_color(col)
+	for k in range(0, pts.size() - 1, 2):
+		im.surface_add_vertex(pts[k])
+		im.surface_add_vertex(pts[k + 1])
+	var end := pts[pts.size() - 1]
+	for k in 16:
+		var a0 := TAU * float(k) / 16.0
+		var a1 := TAU * float(k + 1) / 16.0
+		im.surface_add_vertex(end + Vector3(cos(a0), 0.0, sin(a0)) * 1.1)
+		im.surface_add_vertex(end + Vector3(cos(a1), 0.0, sin(a1)) * 1.1)
+	im.surface_end()
+
+
+## Clic gauche pendant qu'on vise : tire (ou recharge depuis la caisse si le canon est vide).
+func _gun_fire() -> void:
+	if _gun_i < 0 or _gun_cd > 0.0:
+		return
+	var i := _gun_i
+	if not _cannon_loaded[i]:
+		if _carry_kind == "ball":
+			_drop_carried()
+		elif _carrying or not _profile.take_supply("ball"):
+			_say("Pas de boulet : prends-en un à la caisse ou au tonneau" if not _carrying else "Tes mains sont prises", 2.5)
+			return
+		_request("load", i)
+		_cannon_loaded[i] = true
+		_gun_cd = GUN_RELOAD
+		return
+	var deg := clampi(roundi(rad_to_deg(_cannon_aim)), -45, 45)
+	_request("aim_fire", i + 100 * (deg + 45))
+	_cannon_loaded[i] = false   # affichage immédiat ; l'hôte confirme
+	_gun_cd = GUN_RELOAD
 
 
 ## Un pirate glissé dans le canon `i` : Q/D pour viser, E pour partir, R/Espace pour ressortir.
@@ -3503,12 +3782,37 @@ func apply_remote_player(id: int, pos: Vector2, carrying: bool, loc: int, pz: fl
 	(r["plank"] as MeshInstance3D).visible = carrying and loc == 4
 
 
+## Le pseudo en petit, au-dessus de la tête d'un pirate : toujours de face, visible même derrière un décor, vide = rien.
+func _make_name_tag(text: String) -> Label3D:
+	var l := Label3D.new()
+	l.text = text
+	l.visible = text != ""
+	l.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	l.font_size = 32
+	l.pixel_size = 0.0075
+	l.modulate = Color(1.0, 0.96, 0.85)
+	l.outline_size = 8
+	l.outline_modulate = Color(0.08, 0.04, 0.02)
+	l.no_depth_test = true
+	l.position = Vector3(0.0, 2.35, 0.0)
+	return l
+
+
+func _set_name_tag(tag: Label3D, text: String) -> void:
+	if tag != null and tag.text != text:
+		tag.text = text
+		tag.visible = text != ""
+
+
 func _add_remote(id: int, pos: Vector2) -> void:
 	var sprite := PirateSprite.new()
 	_ship.add_child(sprite)   # d'abord dans la scène : set_look peut finir tout de suite (feuille déjà en cache) et la boussole a besoin de la transformation globale
 	sprite.enable_actions()   # on doit voir ses tirs, ses pouvoirs et ses coups de sabre
 	sprite.set_look(_remote_looks.get(id, PirateLook.random_look(id)))
 	_apply_held(sprite, str(_remote_held.get(id, "")))
+	var tag := _make_name_tag(str(_remote_names.get(id, "")))
+	tag.name = "NameTag"
+	sprite.add_child(tag)
 	var ball := _make_ball(0.14, Color(0.12, 0.12, 0.16))
 	ball.visible = false
 	sprite.add_child(ball)
@@ -3584,7 +3888,15 @@ func apply_ship_skin_json(json: String) -> void:
 
 ## « arme|skin » de ce que je tiens en main : envoyé aux autres joueurs avec mon apparence.
 func _held_code() -> String:
-	return "%s|%s" % [_profile.weapon, _profile.skin_of(_profile.weapon)]
+	var w := _shown_weapon()
+	return "%s|%s" % [w, _profile.skin_of(w)]
+
+
+## L'arme visible dans la main : la principale, ou la secondaire pendant quelques secondes après un clic droit.
+func _shown_weapon() -> String:
+	if _hand_wid != "" and _hand_t > 0.0 and _profile.weapons.has(_hand_wid):
+		return _hand_wid
+	return _profile.weapon
 
 
 ## Met dans la main d'un sprite l'arme décrite par « arme|skin » (vide : rien).
@@ -3598,7 +3910,9 @@ func _apply_held(sprite: PirateSprite, code: String) -> void:
 func _sync_held_weapon() -> void:
 	if _sprite == null:
 		return
-	_sprite.set_weapon(_profile.weapon, _profile.skin_of(_profile.weapon))
+	_set_name_tag(_name_tag, PlayerName.value)
+	var shown := _shown_weapon()
+	_sprite.set_weapon(shown, _profile.skin_of(shown))
 	var code := _held_code()
 	if code != _held_sent:
 		_held_sent = code
@@ -3610,6 +3924,7 @@ func _sync_held_weapon() -> void:
 func local_look_json() -> String:
 	var d: Dictionary = (_local_look() as Dictionary).duplicate(true)
 	d["held"] = _held_code()
+	d["name"] = PlayerName.value
 	return JSON.stringify(d, "", true)
 
 
@@ -3621,7 +3936,9 @@ func apply_remote_look(id: int, json: String) -> void:
 	var look := PirateLook.sanitize(parsed)
 	_remote_looks[id] = look
 	_remote_held[id] = str((parsed as Dictionary).get("held", ""))
+	_remote_names[id] = PlayerName.clean(str((parsed as Dictionary).get("name", "")))   # (nettoyé : ce qui vient du réseau n'est pas sûr)
 	if _remotes.has(id):
+		_set_name_tag(_remotes[id]["sprite"].get_node_or_null("NameTag") as Label3D, str(_remote_names[id]))
 		var rs := _remotes[id]["sprite"] as PirateSprite
 		rs.set_look(look)
 		_apply_held(rs, _remote_held[id])
@@ -3860,7 +4177,8 @@ func _update_camera(delta: float) -> void:
 	# 2 ou 3 pixels d'écran.
 	_cam_offset = _cam_offset.lerp(_camera_target(), 1.0 - exp(-delta * 6.0))
 	_elev_deg = lerpf(_elev_deg, SHOULDER_ELEV_DEG if _shoulder_active() else ELEVATION_DEG, 1.0 - exp(-delta * 4.0))
-	_cam.rotation_degrees = Vector3(-_elev_deg, 0, 0)
+	_cam.rotation = Vector3(-deg_to_rad(_elev_deg), _cam_yaw, 0.0)   # (_cam_yaw : cap de la caméra, tourné avec la molette)
+	PirateSprite.view_yaw = _cam_yaw
 	var el := deg_to_rad(_elev_deg)
 	var focus_exact := Vector3(_ship.position.x, 1.2, _ship.position.z) + _cam_offset
 	if _args.has("cam-world"):  # diagnostic : regarder un point précis du monde (ex. la ville)
@@ -3868,9 +4186,10 @@ func _update_camera(delta: float) -> void:
 		focus_exact = Vector3(float(parts[0]) - _world_origin.x, 1.2, float(parts[1]) - _world_origin.z)
 	var focus := _snap_ground(focus_exact)
 	_cam_focus = focus
-	_cam.position = focus + Vector3(0, sin(el), cos(el)) * 60.0
-	var frac_px := Vector2((focus_exact.x - focus.x) * _ppm(),
-			(focus_exact.z - focus.z) * sin(el) * _ppm())
+	_cam.position = focus + Basis(Vector3.UP, _cam_yaw) * Vector3(0, sin(el), cos(el)) * 60.0
+	var off_xz := Vector2(focus_exact.x - focus.x, focus_exact.z - focus.z)
+	var frac_px := Vector2(off_xz.dot(Vector2(cos(_cam_yaw), -sin(_cam_yaw))) * _ppm(),
+			off_xz.dot(Vector2(sin(_cam_yaw), cos(_cam_yaw))) * sin(el) * _ppm())
 	var shake := Vector2.ZERO
 	if _shake_t > 0.0:   # secousse d'un choc : quelques pixels, qui s'éteignent
 		_shake_t -= delta
@@ -3902,7 +4221,14 @@ func _snap_camera() -> void:
 func _snap_ground(v: Vector3) -> Vector3:
 	var grid_x := 1.0 / _ppm()
 	var grid_z := 1.0 / (_ppm() * sin(deg_to_rad(_elev_deg)))
-	return Vector3(snappedf(v.x, grid_x), v.y, snappedf(v.z, grid_z))
+	# la grille suit la caméra (qui peut avoir tourné) : on cale la position dans ses axes (droite, bas de l'écran)
+	var right := Vector2(cos(_cam_yaw), -sin(_cam_yaw))
+	var down := Vector2(sin(_cam_yaw), cos(_cam_yaw))
+	var g := Vector2(v.x, v.z)
+	var u := snappedf(g.dot(right), grid_x)
+	var w := snappedf(g.dot(down), grid_z)
+	var snapped_xz := right * u + down * w
+	return Vector3(snapped_xz.x, v.y, snapped_xz.y)
 
 
 # ------------------------------------------------------------------ interactions
@@ -3917,7 +4243,7 @@ const INTERACT_PARAMS := {
 	"cannon": {"reach": 1.15, "cone": 0.7, "h": 1.7},
 	"crate": {"reach": 1.25, "cone": 0.6, "h": 1.6},
 	"stash": {"reach": 1.3, "cone": 0.6, "h": 1.5},
-	"grapple": {"reach": 1.35, "cone": 0.55, "h": 1.7},
+	"grapple": {"reach": 2.2, "cone": 0.0, "h": 1.7, "bias": 0.8},   # large et sans cône : pas besoin de viser le canon pour le prendre
 	"ammo": {"reach": 1.15, "cone": 0.65, "h": 1.5},
 	"anchor": {"reach": 1.3, "cone": 0.65, "h": 1.5},
 	"ladder": {"reach": 1.15, "cone": 0.6, "h": 1.7},
@@ -3968,10 +4294,61 @@ func _nearest_interactable() -> Dictionary:
 	return _target
 
 
+## Un anneau doré posé sur le pont à chaque poste (coffre, barre, caisse, échelle…) : on les repère de loin, et celui qui est
+## visé s'élargit et brille. Les anneaux sont créés au fil de l'eau (certains postes s'ajoutent après la construction).
+func _update_post_rings() -> void:
+	if _ship == null:
+		return
+	if _ring_mat == null:
+		_ring_mat = _ring_material(Color(1.0, 0.82, 0.3, 0.5))
+		_ring_mat_hot = _ring_material(Color(1.0, 0.95, 0.55, 0.95))
+	while _post_rings.size() < _interactables.size():
+		var ring := MeshInstance3D.new()
+		var torus := TorusMesh.new()
+		torus.inner_radius = 0.34
+		torus.outer_radius = 0.44
+		torus.rings = 24
+		torus.ring_segments = 6
+		ring.mesh = torus
+		ring.scale = Vector3(1.0, 0.2, 1.0)
+		ring.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		_ship.add_child(ring)
+		_post_rings.append(ring)
+	var show := _loc == Loc.SHIP and _mode == Mode.WALK
+	var pulse := 0.5 + 0.5 * sin(_time * 3.2)
+	_ring_mat.albedo_color.a = 0.35 + 0.25 * pulse
+	for i in _post_rings.size():
+		var ring := _post_rings[i] as MeshInstance3D
+		if i >= _interactables.size():
+			ring.visible = false   # (le bateau a changé : il y a moins de postes qu'avant)
+			continue
+		var it: Dictionary = _interactables[i]
+		var pos: Vector2 = it["pos"]
+		var near := show and pos.distance_to(_ppos) < 6.0
+		ring.visible = near
+		if not near:
+			continue
+		var hot: bool = not _target.is_empty() and _target.get("pos") == pos and _target.get("kind") == it["kind"]
+		ring.material_override = _ring_mat_hot if hot else _ring_mat
+		var s := (1.35 + 0.15 * pulse) if hot else 1.0
+		ring.scale = Vector3(s, 0.2, s)
+		ring.position = _ship.to_local3(pos, 0.06)
+
+
+func _ring_material(c: Color) -> StandardMaterial3D:
+	var m := StandardMaterial3D.new()
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	m.albedo_color = c
+	m.render_priority = 2
+	return m
+
+
 ## Désigne l'objet visé par la flèche jaune.
 func _update_target(delta: float) -> void:
 	var blocked := _chart.is_open() or _pause.is_open() or _dialog.is_open() or _shop_menu.is_open() or _inventory.is_open() or _quest_panel.is_open()
 	_target = {} if blocked else _compute_target()
+	_update_post_rings()
 	if _target_marker == null:
 		return
 	_target_marker.visible = not _target.is_empty()
@@ -3987,17 +4364,40 @@ func _update_target(delta: float) -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if _ship == null:
 		return
+	# molette enfoncée + souris : on fait tourner la caméra autour du pirate ; un simple clic sur la molette la remet droite
+	if event is InputEventMouseButton and (event as InputEventMouseButton).button_index == MOUSE_BUTTON_MIDDLE:
+		_cam_drag = (event as InputEventMouseButton).pressed
+		if _cam_drag:
+			_cam_drag_moved = 0.0
+		elif _cam_drag_moved < 4.0:
+			_cam_yaw = 0.0
+		return
+	if event is InputEventMouseMotion and _cam_drag:
+		var rel := (event as InputEventMouseMotion).relative
+		_cam_drag_moved += absf(rel.x) + absf(rel.y)
+		_cam_yaw = wrapf(_cam_yaw - rel.x * 0.008, -PI, PI)
+		return
 	if event is InputEventMouseButton:
 		var mb := event as InputEventMouseButton
 		# le grappin en main : le clic gauche lance le crochet vers le pointeur
 		if mb.pressed and mb.button_index == MOUSE_BUTTON_LEFT and _hook_aim and _hook_can_aim():
 			_hook_fire()
+		# au canon : clic gauche tire, clic droit lâche le canon
+		elif mb.pressed and _gun_i >= 0 and mb.button_index == MOUSE_BUTTON_LEFT:
+			_gun_fire()
+		elif mb.pressed and _gun_i >= 0 and mb.button_index == MOUSE_BUTTON_RIGHT:
+			_gun_leave()
+		# le grappin en main : le clic droit le range ; accroché : clic gauche = haler / ramener, clic droit = décrocher
+		elif mb.pressed and mb.button_index == MOUSE_BUTTON_RIGHT and _hook_aim:
+			_hook_aim = false
+		elif mb.pressed and (mb.button_index == MOUSE_BUTTON_LEFT or mb.button_index == MOUSE_BUTTON_RIGHT) and _grap_state != 0 \
+				and _loc == Loc.SHIP and _mode == Mode.WALK and _ppos.distance_to(_grapple_mount()) < 3.6:
+			_hook_interact(mb.button_index == MOUSE_BUTTON_RIGHT)
 		# à terre, le clic gauche frappe vers le pointeur (l'écran est centré sur le pirate)
-		elif mb.pressed and mb.button_index == MOUSE_BUTTON_LEFT and _loc == Loc.LAND:
-			var d := mb.position - get_viewport().get_visible_rect().size * 0.5
-			if d.length() > 4.0:
-				_face = Vector2(d.x, d.y / sin(deg_to_rad(_elev_deg))).normalized()
-			_try_attack()
+		# à terre, le clic droit frappe ou tire avec l'arme secondaire (vers le pointeur aussi)
+		elif mb.pressed and (mb.button_index == MOUSE_BUTTON_LEFT or mb.button_index == MOUSE_BUTTON_RIGHT) and _loc == Loc.LAND:
+			_aim_at_click(mb.position)   # le coup ou le tir part vers l'endroit cliqué
+			_try_attack(mb.button_index == MOUSE_BUTTON_RIGHT)
 		elif mb.pressed and mb.button_index == MOUSE_BUTTON_WHEEL_UP:
 			_zoom_user = clampf(_zoom_user * 1.12, 0.55, 1.9)   # molette : on se rapproche
 		elif mb.pressed and mb.button_index == MOUSE_BUTTON_WHEEL_DOWN:
@@ -4057,6 +4457,8 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif key.physical_keycode == KEY_SPACE:
 		_try_jump()
 	elif key.physical_keycode == KEY_F:
+		if _loc == Loc.LAND:
+			_aim_at_click(get_viewport().get_mouse_position())   # comme au clic : vers le pointeur
 		_try_attack()
 	elif key.physical_keycode >= KEY_1 and key.physical_keycode <= KEY_4:
 		_try_cast(key.physical_keycode - KEY_1)
@@ -4077,22 +4479,16 @@ func _hold_nearest() -> Dictionary:
 
 
 func _interact_hold(secondary: bool) -> void:
-	if secondary:
-		return
 	var it := _hold_nearest()
 	if it.is_empty():
+		return
+	if secondary and it["kind"] != "rack":
 		return
 	match it["kind"]:
 		"ladder":
 			_leave_hold()
 		"rack":
-			if not _carrying:
-				if _profile.take_supply("plank"):
-					_carrying = true
-					_carry_kind = "plank"
-					_plank_icon.visible = true
-				else:
-					_say("Plus de planches : rachètes-en au Magasin Général", 3.5)
+			_interact_rack(secondary)
 		"bucket":
 			if _bail_cd <= 0.0 and _hull.water > 0.0:
 				_bail_cd = _hull.bail_cooldown
@@ -4104,6 +4500,24 @@ func _interact_hold(secondary: bool) -> void:
 				_drop_carried()
 			else:
 				_say("Il te faut une planche : l'étagère est au fond, à l'arrière")
+
+
+## L'étagère de la cale : E prend une planche, R prend un boulet ; avec une planche ou un boulet en main, E ou R le range.
+## (Les mêmes réserves que la caisse du pont : on prend et on dépose en haut comme en bas.)
+func _interact_rack(secondary: bool) -> void:
+	if _carry_kind == "ball" or _carry_kind == "plank":
+		_say("Rangé sur l'étagère : %s" % ("un boulet" if _carry_kind == "ball" else "une planche"), 2.0)
+		_put_supply(_carry_kind)
+		_drop_carried()
+		return
+	if _carrying:
+		_say("L'étagère ne prend que des boulets et des planches", 3.0)
+		return
+	var kind := "ball" if secondary else "plank"
+	if _profile.take_supply(kind):
+		_start_carry(kind)
+	else:
+		_say("Plus de %s : rachètes-en au Magasin Général" % ("boulets" if secondary else "planches"), 3.5)
 
 
 ## Éclaboussure dans la cale quand on écope.
@@ -4124,6 +4538,12 @@ func _interact(secondary: bool) -> void:
 		return
 	if _hook_interact(secondary):
 		return   # le grappin en main (ou accroché) a la priorité : E lance ou s'attire, R range ou décroche
+	if _gun_i >= 0:   # on vise au canon : E tire, R lâche
+		if secondary:
+			_gun_leave()
+		else:
+			_gun_fire()
+		return
 	if _loc == Loc.RAFT:
 		if not secondary:
 			_leave_raft(false)
@@ -4207,11 +4627,7 @@ func _interact(secondary: bool) -> void:
 			if not secondary:
 				_enter_hold()
 		"ammo":
-			if not secondary and not _carrying:
-				if _profile.take_supply("ball"):
-					_start_carry("ball")
-				else:
-					_say("Plus de boulets : rachètes-en au Magasin Général", 3.5)
+			_interact_crate(secondary)   # le tonneau de boulets : E prend un boulet, R une planche, et il reprend ce qu'on porte
 		"crate":
 			_interact_crate(secondary)
 		"stash":
@@ -4223,11 +4639,14 @@ func _interact(secondary: bool) -> void:
 			var i: int = it["index"]
 			if _cannon_loaded[i]:
 				if not secondary:
-					_request("fire", i)
+					_gun_enter(i)   # E : on vise à la souris, clic gauche pour tirer
 			elif _carry_kind == "ball" and not secondary:
 				_request("load", i)
 				_cannon_loaded[i] = true  # affichage immédiat ; l'hôte confirme dans son état
 				_drop_carried()
+				_gun_enter(i)
+			elif not secondary:
+				_gun_enter(i)   # vide, mains libres : on vise quand même (un clic le recharge depuis la caisse)
 			elif secondary and not _carrying:
 				_enter_cannon(i)   # R : on se glisse dans le canon, pour être tiré au loin
 
@@ -4385,6 +4804,7 @@ func _sell_stash(seller: int) -> void:
 	var left := total - share * crew.size()
 	for id in crew:
 		_give_loot(int(id), share + (left if int(id) == seller else 0), fence.pos)
+		_give_rep(int(id), int(float(total) * Reputation.gain("treasure_per_gold")), "trésors vendus")   # chacun gagne autant que ce que le coffre valait
 	_stash.clear()
 	_notify_all("Coffre vendu : %d pièces d'or partagées entre %d pirate(s)" % [total, crew.size()])
 
@@ -4407,6 +4827,7 @@ func apply_request(peer: int, kind: String, value: int) -> void:
 			var gold := _islands.open_chest(value)
 			if gold > 0:
 				_give_loot(peer, gold, (_islands.chests[value] as Dictionary)["pos"])
+				_give_rep(peer, int(Reputation.gain("chest")), "coffre ouvert")
 				# et un trésor à rapporter : plus le coffre est gardé (gros magot), plus il peut être rare
 				_give_item(peer, "t:" + Treasure.roll(_rng, maxf(float(gold) / 45.0, 0.6)))
 		"helm_take":
@@ -4482,6 +4903,15 @@ func apply_request(peer: int, kind: String, value: int) -> void:
 					_net.broadcast_fire(value)
 				else:
 					fire_visual(value)
+		"aim_fire":   # tir visé : valeur = canon + 100 x (angle en degrés + 45)
+			var gi := value % 100
+			var aim := deg_to_rad(float(clampi(value / 100 - 45, -45, 45)))
+			if gi >= 0 and gi < _cannon_loaded.size() and _cannon_loaded[gi]:
+				_cannon_loaded[gi] = false
+				if _net.active:
+					_net.broadcast_fire(gi, false, aim)
+				else:
+					fire_visual(gi, false, aim)
 
 
 func _my_id() -> int:
@@ -4531,6 +4961,9 @@ var _hook_aim := false          ## le grappin est en main : je vise
 var _hook_dir := Vector2.RIGHT  ## direction de visée (monde x/z)
 var _hook_hit: Dictionary = {}  ## ce que le crochet saisirait dans cette direction (Hook.trace)
 var _hook_line: MeshInstance3D
+var _hook_assist_src := Vector2.ZERO   ## direction du pointeur quand l'aide à la visée a cherché pour la dernière fois
+var _hook_assist_dir := Vector2.ZERO   ## direction trouvée par l'aide à la visée (zéro : aucune cible dans le cône)
+var _hook_assist_t := -10.0
 var _hook_mouse := Vector2.INF
 var _hook_mouse_used := false
 var _hk_water := false          ## sondage en cours : le tir a-t-il déjà survolé l'eau ?
@@ -4635,7 +5068,7 @@ func _hook_muzzle() -> Vector3:
 func _hook_can_aim() -> bool:
 	if _dialog.is_open() or _shop_menu.is_open() or _chart.is_open() or _pause.is_open() or _inventory.is_open():
 		return false
-	return _loc == Loc.SHIP and _mode == Mode.WALK and _ppos.distance_to(_grapple_mount()) < 2.6
+	return _loc == Loc.SHIP and _mode == Mode.WALK and _ppos.distance_to(_grapple_mount()) < 3.6
 
 
 ## E au canon à grappin : on le prend en main pour viser (R : le ranger).
@@ -4693,6 +5126,8 @@ func _update_hook_aim() -> void:
 	else:
 		_hook_dir = _sim.forward()
 	_hook_hit = Hook.trace(origin, _hook_dir, _hook_probes())
+	if str(_hook_hit["kind"]) == "" and not _args.has("aim"):
+		_hook_assist(origin)   # aide à la visée : si le pointeur est à côté d'une cible, le crochet s'en approche
 	var found: bool = str(_hook_hit["kind"]) != ""
 	var col := Color(0.45, 1.0, 0.5) if found else Color(1.0, 0.45, 0.35)
 	var end2: Vector2 = _hook_hit["pos"]
@@ -4714,6 +5149,33 @@ func _update_hook_aim() -> void:
 		_hook_strip(im, b + Vector3(-0.35, 0.0, 0.0), b + Vector3(0.35, 0.0, 0.0), 0.06)
 		_hook_strip(im, b + Vector3(0.0, 0.0, -0.35), b + Vector3(0.0, 0.0, 0.35), 0.06)
 	im.surface_end()
+
+
+const HOOK_ASSIST_DEG := 36.0   ## ° : jusqu'où de part et d'autre du pointeur le crochet cherche une cible
+const HOOK_ASSIST_STEP := 3.0    ## ° : pas de la recherche
+
+## Aide à la visée : la direction du pointeur ne saisit rien, on cherche la cible la plus proche de cette direction, dans un
+## cône de HOOK_ASSIST_DEG de chaque côté, et on y vise. Le résultat est gardé 0,25 s tant que le pointeur ne bouge pas
+## (la recherche coûte une vingtaine de tirs d'essai).
+func _hook_assist(origin: Vector2) -> void:
+	if _hook_assist_src.dot(_hook_dir) > cos(deg_to_rad(1.5)) and _time - _hook_assist_t < 0.25:
+		if _hook_assist_dir != Vector2.ZERO:
+			_hook_dir = _hook_assist_dir
+			_hook_hit = Hook.trace(origin, _hook_dir, _hook_probes())
+		return
+	_hook_assist_src = _hook_dir
+	_hook_assist_t = _time
+	_hook_assist_dir = Vector2.ZERO
+	var steps := int(HOOK_ASSIST_DEG / HOOK_ASSIST_STEP)
+	for k in range(1, steps + 1):
+		for sgn in [1.0, -1.0]:
+			var d := _hook_dir.rotated(deg_to_rad(HOOK_ASSIST_STEP * float(k)) * sgn)
+			var hit := Hook.trace(origin, d, _hook_probes())
+			if str(hit["kind"]) != "":
+				_hook_assist_dir = d
+				_hook_dir = d
+				_hook_hit = hit
+				return
 
 
 ## Un ruban à plat, large de 2 x `half_w`, de `p0` à `p1` (scène) : deux triangles.
@@ -4755,7 +5217,7 @@ func _hook_interact(secondary: bool) -> bool:
 		else:
 			_hook_fire()
 		return true
-	if _grap_state != 0 and _loc == Loc.SHIP and _mode == Mode.WALK and _ppos.distance_to(_grapple_mount()) < 3.2:
+	if _grap_state != 0 and _loc == Loc.SHIP and _mode == Mode.WALK and _ppos.distance_to(_grapple_mount()) < 3.6:
 		if secondary:
 			_request("grapple_release", 0)
 		else:
@@ -4950,17 +5412,17 @@ func _hook_prompt() -> String:
 	if _hook_aim:
 		var kind := str(_hook_hit.get("kind", ""))
 		if kind == "":
-			return "Grappin — rien à saisir par là (portée %d m)   R : ranger" % int(Hook.RANGE)
-		return "Grappin — clic ou E : lancer sur %s (%d m)   R : ranger" % [str(_hook_hit["name"]), int(_hook_hit["dist"])]
-	if _grap_state == 0 or _loc != Loc.SHIP or _ppos.distance_to(_grapple_mount()) >= 3.2:
+			return "Grappin — rien à saisir par là (portée %d m)   R ou clic droit : ranger" % int(Hook.RANGE)
+		return "Grappin — clic gauche ou E : lancer sur %s (%d m)   R ou clic droit : ranger" % [str(_hook_hit["name"]), int(_hook_hit["dist"])]
+	if _grap_state == 0 or _loc != Loc.SHIP or _ppos.distance_to(_grapple_mount()) >= 3.6:
 		return ""
 	match _grap_state:
 		1:
 			return "Le crochet file…"
 		5:
 			if _grap_kind == "loot":
-				return "Crochet sur du butin — E : le ramener   R : décrocher"
-			return "Crochet accroché sur %s — E : haler le bateau jusqu'à lui   R : décrocher (le bateau ne bouge pas)" % str(Hook.NAMES.get(_grap_kind, "?"))
+				return "Crochet sur du butin — E ou clic gauche : le ramener   R ou clic droit : décrocher"
+			return "Crochet accroché sur %s — E : haler le bateau jusqu'à lui   R ou clic droit : décrocher (le bateau ne bouge pas)" % str(Hook.NAMES.get(_grap_kind, "?"))
 		2:
 			return "Le butin arrive…   R : décrocher"
 		3:
@@ -5022,7 +5484,7 @@ func _leave_helm() -> void:
 
 
 ## Fait partir le boulet du canon `i` (éclair, boulet, éclaboussure). Appelé chez tout le monde.
-func fire_visual(i: int, human: bool = false) -> void:
+func fire_visual(i: int, human: bool = false, aim: float = 0.0) -> void:
 	if _ship == null or i < 0 or i >= _ship.cannons.size() or i >= _cannon_nodes.size():
 		return
 	_cannon_loaded[i] = false
@@ -5031,6 +5493,9 @@ func fire_visual(i: int, human: bool = false) -> void:
 	var out_local := Vector3(0.0, 0.0, -side)
 	var muzzle := _ship.to_global(ShipCannons.muzzle_local(_cannon_nodes[i]))
 	var dir := (_ship.global_transform.basis * out_local).normalized()
+	if aim != 0.0:   # tir visé : la sortie tournée de `aim` (même sens que _cannon_launch)
+		var d2 := Vector2(dir.x, dir.z).rotated(aim)
+		dir = Vector3(d2.x, 0.0, d2.y)
 	var fwd := _sim.forward()
 	ShipCannons.kick(_cannon_nodes[i])
 	if not human:   # un pirate tiré du canon part seul : pas de boulet avec lui
@@ -5075,6 +5540,7 @@ func _update_projectiles(delta: float) -> void:
 		vel.y -= 16.0 * delta
 		p["vel"] = vel
 		p["age"] = float(p["age"]) + delta
+		var prev_ball := node.position
 		node.position += vel * delta
 		if p.get("enemy", false) and _ball_hits_hull(node.global_position):
 			_splash(Vector3(node.position.x, SEA_Y + 0.05, node.position.z))
@@ -5082,7 +5548,13 @@ func _update_projectiles(delta: float) -> void:
 			_projectiles.remove_at(i)
 			continue
 		if p.get("player", false) and _is_authority():
-			var eid := _fleet.ball_hit(node.position)
+			var eid := -1   # on teste tout le trajet de l'image (un boulet rapide ne « saute » pas par-dessus une coque)
+			var travel := prev_ball.distance_to(node.position)
+			var steps := maxi(int(travel / 0.3), 1)
+			for k in range(1, steps + 1):
+				eid = _fleet.ball_hit(prev_ball.lerp(node.position, float(k) / float(steps)))
+				if eid >= 0:
+					break
 			if eid >= 0:
 				_fleet.hurt(eid, 18.0)   # un boulet de joueur touche un bateau ennemi
 				_splash(Vector3(node.position.x, SEA_Y + 0.05, node.position.z))
@@ -5131,7 +5603,9 @@ func _hold_prompt() -> String:
 		"ladder":
 			return "E : remonter sur le pont"
 		"rack":
-			return "Tu portes déjà une planche" if _carrying else "E : prendre une planche"
+			if _carry_kind == "ball" or _carry_kind == "plank":
+				return "E : ranger sur l'étagère   (planches %d, boulets %d)" % [_profile.planks, _profile.balls]
+			return "Tu as les mains prises" if _carrying else "E : prendre une planche (%d)   R : prendre un boulet (%d)" % [_profile.planks, _profile.balls]
 		"bucket":
 			return "E : écoper (%d %% d'eau)" % int(_hull.fill() * 100.0) if _hull.water > 0.0 else "La cale est sèche"
 		"hole":
@@ -5176,10 +5650,13 @@ func _update_hud() -> void:
 	_sync_held_weapon()
 	_weapon_label.visible = _loc == Loc.LAND
 	if _weapon_label.visible:
-		var wid: String = _profile.weapon
-		var ammo := Weapons.ammo_of(wid)
-		_weapon_label.text = "[X] %s%s   [Tab] sac" % [Weapons.weapon_name(wid),
-				"   %s : %d" % [Weapons.ammo_label(ammo), _profile.ammo_count(ammo)] if ammo != "" else ""]
+		var parts: Array = []
+		for slot: Array in [["clic gauche", _profile.weapon], ["clic droit", _profile.secondary_weapon()]]:
+			var wid: String = slot[1]
+			var ammo := Weapons.ammo_of(wid)
+			parts.append("[%s] %s%s" % [slot[0], Weapons.weapon_name(wid),
+					" (%d %s)" % [_profile.ammo_count(ammo), Weapons.ammo_label(ammo)] if ammo != "" else ""])
+		_weapon_label.text = "%s\n[X] changer   [Tab] sac" % "   ".join(parts)
 	if _stash_glow != null:
 		_stash_glow.visible = not _stash.is_empty()
 		_stash_glow.position.y = _ship.to_local3(_ship.stash_pos, 1.0 + 0.06 * sin(_time * 3.0)).y
@@ -5277,15 +5754,22 @@ func _update_hud() -> void:
 		"anchor":
 			_prompt.text = "E : lever l'ancre" if _sim.anchored else "E : jeter l'ancre"
 		"ammo":
-			_prompt.text = "Tu portes déjà un boulet" if _carrying else "E : prendre un boulet"
+			if _carry_kind == "ball" or _carry_kind == "plank":
+				_prompt.text = "E : ranger dans le tonneau   (boulets %d, planches %d)" % [_profile.balls, _profile.planks]
+			elif _carrying:
+				_prompt.text = "Le tonneau ne prend que boulets et planches"
+			else:
+				_prompt.text = "E : prendre un boulet (%d)   R : prendre une planche (%d)" % [_profile.balls, _profile.planks]
 		"cannon":
 			var i: int = it["index"]
-			if _cannon_loaded[i]:
-				_prompt.text = "E : tirer"
+			if _gun_i == i:
+				_prompt.text = "Canon — vise à la souris, clic gauche : tirer   clic droit ou R : lâcher" if _cannon_loaded[i] else "Canon vide — clic gauche : le recharger (boulets : %d)   clic droit ou R : lâcher" % _profile.balls
+			elif _cannon_loaded[i]:
+				_prompt.text = "E : viser à la souris (clic gauche : tirer)"
 			elif _carrying:
 				_prompt.text = "E : charger le canon"
 			else:
-				_prompt.text = "R : se glisser dans le canon (être tiré au loin)   —   ou prends un boulet au tonneau"
+				_prompt.text = "E : viser (et recharger au clic)   R : se glisser dans le canon (être tiré au loin)"
 
 
 # ------------------------------------------------------------------ fabrication et radeau
@@ -5436,6 +5920,8 @@ func apply_cabin(peer: int, op: String, island: int, kind: String, n: int, pos: 
 			_islands.held[id] = true
 			var reward := Outpost.capture_reward(_islands, island)
 			_give_loot(peer, reward, Outpost.flag_pos(_islands, island))
+			for crew_id in _crew_ids():
+				_give_rep(int(crew_id), int(float(reward) * Reputation.gain("capture_per_gold")), "île capturée")
 			_announce("%s est capturée ! Plus rien n'y reviendra. Fabriquez-y une cabane (Tab) pour ranger vos affaires" % str(isl["name"]))
 		"build":
 			if not Outpost.is_captured(_profile, id) or Outpost.has_cabin(_profile, id) or pos == Vector2.INF:
