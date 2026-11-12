@@ -54,8 +54,14 @@ func _ready() -> void:
 	var root := HBoxContainer.new()
 	root.add_theme_constant_override("separation", 40)
 	margin.add_child(root)
-	root.add_child(_build_left())
+	# (12/11 : refait avec le style commun — les choix sur un panneau de bois translucide posé sur la mer qui bouge)
+	var card := PanelContainer.new()
+	card.add_theme_stylebox_override("panel", UiTheme.panel(0.86))
+	card.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	card.add_child(_build_left())
+	root.add_child(card)
 	root.add_child(_build_right())
+	UiTheme.appear(card)
 	_choose_ship(ship)
 	set_look(_look if not _look.is_empty() else PirateLook.load_saved())
 
@@ -90,18 +96,11 @@ func _build_left() -> Control:
 	box.custom_minimum_size = Vector2(440, 0)
 	box.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	box.add_theme_constant_override("separation", 8)
-	var title := Label.new()
-	title.text = "JEU DE PIRATES"
-	title.add_theme_font_size_override("font_size", 44)
-	title.add_theme_color_override("font_color", GOLD)
-	title.add_theme_color_override("font_outline_color", Color(0.1, 0.05, 0.02))
-	title.add_theme_constant_override("outline_size", 12)
+	var title := UiTheme.label("JEU DE PIRATES", 54, UiTheme.BRASS, 14)
+	title.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.5))
+	title.add_theme_constant_override("shadow_offset_y", 4)
 	box.add_child(title)
-	var sub := Label.new()
-	sub.text = "Aventure en équipage, de 1 à 4 pirates"
-	sub.add_theme_color_override("font_color", CREAM)
-	sub.add_theme_font_size_override("font_size", 18)
-	box.add_child(sub)
+	box.add_child(UiTheme.label("Aventure en équipage, de 1 à 4 pirates", 18, CREAM, 3))
 	box.add_child(_gap(4))
 	PlayerName.load_saved()
 	var name_row := HBoxContainer.new()   # le pseudo, affiché en petit au-dessus de ton pirate
@@ -140,7 +139,14 @@ func _build_left() -> Control:
 	_hint.add_theme_font_size_override("font_size", 14)
 	box.add_child(_hint)
 	box.add_child(_gap(2))
-	box.add_child(_big_button("Jouer seul", func() -> void: play_solo.emit(ship)))
+	var solo := _big_button("Jouer seul", func() -> void: play_solo.emit(ship))
+	var brass := StyleBoxFlat.new()   # le bouton principal, en laiton plein
+	brass.bg_color = UiTheme.BRASS_DARK
+	brass.border_color = UiTheme.BRASS
+	brass.set_border_width_all(2)
+	brass.set_corner_radius_all(7)
+	solo.add_theme_stylebox_override("normal", brass)
+	box.add_child(solo)
 	box.add_child(_big_button("Héberger une partie", func() -> void: host_game.emit(ship)))
 	box.add_child(_big_button("Rejoindre un ami", _toggle_join))
 	_join_row = HBoxContainer.new()
@@ -169,7 +175,7 @@ func _build_left() -> Control:
 	box.add_child(_big_button("Sons, musique et affichage", func() -> void: _volume_panel.visible = not _volume_panel.visible))
 	box.add_child(_big_button("Quitter", func() -> void: quit_game.emit()))
 	var tips := Label.new()
-	tips.text = "ZQSD / flèches : marcher   Espace : sauter   Maj : courir   E : agir   R : agir autrement\nÉchap : menu (retour au menu)   B : boussole   J : quêtes   I : invitation (hôte)   M : couper le son\nMolette enfoncée + souris : tourner la caméra (un clic la remet droite)   Clic gauche / droit : arme principale / secondaire"
+	tips.text = "ZQSD / flèches : marcher   Espace : sauter   Maj : courir   E : agir   R : lâcher / agir autrement\nÉchap : menu   Tab : sac   B : boussole   J : quêtes   I : invitation (hôte)   Maj+M : couper le son   M : vol libre (essais)\nMolette enfoncée + souris : tourner et incliner la caméra (trois clics : vue de base)   Clic gauche / droit : armes"
 	tips.add_theme_color_override("font_color", Color(0.8, 0.85, 0.9))
 	tips.add_theme_font_size_override("font_size", 13)
 	box.add_child(tips)
@@ -219,6 +225,9 @@ func _big_button(text: String, action: Callable) -> Button:
 
 
 func _style_button(b: Button, solid: bool) -> void:
+	if solid:
+		UiTheme.style_button(b, int(b.get_theme_font_size("font_size")) if b.has_theme_font_size_override("font_size") else 18)
+		return
 	var states := {"normal": WOOD, "hover": WOOD_LIGHT, "pressed": Color("7a4c28"), "focus": WOOD}
 	for state: String in states:
 		var sb := StyleBoxFlat.new()

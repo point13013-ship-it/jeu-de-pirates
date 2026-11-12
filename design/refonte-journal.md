@@ -135,6 +135,31 @@ GDC « horizontal resequencing », interviews de Rare sur Sea of Thieves). Appli
   planches dépassent maintenant de la caisse). L'étagère de la cale garde les deux.
 - Traînées de vent plus légères (opacité 0,18 au lieu de 0,32).
 
+## Deuxième essai de Jimmy (12/11, après-midi)
+
+- Poste bloqué : pendant l'ancre, une réparation, l'écope, au canon ou au grappin, on ne bouge plus ; R (ou une touche
+  d'action) pour lâcher. Avant, bouger coupait l'action ou laissait partir en visant.
+- Caméra : vue de base au TRIPLE clic de molette (un clic suffisait, par mégarde) ; molette enfoncée + haut/bas : incliner
+  la vue (24° à 72°). M : vol libre d'essai au-dessus de la carte (Maj : plus vite) ; couper le son passe sur Maj+M.
+- Boussole rangée par défaut (B pour la sortir).
+- Pas selon le sol : pavés de la ville, bois des pontons, des planchers et du pont, sable, herbe, eau (enregistrements).
+  Avant, la ville jouait des clapotis. Ville : murmure de foule et enfants qui jouent, très bas, plein en ville seulement.
+- Nage : bas du corps coupé à la surface (shader du pirate), pose flottante au lieu de la marche, brassées, plongeon.
+  Requins : arrivent de 32 m, tournent, resserrent, chargent l'un après l'autre, mordent, repartent au large ; musique des
+  requins (pistes séparées : la batterie monte quand ils approchent). Sirène : apparaît à 22 m (côté du bateau), nouveau
+  modèle, traînée de lumière qui monte au ciel, chant 3D, texte « nage vers sa lumière » / « E : … ». Échelle de coque
+  jusque dans l'eau.
+- Voiles : plus de trous ni de damier, une toile par voile (coordonnées de texture), tête de mort peinte sur la grand-voile,
+  dessinée sur le pavillon (fini le disque blanc) ; elles ne deviennent plus transparentes (la silhouette suffit).
+- Cabine collée à la poupe. Récifs : autour des îles, à 120 m au moins du port, espacés de 26 m, variés (rocher, aiguille,
+  amas de petits rochers, banc de sable).
+- Ville : maisons du fond à deux étages au plus, maisons ordinaires de la rangée nord moins profondes (rue plus large). La
+  rangée du fond ne peut pas reculer : elle s'adosse aux remparts (escaliers des ruelles).
+- Interface : style commun `UiTheme` (bois, laiton, parchemin, encre ; recherche des pratiques des jeux actuels). Sac en
+  cases avec icônes pixel art (`ItemIcons`) et quantités, fabrication à droite (vert / rouge), fiche sur parchemin, souris et
+  clavier. Menu pause et menu principal refaits. Pas encore : HUD de jeu (lignes en haut à gauche), police dédiée (Pirata
+  One / IM Fell English, licence libre OFL : à télécharger avec ton accord).
+
 ## Vent visible (12/11)
 
 - Traînées blanches très fines qui filent dans le sens du vent à hauteur des voiles (`src/sea/wind_streaks.gd`), plus vives
