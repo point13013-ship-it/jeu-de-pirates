@@ -4,8 +4,8 @@ extends RefCounted
 ## L'heure et le temps se déduisent de l'horloge : tous les joueurs voient donc le même ciel, sans rien envoyer sur le réseau.
 ## Le jeu appelle `update` à chaque image ; `night`, `rain`, `storm` et `mist` servent aussi aux sons et à la vie des îles.
 
-const DAY_SECS := 1500.0        ## s : durée d'un jour complet (25 minutes)
-const WEATHER_SECS := 360.0     ## s : le temps est retiré toutes les 6 minutes
+const DAY_SECS := GameConfig.DAY_SECS            ## s : durée d'un jour complet (lot 6 : 25 -> 35 minutes)
+const WEATHER_SECS := GameConfig.WEATHER_SECS    ## s : le temps est retiré à chaque tranche
 const FADE := 0.08              ## vitesse du changement de temps (par seconde)
 
 const DAY_AMBIENT := Color(0.52, 0.60, 0.80)
@@ -76,15 +76,22 @@ func _weather_target() -> Vector3:
 			return Vector3(0.35, 1.0, 0.0)
 		"storm", "orage":
 			return Vector3(0.45, 1.0, 1.0)
-	var slot := int(_time_now() / WEATHER_SECS)
+	# lot 6 (8.2) : moins souvent du mauvais temps, et moins longtemps (il ne dure qu'une partie de sa tranche)
+	var now := _time_now()
+	var slot := int(now / WEATHER_SECS)
 	var r := float(absi(hash(slot * 7919 + 13)) % 1000) / 1000.0
-	if r < 0.62:
+	var into := fmod(now, WEATHER_SECS) / WEATHER_SECS
+	var w: Dictionary = GameConfig.WEATHER_ODDS
+	var c_clear := float(w["clear"])
+	var c_mist := c_clear + float(w["mist"])
+	var c_rain := c_mist + float(w["rain"])
+	if r < c_clear:
 		return Vector3.ZERO
-	if r < 0.78:
-		return Vector3(1.0, 0.0, 0.0)
-	if r < 0.92:
-		return Vector3(0.35, 1.0, 0.0)
-	return Vector3(0.45, 1.0, 1.0)
+	if r < c_mist:
+		return Vector3(1.0, 0.0, 0.0) if into < float(GameConfig.WEATHER_SHARE["mist"]) else Vector3.ZERO
+	if r < c_rain:
+		return Vector3(0.35, 1.0, 0.0) if into < float(GameConfig.WEATHER_SHARE["rain"]) else Vector3.ZERO
+	return Vector3(0.45, 1.0, 1.0) if into < float(GameConfig.WEATHER_SHARE["storm"]) else Vector3.ZERO
 
 
 ## La houle visée (lot 3, 3.7) : elle suit le gros temps (pluie, orage). Comme le reste du temps, elle se déduit de l'horloge :
@@ -93,10 +100,27 @@ func swell_target() -> float:
 	if args_swell >= 0.0:
 		return args_swell
 	var t := _weather_target()
-	return clampf(maxf(t.z, t.y * GameConfig.SWELL_FROM_RAIN), 0.0, 1.0)
+	# lot 6 (8.3) : hors tempête, des périodes de houle plus forte (tirées de l'horloge, les mêmes pour tous)
+	var now := _time_now()
+	var sslot := int(now / GameConfig.SWELL_PERIOD)
+	var roll := float(absi(hash(sslot * 104729 + 7)) % 1000) / 1000.0
+	var swell_period := 0.0
+	if roll < GameConfig.SWELL_ODDS:
+		var into := fmod(now, GameConfig.SWELL_PERIOD) / GameConfig.SWELL_PERIOD
+		swell_period = GameConfig.SWELL_PERIOD_STRENGTH * sin(PI * clampf(into, 0.0, 1.0))   # elle monte puis retombe
+	return clampf(maxf(maxf(t.z, t.y * GameConfig.SWELL_FROM_RAIN), swell_period), 0.0, 1.0)
 
 
 var args_swell := -1.0           ## essai : --swell=0.8 fixe la houle
+
+
+## Lot 6 (8.1) : le nom du moment de la journée (Aube, Matin, Midi, Après-midi, Soir, Crépuscule, Nuit).
+func moment() -> String:
+	var name := "Nuit"
+	for m: Array in GameConfig.DAY_MOMENTS:
+		if phase >= float(m[0]):
+			name = str(m[1])
+	return name
 
 
 ## Chaque image. `focus` : le point de la scène que la caméra regarde (la pluie le suit).

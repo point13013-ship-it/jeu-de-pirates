@@ -102,6 +102,21 @@ const SWELL_STEER_PENALTY := 0.2      ## maniabilité perdue à houle maximale (
 const CAM_SWAY := 0.22                ## m : balancement de la caméra à houle maximale
 const CAM_HEAVE_FOLLOW := 0.35        ## part du soulèvement du pont que la caméra suit
 
+# ------------------------------------------------------------------ Lot 6 : météo et jour/nuit
+
+const DAY_SECS := 2100.0              ## 8.1 : s pour un jour complet (avant : 1 500 s ; +40 %)
+const WEATHER_SECS := 420.0           ## s : une tranche de temps (avant : 360)
+## 8.2 : chances de chaque temps par tranche (avant : clair 62 %, brume 16 %, pluie 14 %, orage 8 %) …
+const WEATHER_ODDS := {"clear": 0.76, "mist": 0.10, "rain": 0.10, "storm": 0.04}
+## … et part de la tranche pendant laquelle il dure (avant : toute la tranche).
+const WEATHER_SHARE := {"mist": 0.6, "rain": 0.55, "storm": 0.7}
+## 8.3 : périodes de houle plus forte hors tempête (une chance par période, la houle monte puis retombe).
+const SWELL_PERIOD := 240.0
+const SWELL_ODDS := 0.3
+const SWELL_PERIOD_STRENGTH := 0.55
+## Moments de la journée (part du jour, 0 = minuit, 0,5 = midi) : début de chaque moment, pour l'affichage.
+const DAY_MOMENTS := [[0.0, "Nuit"], [0.22, "Aube"], [0.3, "Matin"], [0.45, "Midi"], [0.56, "Après-midi"], [0.72, "Soir"], [0.8, "Crépuscule"], [0.86, "Nuit"]]
+
 # ------------------------------------------------------------------ Lot 5 : ennemis
 
 const ENEMY_HP_MULT := 1.25           ## 6.1 : coques 25 % plus résistantes

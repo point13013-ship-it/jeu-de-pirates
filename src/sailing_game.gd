@@ -6018,6 +6018,8 @@ func _update_hud() -> void:
 	_hud.text = "Vitesse %.1f nœuds   Voiles %d/%d   Ancre : %s   Barre %+.1f   %s (rendement %d %%)" % [
 		_sim.speed * 1.944, _sim.sail_level, ShipSim.SAIL_LEVELS, "jetée" if _sim.anchored else "levée",
 		_sim.rudder, wind, int(_sim.wind_factor() * 100.0)]
+	if _atmo != null:   # lot 6 (8.1) : le moment de la journée (et la houle forte, quand il y en a)
+		_hud.text += "   %s%s" % [_atmo.sky.moment(), "   Houle forte" if _atmo.sky.swell > 0.45 else ""]
 	if _net.active:
 		_hud.text += "\nÉquipage : %d / %d%s" % [_remotes.size() + 1, SailingNet.MAX_PLAYERS,
 				"   (barre tenue par un ami)" if _helm_owner != 0 and _helm_owner != _my_id() else ""]
