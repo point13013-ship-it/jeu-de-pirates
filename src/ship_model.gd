@@ -407,6 +407,13 @@ func move_with_slide(from: Vector2, delta: Vector2) -> Vector2:
 		return try_y
 	if not is_walkable(from):
 		return target
+	# glisser autour d'un obstacle rond (mât, barre, tonneau) ou d'un coin : le pas tourné de plus en plus, en gardant ce
+	# qu'il a d'utile (projection sur la direction voulue). Sans cela, en diagonale contre un rond, on restait bloqué.
+	for deg: float in [25.0, 50.0, 75.0]:
+		for sgn: float in [1.0, -1.0]:
+			var rot := delta.rotated(deg_to_rad(deg) * sgn) * cos(deg_to_rad(deg))
+			if is_walkable(from + rot):
+				return from + rot
 	return from
 
 

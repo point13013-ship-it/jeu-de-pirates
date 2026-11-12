@@ -1,6 +1,3 @@
-{
-  "_commentaire": "Retouches de disposition des bateaux, appliquées par-dessus les fichiers des modèles (assets/models/ship/*_meta.json, régénérés par Blender). cannon_x : abscisse (unités du modèle, vers l'étrave) de chaque canon, dans l'ordre du fichier du modèle ; null = inchangé. Lot 3 (3.4) : les deux canons de chaque bord du brigantin étaient collés (1,2 unité) ; l'avant passe entre l'échelle de coque et le tonneau de boulets.",
-  "brigantin": {
-    "cannon_x": [-1.0, 1.72, -1.0, 1.72]
-  }
+﻿{
+  "_commentaire": "Retouches de disposition des bateaux, appliquées par-dessus les fichiers des modèles (assets/models/ship/*_meta.json, régénérés par Blender). cannon_x : abscisse (unités du modèle, vers l'étrave) de chaque canon, dans l'ordre du fichier du modèle ; null = inchangé. Depuis l'agrandissement des coques (12/11/2026), les canons sont placés par tools/art/blender/make_ship.py : aucune retouche pour l'instant."
 }

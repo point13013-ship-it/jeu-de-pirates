@@ -198,6 +198,10 @@ const HELM_WHEEL_RADIUS := 0.5        ## unités du modèle (la taille de l'anci
 const HELM_WHEEL_TURNS := 1.5         ## tours de roue d'une butée à l'autre
 const HELM_CREAK_VOL := 0.9           ## volume du grincement à pleine vitesse de rotation
 
+## 3.1 Coques agrandies (12/11/2026) : facteur de longueur appliqué par tools/art/blender/make_ship.py (KL). Sert à garder la poupe
+## à sa place d'avant au port. À changer en même temps que KL dans le script Blender.
+const HULL_LENGTH_GROWTH := 1.35
+
 ## 3.8 Son de coque : renfort par la houle et gerbes au hasard.
 const HULL_SWELL_VOL := 0.25
 const HULL_SPLASH_MIN := 1.2          ## s (à pleine vitesse, ces écarts sont raccourcis)

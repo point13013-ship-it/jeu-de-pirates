@@ -853,6 +853,8 @@ func _build_port() -> void:
 		var half_beam := _ship.beam * ShipModel.SCALE * 0.5
 		var x := float(dock.get("pier_x1", 18.0)) + half_beam + 0.5
 		var z := -float(dock.get("y", -14.0))
+		# coques agrandies (12/11/2026, longueur x1,35) : la poupe garde sa place d'avant, loin du quai ; c'est l'étrave qui avance
+		z += _ship.length * ShipModel.SCALE * 0.5 * (1.0 - 1.0 / GameConfig.HULL_LENGTH_GROWTH)
 		_sim.yaw = -PI / 2.0
 		# le centre de la coque est décalé du pivot du bateau (beaupré compris) : on le compense
 		_sim.position = Vector2(x, z) - Vector2(cos(_sim.yaw), -sin(_sim.yaw)) * (_ship.shift * ShipModel.SCALE)

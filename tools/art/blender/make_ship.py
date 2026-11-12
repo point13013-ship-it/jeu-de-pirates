@@ -19,7 +19,10 @@ SIZE = int(ARGS[1]) if len(ARGS) > 1 else 0
 HEADINGS = int(ARGS[2]) if len(ARGS) > 2 else 16
 SHIP = ARGS[3] if len(ARGS) > 3 else "galion"
 ELEVATION = 52.0
-ORTHO = {"sloop": 16.0, "brigantin": 19.2, "galion": 25.6}[SHIP]
+# Refonte (12/11/2026) : coques agrandies (longueur x KL, largeur x KW), objets du pont à leur taille d'origine : le pont
+# devient praticable (couloirs d'au moins 0,8 unité = 1,2 m). Les abscisses « d'origine » ci-dessous sont multipliées par KL.
+KL, KW, KH = 1.35, 1.4, 1.12   # longueur, largeur, hauteur des mâts
+ORTHO = {"sloop": 16.0, "brigantin": 19.2, "galion": 25.6}[SHIP] * KL
 rnd = random.Random(5)
 
 # ------------------------------------------------------------------ les trois bateaux
@@ -39,6 +42,17 @@ CFG = {
                           (-1.6, 9.0, [(3.0, 6.0, 4.6, 0.9, False)])],
                    jib=True, gaff=(-1.6, 8.4, -7.6), flag_mast=1, anchor=(3.6, 0.0)),
 }[SHIP]
+# canons (abscisses d'origine, un par bord à chaque abscisse) et échelle de coque : repris des réglages faits à la main
+CFG["cannon_x"] = {"sloop": [1.3], "brigantin": [-1.0, 1.72], "galion": [-2.0, -0.5, 1.0]}[SHIP]
+CFG["ladder_x"] = {"sloop": -0.288, "brigantin": 1.197, "galion": 2.52}[SHIP]
+CFG["L"] *= KL
+CFG["WID"] *= KW
+CFG["DEP"] *= 1.15
+CFG["masts"] = [(mx * KL, mh * KH, [(z0 * KH, z1 * KH, w * 1.25, b, e) for (z0, z1, w, b, e) in sails])
+                for (mx, mh, sails) in CFG["masts"]]
+if CFG["gaff"]:
+    CFG["gaff"] = (CFG["gaff"][0] * KL, CFG["gaff"][1] * KH, CFG["gaff"][2] * KL)
+CFG["anchor"] = (CFG["anchor"][0] * KL, 0.0)
 L, WID, DEP = CFG["L"], CFG["WID"], CFG["DEP"]
 
 bpy.ops.wm.read_factory_settings(use_empty=True)
@@ -234,8 +248,8 @@ for side in (-1, 1):
         y = side * hw * 1.012
         add_mesh("port", [(x - s, y, dz - 0.52), (x + s, y, dz - 0.52), (x + s, y, dz - 0.86), (x - s, y, dz - 0.86)],
                  [(0, 1, 2, 3)], "dark")
-    for k in range(CFG["cannons"]):
-        u = 0.22 + k * (0.50 / max(1, CFG["cannons"] - 1))
+    for cx_o in CFG["cannon_x"]:
+        u = (cx_o * KL + L / 2) / L
         x, hw, dz, dp = station(u)
         CANNONS.append((x, side * (hw - 0.5), side, dz + 0.34))
         cyl("cannon", x, side * (hw - 0.5), dz + 0.34, 0.18, 1.0, "iron", rot=(math.radians(90), 0, 0))
@@ -243,8 +257,7 @@ for side in (-1, 1):
 
 # échelles de coque (une par bord, entre les deux derniers canons) : on monte à bord depuis le quai
 LADDERS: list = []   # (x, y de la position du pirate sur le pont, côté, y de la coque)
-_nc = CFG["cannons"]
-_ul = 0.22 + 0.5 * (_nc - 1.5) / max(1, _nc - 1)
+_ul = (CFG["ladder_x"] * KL + L / 2) / L
 for side in (-1, 1):
     xl, hwl, dzl, _dp = station(_ul)
     LADDERS.append((xl, side * (hwl - 0.65), side, side * hwl))
@@ -340,11 +353,13 @@ roof_wid = cw * 0.78 if c > 1 else wid0 + 0.3
 box("cut_roof", cabin_cx, 0, top + 0.1, roof_len, roof_wid, 0.22, "red")
 cyl("cut_lamp_post", wx + 0.3, 0, top + 0.5, 0.07, 1.0, "dark")
 box("cut_lamp", wx + 0.3, 0, top + 1.15, 0.3, 0.3, 0.4, "glow")
-# barre à roue, devant la cabine, sur le côté
-HELM = (ex + 0.9, -1.1)
-cyl("helm", HELM[0], HELM[1], fz + 1.35, 0.5, 0.1, "mast", rot=(math.radians(90), 0, 0), verts=14)
-cyl("helm_post", HELM[0], HELM[1], fz + 1.0, 0.08, 0.6, "mast")
-OBST_CIRCLES.append((HELM[0], HELM[1], 0.45))
+# barre à roue : dans l'axe, devant la cabine (le barreur se tient derrière, face à l'étrave) ; la roue regarde vers l'avant.
+# L'obstacle est la colonne (le bas de la roue passe au-dessus des hanches), pas tout le disque.
+HELM = (ex + 1.5, 0.0)
+_hz = station((HELM[0] + L / 2) / L)[2]
+cyl("helm", HELM[0], HELM[1], _hz + 1.35, 0.5, 0.1, "mast", rot=(0, math.radians(90), 0), verts=14)
+cyl("helm_post", HELM[0], HELM[1], _hz + 0.65, 0.1, 1.3, "mast")
+OBST_CIRCLES.append((HELM[0], HELM[1], 0.24))
 
 if CFG["bow_castle"]:
     xb, hwb, dzb, _ = station(0.88)
@@ -354,25 +369,33 @@ if CFG["bow_castle"]:
     box("fore_castle_top", xb, 0, dzb + 1.2, 2.0, hwb * 2 * 0.78, 0.14, "deck")
 
 # détails de pont : écoutille (sauf sloop), tonneau de boulets, caisses, cabestan d'ancre
-_hx = 1.6 if L > 11 else 1.2
-_bx = 2.9 if L > 14 else 2.2
+_hx = (1.6 if SHIP != "sloop" else 1.2) * KL
 if SHIP != "sloop":
     # l'écoutille est basse (28 cm) : on marche dessus, elle n'est pas un obstacle
-    box("hatch", _hx, 0, 0.14, 1.2, 1.2, 0.28, "hull_l")
-    box("hatch_grate", _hx, 0, 0.30, 1.0, 1.0, 0.05, "dark")
-OBST_CIRCLES.append((_bx, 1.0, 0.5))
-_cx = LADDERS[0][0] - 0.85   # la caisse se tient entre le dernier canon et l'échelle, jamais sur un canon
-OBST_BOXES.append((_cx - 0.35, -1.55, _cx + 0.35, -0.9))
-cyl("barrel", _bx, 1.0, 0.42, 0.42, 0.7, "hull_l")
-cyl("barrel_b", _bx, 1.0, 0.45, 0.45, 0.1, "iron")
+    _hdz = station((_hx + L / 2) / L)[2]
+    box("hatch", _hx, 0, _hdz + 0.14, 1.2, 1.2, 0.28, "hull_l")
+    box("hatch_grate", _hx, 0, _hdz + 0.30, 1.0, 1.0, 0.05, "dark")
+# tonneau de boulets et pile de caisses : rangés contre le plat-bord, de part et d'autre de la barre, hors des couloirs
+_bx = HELM[0] + 0.2
+_bxs = station((_bx + L / 2) / L)
+_by = _bxs[1] - 0.14 - 0.55
+_bdz = _bxs[2]
+OBST_CIRCLES.append((_bx, _by, 0.47))
+cyl("barrel", _bx, _by, _bdz + 0.42, 0.42, 0.7, "hull_l")
+cyl("barrel_b", _bx, _by, _bdz + 0.45, 0.45, 0.1, "iron")
 for k in range(3):  # boulets empilés sur le tonneau
-    sphere("ball", _bx + (k - 1) * 0.2, 1.0 + (0.1 if k == 1 else -0.08), 0.84 + (0.14 if k == 1 else 0.0), 0.11, "iron")
+    sphere("ball", _bx + (k - 1) * 0.2, _by + (0.1 if k == 1 else -0.08), _bdz + 0.84 + (0.14 if k == 1 else 0.0), 0.11, "iron")
+_cx = HELM[0] + 0.2
+_cy = -(_bxs[1] - 0.14 - 0.42)
+OBST_BOXES.append((_cx - 0.36, _cy - 0.34, _cx + 0.36, _cy + 0.34))
 ANCHOR = CFG["anchor"]
-cyl("anchor_capstan", ANCHOR[0], ANCHOR[1], 0.45, 0.26, 0.7, "iron")
-cyl("anchor_capstan_top", ANCHOR[0], ANCHOR[1], 0.84, 0.34, 0.08, "gold")
-cyl("anchor_spoke", ANCHOR[0], ANCHOR[1], 0.8, 0.05, 0.9, "mast", rot=(math.radians(90), 0, 0), verts=5)
-box("crate", _cx, -1.225, 0.32, 0.7, 0.65, 0.64, "deck_l")
-box("crate2", _cx + 0.05, -1.25, 0.86, 0.42, 0.42, 0.46, "deck")
+_adz = station((ANCHOR[0] + L / 2) / L)[2]
+cyl("anchor_capstan", ANCHOR[0], ANCHOR[1], _adz + 0.45, 0.26, 0.7, "iron")
+cyl("anchor_capstan_top", ANCHOR[0], ANCHOR[1], _adz + 0.84, 0.34, 0.08, "gold")
+cyl("anchor_spoke", ANCHOR[0], ANCHOR[1], _adz + 0.8, 0.05, 0.9, "mast", rot=(math.radians(90), 0, 0), verts=5)
+OBST_CIRCLES.append((ANCHOR[0], ANCHOR[1], 0.3))
+box("crate", _cx, _cy, _bdz + 0.32, 0.7, 0.65, 0.64, "deck_l")
+box("crate2", _cx + 0.05, _cy - 0.03, _bdz + 0.86, 0.42, 0.42, 0.46, "deck")
 
 # figure de proue : tête de mort ; beaupré
 x_b, hw_b, dz_b, _ = station(1.0)
@@ -419,7 +442,7 @@ def square_sail(x, z0, z1, width, bulge, emblem):
 max_top = 0.0
 NESTS: list = []   # (x, y, z du plancher, hauteur du mât)
 for mx, mh, sails in CFG["masts"]:
-    OBST_CIRCLES.append((mx, 0.0, 0.38))
+    OBST_CIRCLES.append((mx, 0.0, 0.27 + (0.04 if L > 14 else 0)))   # le mât lui-même (+ sa bague), pas un halo autour
     cyl("mast", mx, 0, mh / 2, 0.19 + (0.04 if L > 14 else 0), mh, "mast")
     cyl("mast_band", mx, 0, 1.2, 0.25, 0.35, "gold")
     zn = mh - 2.05                      # plancher du nid de pie
@@ -505,7 +528,7 @@ if HEADINGS == 0:
     (OUT / f"{SHIP}_meta.json").write_text(json.dumps(
         {"shift": shift, "length": L, "beam": WID, "max_height": max(zs),
          "boxes": OBST_BOXES, "circles": OBST_CIRCLES, "cabin": CABIN, "cannons": CANNONS,
-         "helm": list(HELM), "ammo": [_bx, 1.0], "anchor": list(ANCHOR),
+         "helm": list(HELM), "ammo": [_bx, _by], "anchor": list(ANCHOR),
          "masts": [[m[0], m[1]] for m in CFG["masts"]],
          "ladders": [list(l) for l in LADDERS], "nests": [list(n) for n in NESTS],
          "mast_ladder": list(MAST_LADDER), "bow_x": L / 2 - 0.4}))
