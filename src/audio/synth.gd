@@ -340,12 +340,42 @@ static func creak() -> AudioStreamWAV:
 		return _to_stream(_normalize(out, 0.45), false))
 
 
+# ------------------------------------------------------------------ vrais enregistrements (Epidemic Sound)
+# Les fichiers res://assets/audio/sfx/<nom>_1.ogg, <nom>_2.ogg… remplacent le son fabriqué du même nom. S'il y en a plusieurs,
+# on en tire un au hasard à chaque fois (variantes). Coupés et normalisés à -16 LUFS (ffmpeg) depuis les téléchargements.
+
+const SFX_DIR := "res://assets/audio/sfx/"
+static var _recorded: Dictionary = {}   ## nom -> Array (vide : pas de fichier, on garde le son fabriqué)
+
+
+## Un enregistrement au hasard pour ce nom, ou null s'il n'y en a pas. `looped` : pour les boucles (cabestan, roue).
+static func recorded(sfx_name: String, looped: bool = false) -> AudioStream:
+	if not _recorded.has(sfx_name):
+		var list: Array = []
+		for k in range(1, 9):
+			var path := "%s%s_%d.ogg" % [SFX_DIR, sfx_name, k]
+			if not ResourceLoader.exists(path):
+				break
+			var s := load(path) as AudioStreamOggVorbis
+			if s != null:
+				if looped:
+					s = s.duplicate() as AudioStreamOggVorbis
+					s.loop = true
+				list.append(s)
+		_recorded[sfx_name] = list
+	var got: Array = _recorded[sfx_name]
+	return null if got.is_empty() else got[randi() % got.size()]
+
+
 # ------------------------------------------------------------------ lot 2 : bruitages d'actions (PROVISOIRES)
 # Fabriqués par le code faute de fichiers : à remplacer par de vrais enregistrements (Epidemic Sound), voir la liste des assets
 # du lot 2. Chacun garde le même nom de fonction : il suffira de charger le fichier à la place.
 
 ## PROVISOIRE — un cliquet de cabestan qui tourne : une série de « clac » de bois et de fer, avec un grincement dessous.
-static func capstan() -> AudioStreamWAV:
+static func capstan() -> AudioStream:
+	var rec := recorded("capstan", true)
+	if rec != null:
+		return rec
 	return _cached("capstan", func() -> AudioStreamWAV:
 		var len := int(1.2 * RATE)
 		var nz := _lowpass(_noise(len, 501), 3200.0)
@@ -362,7 +392,10 @@ static func capstan() -> AudioStreamWAV:
 
 
 ## PROVISOIRE — un coup de marteau sur un clou : un toc métallique bref, un peu de bois qui résonne.
-static func hammer(variant: int = 0) -> AudioStreamWAV:
+static func hammer(variant: int = 0) -> AudioStream:
+	var rec := recorded("hammer")
+	if rec != null:
+		return rec
 	return _cached("hammer%d" % variant, func() -> AudioStreamWAV:
 		var len := int(0.22 * RATE)
 		var nz := _highpass(_noise(len, 520 + variant), 900.0)
@@ -376,7 +409,10 @@ static func hammer(variant: int = 0) -> AudioStreamWAV:
 
 
 ## PROVISOIRE — le seau qu'on plonge et qui se remplit : un glouglou.
-static func bucket_fill() -> AudioStreamWAV:
+static func bucket_fill() -> AudioStream:
+	var rec := recorded("bucket_fill")
+	if rec != null:
+		return rec
 	return _cached("bucket_fill", func() -> AudioStreamWAV:
 		var len := int(0.7 * RATE)
 		var hp := _highpass(_lowpass(_noise(len, 541), 2600.0), 300.0)
@@ -389,7 +425,10 @@ static func bucket_fill() -> AudioStreamWAV:
 
 
 ## PROVISOIRE — le seau vidé par-dessus bord : une gerbe qui tombe.
-static func bucket_pour() -> AudioStreamWAV:
+static func bucket_pour() -> AudioStream:
+	var rec := recorded("bucket_pour")
+	if rec != null:
+		return rec
 	return _cached("bucket_pour", func() -> AudioStreamWAV:
 		var len := int(0.8 * RATE)
 		var hp := _highpass(_lowpass(_noise(len, 561), 5200.0), 450.0)
@@ -402,7 +441,10 @@ static func bucket_pour() -> AudioStreamWAV:
 
 
 ## PROVISOIRE — l'élan d'un saut : un froissement de tissu.
-static func jump() -> AudioStreamWAV:
+static func jump() -> AudioStream:
+	var rec := recorded("jump")
+	if rec != null:
+		return rec
 	return _cached("jump", func() -> AudioStreamWAV:
 		var len := int(0.18 * RATE)
 		var hp := _highpass(_lowpass(_noise(len, 581), 4000.0), 1200.0)
@@ -415,7 +457,10 @@ static func jump() -> AudioStreamWAV:
 
 
 ## PROVISOIRE — la réception d'un saut : un choc sourd (bois ou sol).
-static func land(on_wood: bool) -> AudioStreamWAV:
+static func land(on_wood: bool) -> AudioStream:
+	var rec := recorded("land_wood" if on_wood else "land")
+	if rec != null:
+		return rec
 	return _cached("land%d" % int(on_wood), func() -> AudioStreamWAV:
 		var len := int(0.2 * RATE)
 		var lp := _lowpass(_noise(len, 601), 900.0 if on_wood else 600.0)
@@ -428,7 +473,10 @@ static func land(on_wood: bool) -> AudioStreamWAV:
 
 
 ## PROVISOIRE — on pose (ou ramasse) un objet lourd : un « tomp » de bois.
-static func thump() -> AudioStreamWAV:
+static func thump() -> AudioStream:
+	var rec := recorded("thump")
+	if rec != null:
+		return rec
 	return _cached("thump", func() -> AudioStreamWAV:
 		var len := int(0.25 * RATE)
 		var lp := _lowpass(_noise(len, 621), 1400.0)
@@ -441,7 +489,10 @@ static func thump() -> AudioStreamWAV:
 
 
 ## PROVISOIRE — une corde qu'on tire (hisser un camarade) : un frottement qui grince.
-static func rope() -> AudioStreamWAV:
+static func rope() -> AudioStream:
+	var rec := recorded("rope")
+	if rec != null:
+		return rec
 	return _cached("rope", func() -> AudioStreamWAV:
 		var len := int(0.9 * RATE)
 		var bp := _highpass(_lowpass(_noise(len, 641), 3000.0), 600.0)
@@ -456,7 +507,10 @@ static func rope() -> AudioStreamWAV:
 
 
 ## PROVISOIRE (lot 4) — l'alerte des requins : deux notes graves qui reviennent, et un frisson d'eau.
-static func shark_alert() -> AudioStreamWAV:
+static func shark_alert() -> AudioStream:
+	var rec := recorded("shark_alert")
+	if rec != null:
+		return rec
 	return _cached("shark_alert", func() -> AudioStreamWAV:
 		var len := int(2.0 * RATE)
 		var hp := _highpass(_lowpass(_noise(len, 681), 1800.0), 200.0)
@@ -471,7 +525,10 @@ static func shark_alert() -> AudioStreamWAV:
 
 
 ## PROVISOIRE (lot 4) — la mort : un accord grave qui descend.
-static func death_sting() -> AudioStreamWAV:
+static func death_sting() -> AudioStream:
+	var rec := recorded("death_sting")
+	if rec != null:
+		return rec
 	return _cached("death_sting", func() -> AudioStreamWAV:
 		var len := int(1.8 * RATE)
 		var out := PackedFloat32Array()
@@ -491,7 +548,10 @@ static func death_sting() -> AudioStreamWAV:
 
 ## PROVISOIRE (lot 3) — la roue du gouvernail qui tourne : bois et mécanisme qui grincent (boucle ; volume et hauteur réglés
 ## par le jeu selon la vitesse de rotation).
-static func wheel_creak() -> AudioStreamWAV:
+static func wheel_creak() -> AudioStream:
+	var rec := recorded("wheel_creak", true)
+	if rec != null:
+		return rec
 	return _cached("wheel_creak", func() -> AudioStreamWAV:
 		var len := int(1.6 * RATE)
 		var nz := _highpass(_lowpass(_noise(len, 661), 2500.0), 400.0)

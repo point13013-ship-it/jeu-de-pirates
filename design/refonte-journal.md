@@ -40,8 +40,13 @@ Version réseau : **13** (tout l'équipage doit avoir la même version).
 - Vitesse +10 %, malus de mauvais vent -25 %. Houle (pluie, orage) : vagues, tangage, caméra, son de coque, maniabilité.
 - Son de coque : gerbes au hasard. Roue de gouvernail détaillée qui tourne avec la barre (chez tous) et grince.
 - Voiles : toile (tissage, coutures, usure), panneaux moins contrastés. Cale plus grande et décorée. Brigantin : canons écartés.
-- **Non traité** : 3.1 agrandir le pont, 3.2 reculer la cabine (modèles Blender : `tools/art/blender/make_ship.py`, Blender
-  absent de cette machine). Pas d'IK des mains sur la roue (personnages en pixel art).
+- 3.1 / 3.2 (12/11, après retour de Jimmy : « on se tape toutes les collisions ») : coques agrandies dans
+  `tools/art/blender/make_ship.py` (longueur x1,35, largeur x1,4, mâts x1,12 ; sloop 19 m, brigantin 25 m, galion 32 m), objets
+  du pont à leur taille d'origine. Barre dans l'axe, devant la cabine, roue face à l'étrave. Tonneau de boulets et caisses
+  rangés contre le plat-bord. Obstacles réduits à la base visible (barre : la colonne ; mât : le mât). On glisse autour des
+  obstacles ronds au lieu d'y rester collé. Couloirs mesurés par `tests/unit/test_deck_space.gd` (≥ 1,2 m ; sloop 1,95 m).
+  Au port, la poupe garde sa place (`HULL_LENGTH_GROWTH`). Les ennemis ont les mêmes coques : cibles plus grandes.
+  Les canons ne sont toujours pas des obstacles (on passe à travers, comme avant). Pas d'IK des mains sur la roue.
 
 ## Lot 4 : mort, eau, réapparition
 
@@ -90,6 +95,7 @@ marqueurs, point d'exclamation de quête, partage de l'or à la vente).
 
 ## Assets à fournir
 
-Sons (remplacent les PROVISOIRES de `synth.gd`) : cabestan, coups de marteau, seau (remplir, vider), saut, réception
-(bois, sol), objet posé, corde, grincement de la roue, alerte requins, mort, (et plus tard : pluie, combat, musiques).
+Sons : **faits le 12/11** avec le compte Epidemic Sound de Jimmy (19 fichiers dans `assets/audio/sfx/`, 1 ou 2 variantes
+chacun, coupés et normalisés). `Synth.recorded()` charge le fichier s'il existe, sinon le son fabriqué reste. Plus tard :
+pluie, combat, musiques. ⚠ À vérifier : que la licence Epidemic Sound couvre un jeu distribué à d'autres joueurs.
 Images pixel art : pirate au sol, gestes (cabestan, clouer, écoper, hisser). Modèles : sirène, requin.
