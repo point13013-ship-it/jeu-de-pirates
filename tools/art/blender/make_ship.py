@@ -445,7 +445,64 @@ OBST_BOXES.append((wx + T, -ny + T, wx + T + 0.78, -ny + T + 0.58))
 box("int_table", cabin_cx + 0.35, 0, fz + 0.62, 0.95, 0.7, 0.07, "deck_l")
 cyl("int_table_leg", cabin_cx + 0.35, 0, fz + 0.3, 0.08, 0.6, "mast")
 OBST_BOXES.append((cabin_cx + 0.35 - 0.5, -0.38, cabin_cx + 0.35 + 0.5, 0.38))
-box("int_lamp", cabin_cx + 0.35, 0, fz + H0 - 0.45, 0.22, 0.22, 0.28, "glow")
+if not V2:
+    box("int_lamp", cabin_cx + 0.35, 0, fz + H0 - 0.45, 0.22, 0.22, 0.28, "glow")
+else:
+    # passe 2 : la cabine du capitaine meublée (12/11 : avant, une lampe-cube qui éblouissait, un tapis uni, des boîtes)
+    lx_ = cabin_cx + 0.35
+    lz_ = fz + H0 - 0.5
+    cyl("int_lamp_chain", lx_, 0, lz_ + 0.3, 0.015, 0.4, "iron", verts=4)
+    cyl("int_lamp_cap", lx_, 0, lz_ + 0.15, 0.13, 0.06, "iron", verts=8)
+    cyl("int_lamp_base", lx_, 0, lz_ - 0.15, 0.11, 0.05, "iron", verts=8)
+    for q in range(4):
+        a = q * math.pi / 2 + math.pi / 4
+        cyl("int_lamp_bar", lx_ + 0.09 * math.cos(a), 0.09 * math.sin(a), lz_, 0.012, 0.28, "iron", verts=4)
+    cyl("int_lamp", lx_, 0, lz_, 0.055, 0.14, "glow", verts=8)
+    # bordure dorée et motif du tapis
+    rx0, rx1 = cabin_cx + 0.3 - ln0 * 0.275, cabin_cx + 0.3 + ln0 * 0.275
+    ry = wid0 * 0.225
+    for sy in (-1, 1):
+        box("int_rug_edge", cabin_cx + 0.3, sy * (ry - 0.05), fz + 0.035, ln0 * 0.55, 0.08, 0.02, "gold")
+    for sx in (rx0 + 0.05, rx1 - 0.05):
+        box("int_rug_edge", sx, 0, fz + 0.035, 0.08, wid0 * 0.45, 0.02, "gold")
+    # sur la table : une carte déroulée, un compas, une bougie, une chope
+    tz = fz + 0.66
+    box("int_map", lx_ - 0.05, 0.02, tz, 0.62, 0.46, 0.012, "bone", rot=(0, 0, math.radians(8)))
+    box("int_map_ink", lx_ - 0.1, 0.06, tz + 0.008, 0.18, 0.12, 0.006, "red", rot=(0, 0, math.radians(8)))
+    cyl("int_candle", lx_ + 0.34, -0.22, tz + 0.08, 0.035, 0.14, "bone", verts=6)
+    cyl("int_candle_flame", lx_ + 0.34, -0.22, tz + 0.18, 0.02, 0.05, "glow", verts=4)
+    cyl("int_mug", lx_ + 0.3, 0.24, tz + 0.06, 0.05, 0.11, "deck_l", verts=8)
+    # deux chaises de part et d'autre de la table
+    for sy in (-1, 1):
+        cy_ = sy * 0.62
+        box("int_chair_seat", lx_, cy_, fz + 0.42, 0.4, 0.38, 0.06, "deck")
+        box("int_chair_back", lx_, cy_ + sy * 0.18, fz + 0.72, 0.4, 0.05, 0.55, "deck")
+        for dx in (-0.16, 0.16):
+            for dy in (-0.15, 0.15):
+                box("int_chair_leg", lx_ + dx, cy_ + dy, fz + 0.2, 0.05, 0.05, 0.4, "mast")
+        OBST_BOXES.append((lx_ - 0.22, cy_ - 0.21, lx_ + 0.22, cy_ + 0.21))
+    # cadre et montants du lit, étagère à livres contre le mur nord, coffre aux cartes roulées
+    bx_, by_ = wx + T + 0.85, ny - T - 0.45
+    for dx in (-0.74, 0.74):
+        box("int_bunk_post", bx_ + dx, by_ - 0.36, fz + 0.4, 0.07, 0.07, 0.8, "mast")
+    box("int_bunk_board", bx_, by_ - 0.38, fz + 0.5, 1.5, 0.04, 0.12, "mast")
+    sx0 = cabin_cx + 0.55
+    box("int_shelf", sx0, ny - T - 0.14, fz + 1.05, 0.9, 0.24, 1.3, "hull_l")
+    for k2 in range(3):
+        zz = fz + 0.55 + k2 * 0.42
+        box("int_shelf_board", sx0, ny - T - 0.14, zz, 0.86, 0.22, 0.03, "mast")
+        xb = sx0 - 0.38
+        while xb < sx0 + 0.36:
+            wbk = rnd2.uniform(0.05, 0.09)
+            box("int_book", xb + wbk / 2, ny - T - 0.16, zz + 0.15, wbk, 0.16, rnd2.uniform(0.2, 0.3),
+                rnd2.choice(["red", "serpent", "hull_d", "deck_l", "gold"]))
+            xb += wbk + 0.01
+    OBST_BOXES.append((sx0 - 0.47, ny - T - 0.28, sx0 + 0.47, ny - T))
+    box("int_scroll_box", wx + T + 0.4, -ny + T + 0.85, fz + 0.18, 0.5, 0.36, 0.36, "deck")
+    for k2 in range(4):
+        cyl("int_scroll", wx + T + 0.4 + (k2 - 1.5) * 0.1, -ny + T + 0.85, fz + 0.42, 0.04, 0.32, "bone",
+            rot=(math.radians(90), 0, math.radians(10 * k2)), verts=6)
+    OBST_BOXES.append((wx + T + 0.13, -ny + T + 0.65, wx + T + 0.67, -ny + T + 1.05))
 CABIN.update(dict(x0=wx + T, x1=ex - T, y0=-ny + T, y1=ny - T, door_y0=DOOR[0], door_y1=DOOR[1],
                   door_x=ex, floor_z=fz, light=[cabin_cx + 0.35, fz + H0 - 0.45, 0.0]))
 

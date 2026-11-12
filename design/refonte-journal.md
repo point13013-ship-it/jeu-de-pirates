@@ -192,3 +192,21 @@ Images pixel art : pirate au sol, gestes (cabestan, clouer, écoper, hisser). Mo
 - Essais : --carry=<trésor>, M dans --press.
 - Direction artistique : recherche en trois volets et proposition dans design/bible-direction-artistique.md (à valider avant
   toute refonte graphique).
+
+## Cinquième essai (12/11/2026, soir) : brigantin passe 2, haute ville, cale et cabine
+
+- Brigantin : la poupe devient une façade (quatre fenêtres sur le tableau, trois sur la cabine, balcon à balustres dorés,
+  galeries de flanc, couronnement doré avec ses deux lanternes) ; voiles plus gonflées, bordure en arc, deux rustines (elles
+  suivent leur voile : même nom « sail_zNNN_patch ») ; tonneau de grog, caisses sous filet, mouette sur la poupe.
+- Cabine du capitaine meublée : lanterne suspendue (plus de cube qui éblouit), tapis bordé d'or, carte, bougie et chope sur la
+  table, deux chaises, étagère à livres, coffre à rouleaux, montants du lit. Vérifié : tous les postes restent accessibles à pied.
+- Ombre de contact (SSAO) avec le rendu v2 (GameConfig.TOON_SSAO*, --no-ssao pour comparer).
+- Haute ville (demande de Jimmy : ville plus grande, rangées en plus, rien d'aligné, chemins, verdure) : un plateau praticable
+  à 2,4 m derrière les remparts, par une porte dans le chemin de ronde. Treize maisons décalées et tournées, ruelles pavées qui
+  serpentent, sentiers de terre, placette et fontaine, clocher, potager clos, verger, haies, massifs, arbres et palmiers, colline
+  et moulin. Son sol est un niveau du jeu décrit dans la méta du port (« levels »), ajouté à data/town.json au chargement ; pas
+  sur l'herbe ou les pavés selon l'endroit ; terre étendue pour les bateaux (Land.SHIP_LAND).
+- Ville : palette v1 (façades, tuiles, bois, pierre, volets, tissus, végétation), vitres éclairées crème.
+- Cale : la brume (toujours allumée depuis sa refonte) la noyait dans un fond pâle : éteinte dans la cale. Le pont porte
+  l'ombre, le soleil n'entre que par l'écoutille (rai de lumière, poussières), lumière à paliers, palette v1, deux hamacs.
+- Tests : tous passent sauf test_town (« 11 habitants au lieu de 10 », échec antérieur à la refonte).
