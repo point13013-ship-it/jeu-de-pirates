@@ -254,9 +254,11 @@ static func gull() -> AudioStreamWAV:
 		return _to_stream(_normalize(out, 0.55), false))
 
 
-## Un pas : 0 sable, 1 herbe, 2 pont de bois, 3 eau peu profonde (variantes 0…2).
+## Un pas : 0 sable, 1 herbe, 2 bois (pont, ponton, plancher), 3 eau peu profonde, 4 pierre (pavés) (variantes 0…2).
 static func step(kind: int, variant: int) -> AudioStream:
-	var rec := recorded(["step_sand", "step_grass", "step_wood", "step_water"][clampi(kind, 0, 3)])
+	var rec := recorded(["step_sand", "step_grass", "step_wood", "step_water", "step_stone"][clampi(kind, 0, 4)])
+	if kind == 4 and rec == null:
+		kind = 0   # (pas de prise « pierre » : le son fabriqué le plus proche est le sable)
 	if rec != null:
 		return rec   # (les prises enregistrées varient d'elles-mêmes : `variant` ne sert plus qu'au son fabriqué)
 	return _cached("step%d_%d" % [kind, variant], func() -> AudioStreamWAV:

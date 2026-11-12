@@ -510,7 +510,7 @@ const C_GOAL := Color(1.0, 0.82, 0.22)
 ## Direction (vecteur monde x/z) du cap à suivre, ou zéro : réglée par le jeu pour mon pirate. Quand il y en a un, l'aiguille
 ## de la boussole le désigne (au lieu du nord) et une flèche d'or s'allume au sol, dans cette direction.
 var compass_goal := Vector2.ZERO
-var compass_enabled := true
+var compass_enabled := false   ## (12/11 : rangée par défaut ; B pour la sortir)
 var _compass: Sprite3D
 var _compass_key := Vector3i(-99, -99, -99)
 var _arrow: MeshInstance3D

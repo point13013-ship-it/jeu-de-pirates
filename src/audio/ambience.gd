@@ -36,6 +36,17 @@ func setup(p_islands: IslandWorld) -> void:
 		p.bus = AudioSettings.BUS_AMBIENT
 		add_child(p)
 		_loops[spec[0]] = {"player": p, "vol": 0.0, "cur": 0.0}
+	# 12/11 : la ville qui vit au loin (enregistrements Epidemic Sound), très bas : on la devine plus qu'on ne l'écoute
+	for spec: Array in [["crowd", "town_crowd"], ["kids", "town_kids"]]:
+		var st := Synth.recorded(str(spec[1]), true)
+		if st == null:
+			continue
+		var p2 := AudioStreamPlayer.new()
+		p2.stream = st
+		p2.volume_db = -80.0
+		p2.bus = AudioSettings.BUS_AMBIENT
+		add_child(p2)
+		_loops[spec[0]] = {"player": p2, "vol": 0.0, "cur": 0.0}
 	for i in 8:
 		var q := AudioStreamPlayer.new()
 		add_child(q)
@@ -126,6 +137,10 @@ func update(delta: float, ctx: Dictionary) -> void:
 			var v := (0.12 + 0.4 * pace + 0.2 * swell) * (0.5 if in_hold else 1.0)
 			play(Synth.splash(), v, _rng.randf_range(0.8, 1.25), AudioSettings.BUS_AMBIENT)
 	_vol("insects", 0.0 if muted else insects)
+	# la ville : murmure des gens, et des enfants qui jouent le jour quand il fait beau (GameConfig.TOWN_*)
+	var town := float(ctx.get("town", 0.0)) * (0.5 if in_hold else 1.0)
+	_vol("crowd", 0.0 if muted else town * GameConfig.TOWN_CROWD_VOL * (0.35 if night else 1.0) * (1.0 - 0.6 * rain))
+	_vol("kids", 0.0 if (muted or night) else town * GameConfig.TOWN_KIDS_VOL * (1.0 - rain))
 	_vol("fire", 0.0 if muted else fire)
 	_vol("rain", 0.0 if muted else rain * (0.45 if in_hold else 0.8))
 	_fade_loops(delta)
@@ -157,13 +172,18 @@ func update(delta: float, ctx: Dictionary) -> void:
 			var kind := 2 if where == "ship" else (0 if (s < 3.4 or tone == "dead") else 1)
 			if where == "land" and s < 0.2:
 				kind = 3
-			play(Synth.step(kind, _step_flip), 0.4)
+			# 12/11 : le jeu dit sur quoi on marche (pavés de la ville, bois des pontons et des maisons, sable, herbe, eau) ; avant,
+			# la ville comptait comme « au bord de l'eau » et on entendait des clapotis sur les pavés
+			if ctx.has("ground") and int(ctx["ground"]) >= 0:
+				kind = int(ctx["ground"])
+			play(Synth.step(kind, _step_flip), 0.4 if kind != 4 else 0.45)
 	else:
 		_step_acc = maxf(_step_acc, STEP_EVERY * 0.6)   # le premier pas part vite après l'arrêt
 
 
 func _vol(name: String, vol: float) -> void:
-	(_loops[name] as Dictionary)["vol"] = vol
+	if _loops.has(name):
+		(_loops[name] as Dictionary)["vol"] = vol
 
 
 func _fade_loops(delta: float) -> void:

@@ -51,6 +51,9 @@ var _shoulder := false            ## vue « épaule » (touche V) : caméra plus
 var _cam_yaw := 0.0               ## rad : cap de la caméra autour du pirate (molette enfoncée + souris ; clic simple sur la molette : remet droit)
 var _cam_drag := false            ## la molette est enfoncée
 var _cam_drag_moved := 0.0        ## px parcourus pendant l'appui (un appui sans mouvement remet la caméra droite)
+var _elev_user := ELEVATION_DEG  ## inclinaison choisie par le joueur (molette enfoncée, haut/bas)
+var _mid_clicks := 0             ## clics rapides sur la molette (trois : vue de base)
+var _mid_click_t := -10.0
 var _elev_deg := ELEVATION_DEG   ## inclinaison actuelle de la caméra (lissée entre la vue normale et la vue épaule)
 var _sea: MeshInstance3D
 var _sprite: PirateSprite
@@ -3049,7 +3052,7 @@ func _update_player(delta: float) -> void:
 		_update_swim(_screen_move(move), delta)   # (les flèches suivent l'écran, même si la caméra a tourné ; vitesse égale à l'écran)
 		return
 	if _loc == Loc.FLIGHT:
-		_update_flight(delta)
+		_update_flight(delta, _screen_move(move))
 		return
 	if _loc == Loc.RAFT:
 		_update_raft_pilot(move)
@@ -3065,8 +3068,8 @@ func _update_player(delta: float) -> void:
 	if _loc == Loc.SHIP and _mode == Mode.CANNON:
 		_cannon_aim = clampf(_cannon_aim + move.x * 0.9 * delta, -0.7, 0.7)
 		return
-	if _gun_i >= 0:
-		return   # au canon : on reste à son poste derrière la culasse (R pour lâcher) ; avant, on partait se promener en visant
+	if _station_locked():
+		return   # à son poste (canon, grappin, cabestan, réparation…) : on ne bouge pas tant qu'on n'a pas lâché (R)
 	# marche à pied : les flèches suivent l'écran (même caméra tournée) et la vitesse est la même à l'écran vers le haut, le bas et les côtés
 	var sm := _screen_move(move)
 	var walk_mul := sm.length() if sm != Vector2.ZERO else 1.0
@@ -3491,7 +3494,34 @@ func _swim_effects(delta: float) -> void:
 # ------------------------------------------------------------------ vol du canon
 
 ## Le pirate tiré du canon vole : trajectoire balistique, puis il retombe sur le pont, la terre ou à l'eau.
-func _update_flight(delta: float) -> void:
+## Touche M (essais, demandée par Jimmy) : le pirate s'envole et survole la carte à toute vitesse (Maj : encore plus vite) ;
+## M de nouveau : il se laisse tomber là où il est (sur un pont, à terre ou dans l'eau, comme un pirate tiré du canon).
+func _toggle_fly() -> void:
+	if _loc == Loc.FLIGHT and _flight.get("fly", false):
+		_flight["fly"] = false
+		_flight["vel"] = Vector2.ZERO
+		_flight["vz"] = -18.0
+		_say("Tu te laisses tomber", 1.5)
+		return
+	if _loc == Loc.HOLD or _loc == Loc.FLIGHT:
+		return
+	_cancel_action()
+	_gun_leave()
+	_hook_aim = false
+	if _loc == Loc.SHIP:
+		_mode = Mode.WALK
+		_lpos = _ship_to_world(_ppos)
+	_loc = Loc.FLIGHT
+	_flight = {"vel": Vector2.ZERO, "vz": 0.0, "y": GameConfig.FLY_HEIGHT, "fly": true}
+	_say("Vol libre : flèches pour aller où tu veux (Maj : plus vite), M pour redescendre", 4.0)
+
+
+func _update_flight(delta: float, steer: Vector2 = Vector2.ZERO) -> void:
+	if _flight.get("fly", false):
+		var fast := GameConfig.FLY_FAST if Input.is_key_pressed(KEY_SHIFT) else 1.0
+		_lpos += steer * GameConfig.FLY_SPEED * fast * delta
+		_flight["y"] = move_toward(float(_flight["y"]), GameConfig.FLY_HEIGHT, 8.0 * delta)
+		return
 	var vel: Vector2 = _flight["vel"]
 	_lpos += vel * delta
 	var vz: float = _flight["vz"]
@@ -4472,9 +4502,35 @@ func _update_atmosphere(delta: float) -> void:
 	_music_heat = maxf(_music_heat - delta / GameConfig.MUSIC_HEAT_DECAY, 0.0)   # les coups reçus réchauffent, puis ça retombe
 	_atmo.update(delta, {"pos": pos, "where": where, "speed": _sim.speed / maxf(_sim.max_speed, 0.1) * 8.0, "moved": moved,
 			"face": _face, "focus": _cam_focus, "paused": _pause.is_open(), "battle": battle,
-			"intensity": clampf(heat + _music_heat, 0.0, 1.0)})
+			"intensity": clampf(heat + _music_heat, 0.0, 1.0), "ground": _ground_kind(),
+			"town": 1.0 - smoothstep(GameConfig.TOWN_SOUND_NEAR, GameConfig.TOWN_SOUND_FAR, pos.distance_to(GameConfig.TOWN_CENTER))})
 	_apply_grade()
 	_spawn_castaways()
+
+
+## Sur quoi je marche, pour le bruit des pas (comme les jeux qui étiquettent leurs sols) : 0 sable, 1 herbe, 2 bois, 3 eau peu
+## profonde, 4 pierre ; -1 : laisser l'ambiance décider (en mer, sur le radeau…). Au port : les pontons et les planchers des
+## maisons sont en bois, le reste du quai et de la ville en pavés. Sur une île : sable près du rivage, herbe à l'intérieur.
+func _ground_kind() -> int:
+	if _loc == Loc.SHIP or _loc == Loc.HOLD:
+		return 2
+	if _loc != Loc.LAND:
+		return -1
+	var ii := _islands.island_at(_lpos)
+	if ii >= 0:
+		var s: float = _islands.sdf(ii, _lpos)
+		if s < 0.2:
+			return 3
+		var tone := str((_islands.islands[ii] as Dictionary).get("tone", "lush"))
+		return 0 if (s < GameConfig.SAND_BAND or tone == "dead") else 1
+	if _land.interior_at(_lpos) >= 0:
+		return 2
+	var m := Vector2(_lpos.x, -_lpos.y)   # (repère du fichier du port)
+	for k in range(1, _land.walk_rects.size()):   # le premier rectangle est le quai et la ville ; les suivants, les pontons
+		var r: Array = _land.walk_rects[k]
+		if m.x >= float(r[0]) and m.x <= float(r[2]) and m.y >= float(r[1]) and m.y <= float(r[3]):
+			return 2
+	return 4
 
 
 ## Envoie l'étalonnage du ciel (heure, météo) au filtre d'image ; dans la cale, l'image reste neutre.
@@ -4556,7 +4612,7 @@ func _update_camera(delta: float) -> void:
 	# l'échelle de l'écran. Les déplacements paraissent continus au lieu d'avancer par sauts de
 	# 2 ou 3 pixels d'écran.
 	_cam_offset = _cam_offset.lerp(_camera_target(), 1.0 - exp(-delta * 6.0))
-	_elev_deg = lerpf(_elev_deg, SHOULDER_ELEV_DEG if _shoulder_active() else ELEVATION_DEG, 1.0 - exp(-delta * 4.0))
+	_elev_deg = lerpf(_elev_deg, SHOULDER_ELEV_DEG if _shoulder_active() else _elev_user, 1.0 - exp(-delta * 4.0))
 	_cam.rotation = Vector3(-deg_to_rad(_elev_deg), _cam_yaw, 0.0)   # (_cam_yaw : cap de la caméra, tourné avec la molette)
 	PirateSprite.view_yaw = _cam_yaw
 	var el := deg_to_rad(_elev_deg)
@@ -4744,18 +4800,28 @@ func _update_target(delta: float) -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if _ship == null:
 		return
-	# molette enfoncée + souris : on fait tourner la caméra autour du pirate ; un simple clic sur la molette la remet droite
+	# molette enfoncée + souris : gauche/droite fait tourner la caméra autour du pirate, haut/bas l'incline (vue plus plongeante ou
+	# plus rasante, entre CAM_ELEV_MIN et CAM_ELEV_MAX). TROIS clics rapides sur la molette remettent la vue de base (12/11 : un
+	# simple clic le faisait, et on se retrouvait « perdu » en cliquant par mégarde).
 	if event is InputEventMouseButton and (event as InputEventMouseButton).button_index == MOUSE_BUTTON_MIDDLE:
 		_cam_drag = (event as InputEventMouseButton).pressed
 		if _cam_drag:
 			_cam_drag_moved = 0.0
 		elif _cam_drag_moved < 4.0:
-			_cam_yaw = 0.0
+			var now := Time.get_ticks_msec() / 1000.0
+			_mid_clicks = (_mid_clicks + 1) if now - _mid_click_t < GameConfig.CAM_RESET_CLICK_GAP else 1
+			_mid_click_t = now
+			if _mid_clicks >= 3:
+				_mid_clicks = 0
+				_cam_yaw = 0.0
+				_elev_user = ELEVATION_DEG
+				_say("Vue de base", 1.5)
 		return
 	if event is InputEventMouseMotion and _cam_drag:
 		var rel := (event as InputEventMouseMotion).relative
 		_cam_drag_moved += absf(rel.x) + absf(rel.y)
 		_cam_yaw = wrapf(_cam_yaw - rel.x * 0.008, -PI, PI)
+		_elev_user = clampf(_elev_user + rel.y * 0.15, GameConfig.CAM_ELEV_MIN, GameConfig.CAM_ELEV_MAX)
 		return
 	if event is InputEventMouseButton:
 		var mb := event as InputEventMouseButton
@@ -4831,8 +4897,10 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif key.physical_keycode == KEY_V:
 		_shoulder = not _shoulder
 		_say("Vue épaule : V pour revenir à la vue normale" if _shoulder else "Vue normale", 2.0)
-	elif key.physical_keycode == KEY_M and _atmo != null:
-		_say("Son coupé : M pour le remettre" if _atmo.toggle_mute() else "Son remis", 2.0)
+	elif key.physical_keycode == KEY_M and key.shift_pressed and _atmo != null:   # (12/11 : M seul sert au vol d'essai)
+		_say("Son coupé : Maj+M pour le remettre" if _atmo.toggle_mute() else "Son remis", 2.0)
+	elif key.physical_keycode == KEY_M:
+		_toggle_fly()
 	elif key.physical_keycode == KEY_B:
 		_toggle_compass()
 	elif key.physical_keycode == KEY_I:
@@ -6949,11 +7017,19 @@ func _my_scene_pos() -> Vector3:
 	return _sprite.global_position if _sprite != null else Vector3.ZERO
 
 
+## Règle commune (12/11, retour de Jimmy) : pendant qu'on manœuvre quelque chose, on reste sur place. Avant, bouger coupait
+## l'ancre en cours (« je me déplace et hop, l'ancre s'arrête ») ou laissait partir en visant au grappin ou au canon.
+## On lâche avec une touche d'action (R, E, Espace…) : c'est un choix, plus un accident.
+func _station_locked() -> bool:
+	return _gun_i >= 0 or _hook_aim or _act != null \
+			or (_grap_state != 0 and _grap_state != 4 and _grap_owner == _my_id())
+
+
 ## Commence une action longue (règle commune du lot 2). Sans effet si une autre est en cours.
 func _start_action(kind: String, label: String, arg: int = 0) -> void:
 	if _act != null:
 		return
-	_act = TimedAction.create(kind, label, TimedAction.duration_of(kind), _act_pos(), arg)
+	_act = TimedAction.create(kind, label + "   (R : arrêter)", TimedAction.duration_of(kind), _act_pos(), arg)
 	_act_loc = _loc
 	_act_hurt = false
 	_act_prev_t = -0.001
@@ -6966,11 +7042,9 @@ func _start_action(kind: String, label: String, arg: int = 0) -> void:
 func _update_timed_action(delta: float) -> void:
 	if _act == null:
 		return
-	var input := Vector2(_axis([KEY_A, KEY_LEFT], [KEY_D, KEY_RIGHT]), _axis([KEY_W, KEY_UP], [KEY_S, KEY_DOWN]))
-	if _test_move != Vector2.ZERO:
-		input = _test_move
-	var menus := (_chart != null and _chart.is_open()) or (_pause != null and _pause.is_open()) or (_inventory != null and _inventory.is_open())
-	var moving := (input != Vector2.ZERO and not menus) or _jump_wind > 0.0 or _pz > 0.05 or _loc != _act_loc
+	# (les flèches ne coupent plus l'action : on est bloqué à son poste, voir _station_locked ; un saut ou un changement de lieu,
+	# si, et une touche d'action aussi)
+	var moving := _jump_wind > 0.0 or _pz > 0.05 or _loc != _act_loc
 	var finished := _act.step(delta, _act_pos(), moving, _act_hurt)
 	_act_hurt = false
 	if _act.cancelled:

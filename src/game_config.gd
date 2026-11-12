@@ -256,6 +256,24 @@ const SAIL_LUFF_FLAP := 0.22           ## amplitude du battement
 const SAIL_FILL_SOUND_AT := 0.6        ## rendement qu'on franchit en montant : « vlouf » des voiles qui se gonflent
 const SAIL_FILL_SMOOTH := 1.2          ## s pour que le gonflement suive le rendement (pas de saut)
 
+## Ville (12/11) : murmure des gens et enfants qui jouent, très bas, plein en ville et éteint au large.
+const TOWN_CENTER := Vector2(0.0, -26.0)   ## monde x/z
+const TOWN_SOUND_NEAR := 30.0
+const TOWN_SOUND_FAR := 85.0
+const TOWN_CROWD_VOL := 0.14
+const TOWN_KIDS_VOL := 0.07
+const SAND_BAND := 3.4                ## m du rivage d'une île où l'on marche dans le sable (au-delà : l'herbe)
+
+## Caméra (12/11) : molette enfoncée + haut/bas pour l'incliner entre ces angles (°, 40 = vue de base) ; trois clics de molette
+## en moins de CAM_RESET_CLICK_GAP s entre chaque pour revenir à la vue de base.
+const CAM_ELEV_MIN := 24.0
+const CAM_ELEV_MAX := 72.0
+const CAM_RESET_CLICK_GAP := 0.4
+## Touche M (essais) : le pirate vole au-dessus de la carte, vite, pour aller voir les îles.
+const FLY_SPEED := 45.0                ## m/s
+const FLY_FAST := 3.0                  ## x avec Maj
+const FLY_HEIGHT := 14.0               ## m au-dessus de l'eau
+
 ## Pirates (images plates) : dessinés un peu vers la caméra pour ne pas se couper sur les meubles, et silhouette visible à
 ## travers le décor qui les cache (alpha 0 : pas de silhouette).
 const SPRITE_DEPTH_PUSH := 0.6         ## m
