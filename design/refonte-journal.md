@@ -9,7 +9,7 @@ Options d'essai ajoutées (après `--`) : `--look-seed=N`, `--fake-remote=dx,dy`
 `--fake-act=repair`, `--fake-swim`), `--local-only` (héberger sans alerte du pare-feu), `--swell=0..1`, `--down=t`,
 `--water-time=s`.
 
-Version réseau : **12** (tout l'équipage doit avoir la même version).
+Version réseau : **13** (tout l'équipage doit avoir la même version).
 
 ---
 
@@ -52,7 +52,9 @@ Version réseau : **12** (tout l'équipage doit avoir la même version).
 
 ## Lot 5 : ennemis (partie 1)
 
-- Coques +25 %, 10 % plus lents, apparitions plus rares (premier à 90 s, puis 150 à 300 s).
+- Coques +25 %, apparitions plus rares (premier à 90 s, puis 150 à 300 s).
+- Vitesse (rééquilibrée le 12/11, l'écart de 33 % rendait les poursuites trop faciles) : par rapport à un joueur sur le même
+  bateau, ★ 85 %, ★★ 92 %, ★★★ et ★★★★ 95 % (`ENEMY_SPEED_VS_PLAYER`). Avant la refonte : 82 % pour tous.
 - Quatre rangs (★ sloop, ★★ sloop, ★★★ brigantin, ★★★★ galion, poids 52/30/14/4) : résistance, canonniers, stock de
   planches et butin croissants (`GameConfig.ENEMY_RANKS`), couleurs propres (voiles, coque, pavillon), rang affiché.
 - L'équipage ennemi répare au calme (une planche par voie d'eau, stock limité). Un navire qui nous touche apparaît sur la
@@ -85,8 +87,6 @@ marqueurs, point d'exclamation de quête, partage de l'or à la vente).
 - Mort : on ne perd pas les réserves du bateau (boulets/planches de la caisse) ni les baies du sac ; « nourriture » n'existe
   pas encore dans le jeu.
 - À terre : le pirate est seulement « tassé » (il faudrait une image « au sol » en pixel art). Sirène et ailerons : maquettes.
-- Lot 5 : les ennemis sont déjà 18 % plus lents ; avec +10 % pour les joueurs et -10 % demandés pour eux, l'écart monte
-  à ~33 % : à surveiller pour les poursuites.
 
 ## Assets à fournir
 

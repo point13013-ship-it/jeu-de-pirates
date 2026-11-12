@@ -82,7 +82,9 @@ func spawn(kind: String, pos: Vector2, yaw: float, id: int = -1, rank: int = 0) 
 	var sim := ShipSim.new()
 	var all_stats := IslandWorld.read_json("res://data/ship_stats.json")
 	sim.configure(all_stats.get(kind, {}))
-	sim.max_speed *= 0.82 * GameConfig.ENEMY_SPEED_MULT   # moins vifs que les joueurs : on peut les semer (lot 5 : encore -10 %)
+	# moins vifs qu'un joueur sur le même bateau (on peut les semer), d'autant moins que le rang est haut
+	var vs: Array = GameConfig.ENEMY_SPEED_VS_PLAYER
+	sim.max_speed *= GameConfig.PLAYER_SHIP_SPEED_MULT * float(vs[clampi(rank - 1, 0, vs.size() - 1)])
 	sim.position = pos
 	sim.yaw = yaw
 	sim.sail_level = 2

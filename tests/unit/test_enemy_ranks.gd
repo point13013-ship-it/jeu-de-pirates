@@ -15,7 +15,14 @@ func _initialize() -> void:
 	var s4: Dictionary = fleet.ships[fleet.find(id4)]
 	_check("rang 1 : coque +25 %% (%.0f)" % float(s1["hp"]), is_equal_approx(float(s1["hp"]), 70.0 * 1.25))
 	_check("rang 4 : bien plus résistant (%.0f)" % float(s4["hp"]), float(s4["hp"]) > float(s1["hp"]) * 3.0)
-	_check("ennemis plus lents (vitesse max %.1f)" % (s1["sim"] as ShipSim).max_speed, (s1["sim"] as ShipSim).max_speed < 9.0 * 0.82)
+	# vitesse : un ennemi reste moins rapide qu'un joueur sur le même bateau, mais l'écart ne dépasse plus ~15 %
+	var player_sloop := 9.0 * GameConfig.PLAYER_SHIP_SPEED_MULT
+	var v1 := (s1["sim"] as ShipSim).max_speed
+	_check("rang 1 plus lent qu'un joueur, sans écart énorme (%.1f / %.1f)" % [v1, player_sloop], v1 < player_sloop and v1 >= player_sloop * 0.84)
+	var id3 := fleet.spawn("sloop", Vector2(600, 500), 0.0, -1, 3)
+	var v3 := (fleet.ships[fleet.find(id3)]["sim"] as ShipSim).max_speed
+	_check("rang élevé plus vif que le rang 1 (%.1f)" % v3, v3 > v1 and v3 < player_sloop)
+	fleet.ships.remove_at(fleet.find(id3))
 	# rareté : sur 4000 tirages, le rang 4 est rare et le rang 1 le plus courant
 	var counts := [0, 0, 0, 0, 0]
 	for k in 4000:

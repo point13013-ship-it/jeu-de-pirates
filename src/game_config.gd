@@ -127,7 +127,10 @@ const DAY_MOMENTS := [[0.0, "Nuit"], [0.22, "Aube"], [0.3, "Matin"], [0.45, "Mid
 # ------------------------------------------------------------------ Lot 5 : ennemis
 
 const ENEMY_HP_MULT := 1.25           ## 6.1 : coques 25 % plus résistantes
-const ENEMY_SPEED_MULT := 0.9         ## 6.4 : 10 % plus lents (en plus de l'écart d'origine, 0,82)
+## 6.4 (rééquilibré le 12/11) : vitesse d'un ennemi par rapport à un joueur sur le même bateau, par rang (1 à 4).
+## Avant la refonte : 0,82 partout. Avec +10 % joueurs et -10 % ennemis, l'écart montait à 33 % : poursuites trop faciles.
+## Un ★ se sème sans peine, un ★★★ presque aussi rapide que nous ; le galion reste lourd (sa vitesse de base est déjà basse).
+const ENEMY_SPEED_VS_PLAYER := [0.85, 0.92, 0.95, 0.95]
 const ENEMY_SPAWN_FIRST := 90.0       ## 6.3 : s avant le premier ennemi
 const ENEMY_SPAWN_MIN := 150.0        ## s entre deux apparitions (tiré au hasard entre les deux)
 const ENEMY_SPAWN_MAX := 300.0
