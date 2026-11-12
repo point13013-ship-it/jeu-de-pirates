@@ -232,6 +232,16 @@ def hull_depth_frac(phi):
     return math.sin(phi) ** 0.65
 
 
+def hull_side(x, z):
+    """Demi-largeur de la coque à l'abscisse x et à la hauteur z (au-dessus du pont : le plat-bord, à la verticale) : ce qui
+    est posé contre la coque (échelles, ferrures) suit le bordé au lieu de le traverser. Même calcul que les sections."""
+    _x, hw, dz, dp = station((x + L / 2) / L)
+    f = min(max((dz - z) / dp, 0.0), 0.985)
+    s = f ** (1.0 / 0.65)                                  # sin(phi), l'inverse de hull_depth_frac
+    tumble = 1.0 + (0.08 * math.sin(math.pi * min(f * 2.4, 1.0)) if V2 else 0.0)
+    return hw * math.sqrt(max(1.0 - s * s, 0.0)) * tumble
+
+
 hull_verts = []
 for i in range(N):
     x, hw, dz, dp = station(i / (N - 1))
@@ -350,16 +360,23 @@ _ul = (CFG["ladder_x"] * KL + L / 2) / L
 for side in (-1, 1):
     xl, hwl, dzl, _dp = station(_ul)
     LADDERS.append((xl, side * (hwl - 0.65), side, side * hwl))
-    z_top, z_bot = dzl + 0.62, dzl - 3.3   # (12/11 : elle descend jusque dans l'eau : on s'y accroche en nageant)
+    # (12/11 : elle descend jusque dans l'eau : on s'y accroche en nageant ; 13/11 : pas plus bas que le bouchain)
+    z_top, z_bot = dzl + 0.62, dzl - min(3.3, _dp * 0.8)
+    # 13/11 : l'échelle suit le vrai profil de la coque (hull_side). Avant, deux montants droits sur une coque courbe et
+    # rentrante : ils traversaient le bordé au ventre et flottaient loin de la coque en bas.
+    zs_ = []
+    zr = z_top
+    while zr > z_bot:
+        zs_.append(zr)
+        zr -= 0.16
+    zs_.append(z_bot)
     for dxr in (-0.27, 0.27):
-        # les montants suivent la coque (légèrement vers l'intérieur en bas) et dépassent le plat-bord
-        rope((xl + dxr, side * (hwl + 0.06), z_top), (xl + dxr, side * (hwl * 0.88 + 0.04), z_bot), r=0.035, mat="mast")
-    k = 0
+        for q in range(len(zs_) - 1):
+            rope((xl + dxr, side * (hull_side(xl + dxr, zs_[q]) + 0.075), zs_[q]),
+                 (xl + dxr, side * (hull_side(xl + dxr, zs_[q + 1]) + 0.075), zs_[q + 1]), r=0.035, mat="mast")
     zr = z_top - 0.25
     while zr > z_bot + 0.1:
-        f = (z_top - zr) / (z_top - z_bot)
-        yr = side * (hwl + 0.06 - f * (hwl * 0.12 + 0.02))
-        box("ladder_rung", xl, yr, zr, 0.6, 0.06, 0.06, "mast")
+        box("ladder_rung", xl, side * (hull_side(xl, zr) + 0.075), zr, 0.6, 0.06, 0.06, "mast")
         zr -= 0.32
     for dxr in (-0.27, 0.27):   # poignées au-dessus du plat-bord
         cyl("ladder_post", xl + dxr, side * (hwl - 0.08), dzl + 0.72, 0.04, 0.5, "mast")
