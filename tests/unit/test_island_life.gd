@@ -101,9 +101,14 @@ func _initialize() -> void:
 	# les sons : tous fabriqués, boucles bouclées
 	for stream: AudioStreamWAV in [Synth.waves(), Synth.wind(), Synth.fire(), Synth.rain(), Synth.insects()]:
 		_check(stream.data.size() > 10000 and stream.loop_mode == AudioStreamWAV.LOOP_FORWARD, "boucle d'ambiance (%d octets)" % stream.data.size())
-	for stream: AudioStreamWAV in [Synth.gull(), Synth.bird(0), Synth.bird(2), Synth.splash(), Synth.rustle(), Synth.chime(), Synth.creak(), Synth.thunder(),
-			Synth.step(0, 0), Synth.step(1, 1), Synth.step(2, 2), Synth.step(3, 0)]:
+	for stream: AudioStreamWAV in [Synth.gull(), Synth.bird(0), Synth.bird(2), Synth.splash(), Synth.rustle(), Synth.chime(), Synth.creak(), Synth.thunder()]:
 		_check(stream.data.size() > 1000 and stream.loop_mode == AudioStreamWAV.LOOP_DISABLED, "son bref (%d octets)" % stream.data.size())
+	# les pas : de vrais enregistrements (plusieurs prises tirées au hasard), sinon le son fabriqué
+	for kind in 4:
+		var st := Synth.step(kind, 0)
+		_check(st != null and (st is AudioStreamRandomizer or st is AudioStreamWAV), "pas %d : %s" % [kind, st.get_class() if st != null else "rien"])
+		if st is AudioStreamRandomizer:
+			_check((st as AudioStreamRandomizer).streams_count >= 3, "pas %d : au moins 3 prises (%d)" % [kind, (st as AudioStreamRandomizer).streams_count])
 	# le ciel (les nœuds doivent être dans l arbre : on attend une image)
 	await process_frame
 	var env := Environment.new()

@@ -157,7 +157,7 @@ func update(delta: float, ctx: Dictionary) -> void:
 			var kind := 2 if where == "ship" else (0 if (s < 3.4 or tone == "dead") else 1)
 			if where == "land" and s < 0.2:
 				kind = 3
-			play(Synth.step(kind, _step_flip), 0.4, _rng.randf_range(0.92, 1.1))
+			play(Synth.step(kind, _step_flip), 0.4)
 	else:
 		_step_acc = maxf(_step_acc, STEP_EVERY * 0.6)   # le premier pas part vite après l'arrêt
 

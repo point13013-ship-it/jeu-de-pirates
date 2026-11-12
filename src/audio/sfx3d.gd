@@ -12,6 +12,7 @@ var _players: Array[AudioStreamPlayer3D] = []
 var _next := 0
 var _listener: AudioListener3D
 var _loops: Dictionary = {}   ## nom -> AudioStreamPlayer3D (sons qui durent : une action en cours)
+var _last_play: Dictionary = {}   ## id du son -> instant de sa dernière lecture (s)
 
 
 func _ready() -> void:
@@ -31,6 +32,7 @@ func _make_player() -> AudioStreamPlayer3D:
 	p.unit_size = GameConfig.SFX_UNIT_SIZE
 	p.attenuation_model = AudioStreamPlayer3D.ATTENUATION_INVERSE_DISTANCE
 	p.panning_strength = 0.6
+	p.attenuation_filter_cutoff_hz = GameConfig.SFX_FAR_CUTOFF_HZ   # de loin, un son perd ses aigus
 	return p
 
 
@@ -41,13 +43,30 @@ func set_listener(at: Vector3) -> void:
 
 
 ## Un son bref en `at` (scène), volume linéaire `vol`, hauteur `pitch`.
-func play_at(stream: AudioStream, at: Vector3, vol: float = 1.0, pitch: float = 1.0) -> void:
+## Anti-saturation (pratique courante : limite de voix par son, délai minimal entre deux déclenchements) : un même son n'est
+## pas relancé à moins de GameConfig.SFX_MIN_GAP s, et pas plus de SFX_MAX_VOICES fois en même temps (on coupe la plus ancienne).
+## `far` : un son fort qui porte loin (canon, impact de boulet) : il s'entend jusqu'à GameConfig.SFX_FAR_RANGE.
+func play_at(stream: AudioStream, at: Vector3, vol: float = 1.0, pitch: float = 1.0, far: bool = false) -> void:
 	if stream == null or vol <= 0.01:
 		return
+	var now := Time.get_ticks_msec() / 1000.0
+	var sid := stream.get_instance_id()
+	if now - float(_last_play.get(sid, -1.0)) < GameConfig.SFX_MIN_GAP:
+		return
+	_last_play[sid] = now
+	var same: Array[AudioStreamPlayer3D] = []
+	for q in _players:
+		if q.playing and q.stream == stream:
+			same.append(q)
 	var p := _players[_next]
-	_next = (_next + 1) % _players.size()
+	if same.size() >= GameConfig.SFX_MAX_VOICES:
+		p = same[0]   # (l'ordre du lot suit l'ordre de lancement : la première trouvée est la plus ancienne… à peu près)
+	else:
+		_next = (_next + 1) % _players.size()
 	p.stream = stream
 	p.global_position = at
+	p.max_distance = GameConfig.SFX_FAR_RANGE if far else GameConfig.SFX_HEAR_RANGE
+	p.unit_size = GameConfig.SFX_FAR_UNIT_SIZE if far else GameConfig.SFX_UNIT_SIZE
 	p.volume_db = linear_to_db(vol) + GameConfig.SFX_DB
 	p.pitch_scale = pitch
 	p.play()

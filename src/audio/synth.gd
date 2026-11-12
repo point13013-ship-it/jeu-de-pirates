@@ -255,7 +255,10 @@ static func gull() -> AudioStreamWAV:
 
 
 ## Un pas : 0 sable, 1 herbe, 2 pont de bois, 3 eau peu profonde (variantes 0…2).
-static func step(kind: int, variant: int) -> AudioStreamWAV:
+static func step(kind: int, variant: int) -> AudioStream:
+	var rec := recorded(["step_sand", "step_grass", "step_wood", "step_water"][clampi(kind, 0, 3)])
+	if rec != null:
+		return rec   # (les prises enregistrées varient d'elles-mêmes : `variant` ne sert plus qu'au son fabriqué)
 	return _cached("step%d_%d" % [kind, variant], func() -> AudioStreamWAV:
 		var r := _rng(100 + kind * 10 + variant)
 		var len := int(0.16 * RATE)
@@ -341,30 +344,42 @@ static func creak() -> AudioStreamWAV:
 
 
 # ------------------------------------------------------------------ vrais enregistrements (Epidemic Sound)
-# Les fichiers res://assets/audio/sfx/<nom>_1.ogg, <nom>_2.ogg… remplacent le son fabriqué du même nom. S'il y en a plusieurs,
-# on en tire un au hasard à chaque fois (variantes). Coupés et normalisés à -16 LUFS (ffmpeg) depuis les téléchargements.
+# Les fichiers res://assets/audio/sfx/<nom>_1.ogg, <nom>_2.ogg… remplacent le son fabriqué du même nom. Coupés et normalisés
+# à -16 LUFS (ffmpeg) depuis les téléchargements.
+# Pratique courante du son de jeu (Wwise « Random Container » en mode shuffle, AudioStreamRandomizer de Godot) : plusieurs
+# prises du même bruit, tirées au hasard SANS rejouer la même deux fois de suite, avec une petite variation de hauteur et de
+# volume à chaque lecture (GameConfig.SFX_PITCH_VAR / SFX_VOL_VAR_DB) : l'oreille n'entend plus « le même son collé ».
+# Un fichier « <nom>_rare_1.ogg » est une variante rare (poids GameConfig.SFX_RARE_WEIGHT au lieu de 1).
 
 const SFX_DIR := "res://assets/audio/sfx/"
-static var _recorded: Dictionary = {}   ## nom -> Array (vide : pas de fichier, on garde le son fabriqué)
+static var _recorded: Dictionary = {}   ## clé -> AudioStreamRandomizer, ou null s'il n'y a pas de fichier
 
 
-## Un enregistrement au hasard pour ce nom, ou null s'il n'y en a pas. `looped` : pour les boucles (cabestan, roue).
+## Le son enregistré pour ce nom (un AudioStreamRandomizer : chaque lecture tire une prise), ou null s'il n'y en a pas.
+## Toujours le même objet pour un nom donné (une boucle ne redémarre pas à chaque appel). `looped` : cabestan, roue ; la
+## hauteur d'une boucle est réglée par le jeu, sans variation au hasard.
 static func recorded(sfx_name: String, looped: bool = false) -> AudioStream:
-	if not _recorded.has(sfx_name):
-		var list: Array = []
+	var key := sfx_name + ("@loop" if looped else "")
+	if _recorded.has(key):
+		return _recorded[key]
+	var rnd := AudioStreamRandomizer.new()
+	rnd.playback_mode = AudioStreamRandomizer.PLAYBACK_RANDOM_NO_REPEATS
+	rnd.random_pitch = 1.0 if looped else GameConfig.SFX_PITCH_VAR
+	rnd.random_volume_offset_db = 0.0 if looped else GameConfig.SFX_VOL_VAR_DB
+	for kind: String in ["", "rare_"]:
 		for k in range(1, 9):
-			var path := "%s%s_%d.ogg" % [SFX_DIR, sfx_name, k]
+			var path := "%s%s_%s%d.ogg" % [SFX_DIR, sfx_name, kind, k]
 			if not ResourceLoader.exists(path):
 				break
 			var s := load(path) as AudioStreamOggVorbis
-			if s != null:
-				if looped:
-					s = s.duplicate() as AudioStreamOggVorbis
-					s.loop = true
-				list.append(s)
-		_recorded[sfx_name] = list
-	var got: Array = _recorded[sfx_name]
-	return null if got.is_empty() else got[randi() % got.size()]
+			if s == null:
+				continue
+			if looped:
+				s = s.duplicate() as AudioStreamOggVorbis
+				s.loop = true
+			rnd.add_stream(-1, s, GameConfig.SFX_RARE_WEIGHT if kind == "rare_" else 1.0)
+	_recorded[key] = rnd if rnd.streams_count > 0 else null
+	return _recorded[key]
 
 
 # ------------------------------------------------------------------ lot 2 : bruitages d'actions (PROVISOIRES)

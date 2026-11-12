@@ -73,6 +73,28 @@ const CARRY_TOWARD_CAMERA := 0.35     ## m : avancé vers la caméra, pour passe
 const SFX_HEAR_RANGE := 22.0          ## m : au-delà, on n'entend plus
 const SFX_UNIT_SIZE := 4.0            ## m : distance où le son est à plein volume
 const SFX_DB := -4.0                  ## décalage général des bruitages (mixage)
+## Variation des bruitages (pratiques du son de jeu, voir design/refonte-journal.md « Son ») :
+const SFX_PITCH_VAR := 1.06            ## hauteur tirée entre 1/1,06 et 1,06 (≈ ±1 demi-ton ; au-delà, ça sonne comique)
+const SFX_VOL_VAR_DB := 1.5            ## volume tiré à ±1,5 dB
+const SFX_RARE_WEIGHT := 0.15          ## poids d'une variante rare (« _rare_ » dans le nom du fichier) face à 1 pour les autres
+const SFX_MIN_GAP := 0.06              ## s : un même son n'est pas relancé plus vite (deux pas, deux coups pile ensemble)
+const SFX_MAX_VOICES := 4              ## lectures simultanées d'un même son au plus (les plus anciennes sont coupées)
+const SFX_FAR_CUTOFF_HZ := 4000.0      ## les sons lointains sont étouffés (filtre passe-bas avec la distance)
+const SFX_FAR_RANGE := 140.0           ## m : un coup de canon s'entend jusque-là
+const SFX_FAR_UNIT_SIZE := 22.0        ## m : distance où un son fort est à plein volume
+## Canon : deux couches jouées ensemble (pratique du « layering ») : la détonation (l'attaque, sèche) et le grondement qui
+## roule derrière (le corps et la queue). De loin, la détonation s'efface plus vite que le grondement.
+const CANNON_BLAST_VOL := 1.0
+const CANNON_TAIL_VOL := 0.7
+
+## Musique (voir src/audio/music.gd) : silences entre deux morceaux au calme, fondus, sortie lente du combat.
+const MUSIC_GAP_MIN := 60.0            ## s de silence au moins entre deux morceaux (mer, escale, tempête)
+const MUSIC_GAP_MAX := 180.0
+const MUSIC_FADE := 3.0                ## s : fondu enchaîné ordinaire (on accoste, la tempête se lève)
+const MUSIC_FADE_COMBAT_IN := 1.5      ## s : le combat entre vite
+const MUSIC_FADE_COMBAT_OUT := 5.0     ## s : et s'éteint lentement
+const MUSIC_COMBAT_EXIT := 10.0        ## s sans combat avant de quitter la musique de combat
+const MUSIC_STORM_AT := 0.5            ## force de la tempête (0…1) à partir de laquelle on passe au thème de tempête
 
 ## Actions longues (règle commune) : durées en secondes.
 const ACTION_TIMES := {

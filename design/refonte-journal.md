@@ -93,6 +93,25 @@ marqueurs, point d'exclamation de quête, partage de l'or à la vente).
   pas encore dans le jeu.
 - À terre : le pirate est seulement « tassé » (il faudrait une image « au sol » en pixel art). Sirène et ailerons : maquettes.
 
+## Son (12/11)
+
+Recherche des pratiques du son de jeu (doc Godot AudioStreamRandomizer, Wwise/Audiokinetic, CRIWARE, Violet Recording,
+GDC « horizontal resequencing », interviews de Rare sur Sea of Thieves). Appliqué :
+- **Variantes** : 3 à 7 prises par bruit fréquent (pas, marteau, canon, impacts), tirées au hasard **sans rejouer la même
+  deux fois de suite** (`AudioStreamRandomizer`, mode RANDOM_NO_REPEATS). Hauteur ±1 demi-ton, volume ±1,5 dB à chaque
+  lecture (au-delà de 2 demi-tons, ça sonne comique). Une variante rare possible (`<nom>_rare_1.ogg`, poids 0,15).
+- **Couches** : le canon = détonation + grondement joués ensemble ; entendu jusqu'à 140 m (les autres sons : 22 m).
+- **Anti-saturation** : un même son pas plus de 4 fois en même temps, ni relancé à moins de 60 ms.
+- **Distance** : les sons lointains perdent leurs aigus (passe-bas à 4 kHz).
+- **Musique** : par état (mer, escale, tempête, combat) ; au calme, un morceau puis 60 à 180 s de silence (on n'entend
+  que la mer), jamais le même morceau deux fois de suite ; combat : entre en 1,5 s, ne sort qu'après 10 s sans combat
+  (pas de va-et-vient), fondu de 5 s. Musique à -21 LUFS, bruitages à -16 (musique 5 dB sous les effets).
+- Nouveaux sons : tir de canon (ennemi aussi : il n'y en avait pas), choc de boulet sur une coque/un mob/un récif, boulet à
+  l'eau, pas sur bois/sable/herbe/eau (enregistrés). 70 prises de bruitages (`assets/audio/sfx`), 12 morceaux
+  (`assets/audio/music`, Epidemic Sound, série « Scandinavian Folk » pour la mer, l'escale et le combat ; ~19 Mo).
+- Limites : le choc d'un boulet de joueur sur un ennemi n'est entendu que par l'hôte ; pas encore de « ducking » (baisser
+  la musique pendant un tir) ; pas d'intensité de combat par couches (il faudrait des pistes séparées).
+
 ## Assets à fournir
 
 Sons : **faits le 12/11** avec le compte Epidemic Sound de Jimmy (19 fichiers dans `assets/audio/sfx/`, 1 ou 2 variantes

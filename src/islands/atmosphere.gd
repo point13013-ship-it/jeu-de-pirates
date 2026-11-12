@@ -64,6 +64,8 @@ func update(delta: float, ctx: Dictionary) -> void:
 		mood = "combat"
 	elif where == "land":
 		mood = "escale"
+	elif sky.storm >= GameConfig.MUSIC_STORM_AT:
+		mood = "tempete"
 	var duck := 1.0
 	if where == "hold":
 		duck = 0.55

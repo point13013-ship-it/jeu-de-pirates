@@ -1992,6 +1992,7 @@ func hit_visual(kind: int, bx: float, side: int, opened: int) -> void:
 	_shake_t = 0.4
 	var at := _ship.to_global(Vector3((bx + _ship.shift) * ShipModel.SCALE, _ship.deck_height(bx) - 0.6,
 			-float(side) * _ship.half_width(bx) * ShipModel.SCALE))
+	_ball_sound("hull_hit", at)   # boulet ou récif : le bois qui éclate (chez tous)
 	for k in 12:
 		var chip := _make_ball(0.07, Color(0.82, 0.64, 0.40))
 		(chip.material_override as StandardMaterial3D).shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
@@ -2032,6 +2033,7 @@ func _on_enemy_fire(id: int, idx: int, start: Vector3, vel: Vector3) -> void:
 ## Chez tout le monde : le canon `idx` de l'ennemi `id` tire. Seul l'hôte décide si le boulet touche notre coque.
 func apply_enemy_fire(id: int, idx: int, start: Vector3, vel: Vector3) -> void:
 	_fleet.muzzle_effect(id, idx)
+	_cannon_boom(_world_fixed.to_global(start))
 	var ball := _make_ball(0.18, Color(0.10, 0.10, 0.14))
 	_world_fixed.add_child(ball)
 	ball.position = start
@@ -5944,6 +5946,17 @@ func _leave_helm() -> void:
 
 
 ## Fait partir le boulet du canon `i` (éclair, boulet, éclaboussure). Appelé chez tout le monde.
+## Coup de canon (nous ou un ennemi) en `at` (coordonnées de la scène) : détonation + grondement, entendus de loin.
+func _cannon_boom(at: Vector3) -> void:
+	_sfx.play_at(Synth.recorded("cannon_fire"), at, GameConfig.CANNON_BLAST_VOL, 1.0, true)
+	_sfx.play_at(Synth.recorded("cannon_tail"), at, GameConfig.CANNON_TAIL_VOL, 1.0, true)
+
+
+## Un boulet qui arrive : `what` = "hull_hit" (dans une coque, un mob, un récif) ou "ball_splash" (à l'eau).
+func _ball_sound(what: String, at: Vector3) -> void:
+	_sfx.play_at(Synth.recorded(what), at, 1.0 if what == "hull_hit" else 0.7, 1.0, true)
+
+
 func fire_visual(i: int, human: bool = false, aim: float = 0.0) -> void:
 	if _ship == null or i < 0 or i >= _ship.cannons.size() or i >= _cannon_nodes.size():
 		return
@@ -5958,6 +5971,7 @@ func fire_visual(i: int, human: bool = false, aim: float = 0.0) -> void:
 		dir = Vector3(d2.x, 0.0, d2.y)
 	var fwd := _sim.forward()
 	ShipCannons.kick(_cannon_nodes[i])
+	_cannon_boom(muzzle)
 	if not human:   # un pirate tiré du canon part seul : pas de boulet avec lui
 		var vel := dir * 28.0 + Vector3.UP * 5.0 + Vector3(fwd.x, 0.0, fwd.y) * _sim.speed
 		var ball := _make_ball(0.16, Color(0.10, 0.10, 0.14))
@@ -6005,7 +6019,7 @@ func _update_projectiles(delta: float) -> void:
 		if p.get("enemy", false) and _ball_hits_hull(node.global_position):
 			if _is_authority() and int(p.get("src", -1)) >= 0:
 				_fleet.reveal(int(p["src"]))   # lot 5 (6.7) : il nous a touchés : il apparaît sur la carte de tout l'équipage
-			_splash(Vector3(node.position.x, SEA_Y + 0.05, node.position.z))
+			_splash(Vector3(node.position.x, SEA_Y + 0.05, node.position.z))   # (le son du choc : hit_visual, chez tous)
 			node.queue_free()
 			_projectiles.remove_at(i)
 			continue
@@ -6016,6 +6030,7 @@ func _update_projectiles(delta: float) -> void:
 				for hit: Dictionary in mob_hits:
 					if int(hit["gold"]) > 0:
 						_give_loot(_my_id(), int(hit["gold"]), hit["at"])
+				_ball_sound("hull_hit", node.global_position)
 				_splash(Vector3(node.position.x, node.position.y, node.position.z))
 				node.queue_free()
 				_projectiles.remove_at(i)
@@ -6030,11 +6045,14 @@ func _update_projectiles(delta: float) -> void:
 					break
 			if eid >= 0:
 				_fleet.hurt(eid, 18.0)   # un boulet de joueur touche un bateau ennemi
+				_ball_sound("hull_hit", node.global_position)
 				_splash(Vector3(node.position.x, SEA_Y + 0.05, node.position.z))
 				node.queue_free()
 				_projectiles.remove_at(i)
 				continue
 		if node.position.y < SEA_Y or float(p["age"]) > 8.0:
+			if node.position.y < SEA_Y:
+				_ball_sound("ball_splash", node.global_position)
 			_splash(Vector3(node.position.x, SEA_Y + 0.05, node.position.z))
 			node.queue_free()
 			_projectiles.remove_at(i)
@@ -6938,7 +6956,7 @@ func _work_fx(kind: String, t0: float, t1: float, dur: float, at: Vector3, key: 
 			var n0 := floori(maxf(t0, 0.0) / GameConfig.HAMMER_EVERY)
 			var n1 := floori(t1 / GameConfig.HAMMER_EVERY)
 			if t0 < 0.0 or n1 > n0:
-				_sfx.play_at(Synth.hammer(n1 % 3), at + Vector3(0.0, 0.6, 0.0), 0.9, randf_range(0.95, 1.08))
+				_sfx.play_at(Synth.hammer(n1 % 3), at + Vector3(0.0, 0.6, 0.0), 0.9)
 				_chips(at + Vector3(0.0, 0.7, 0.0), Color(0.72, 0.52, 0.3))
 		"bail":
 			var cut := dur * GameConfig.BAIL_FILL_SHARE
@@ -7056,10 +7074,10 @@ func _jump_fx(kind: String) -> void:
 	_squash_sprite(_sprite, kind)
 	var at := _my_scene_pos()
 	if kind == "jump":
-		_sfx.play_at(Synth.jump(), at, 0.6, randf_range(0.95, 1.1))
+		_sfx.play_at(Synth.jump(), at, 0.6)
 	else:
 		var on_wood := _loc == Loc.SHIP or (_loc == Loc.LAND and _lh > 0.1)
-		_sfx.play_at(Synth.land(on_wood), at, 0.75, randf_range(0.92, 1.08))
+		_sfx.play_at(Synth.land(on_wood), at, 0.75)
 		_chips(at + Vector3(0.0, 0.05, 0.0), Color(0.78, 0.7, 0.58, 1.0), 6, 0.25)
 
 
@@ -7138,7 +7156,7 @@ func _update_lot2_visuals(delta: float) -> void:
 		_ladder_step_t -= delta
 		if _ladder_step_t <= 0.0:
 			_ladder_step_t = GameConfig.LADDER_STEP_EVERY
-			_sfx.play_at(Synth.step(2, randi() % 3), _my_scene_pos(), 0.55, randf_range(0.95, 1.12))
+			_sfx.play_at(Synth.step(2, randi() % 3), _my_scene_pos(), 0.55)
 	else:
 		_ladder_step_t = 0.0
 
