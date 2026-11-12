@@ -70,6 +70,32 @@ MAT = {k: make_mat(k, *v) for k, v in {
 }.items()}
 
 
+def _recolor(mat, h):
+    """Palette v1 (design/bible-v2.md, § 2) : couleur donnée en hexadécimal sRGB, convertie en linéaire pour Blender."""
+    def lin(c):
+        c = c / 255.0
+        return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
+    rgb = tuple(lin(int(h[i:i + 2], 16)) for i in (0, 2, 4))
+    bsdf = mat.node_tree.nodes["Principled BSDF"]
+    bsdf.inputs["Base Color"].default_value = (*rgb, 1.0)
+    if bsdf.inputs["Emission Strength"].default_value > 0:
+        bsdf.inputs["Emission Color"].default_value = (*rgb, 1.0)
+
+
+# refonte v2 (12/11/2026) : la ville prend la palette v1, comme les bateaux. Mêmes noms de matières (le jeu choisit ses motifs
+# d'enduit, de tuiles, de bois et de pierre d'après le nom) ; les sols sont repeints par le jeu et ne changent pas ici.
+for _k, _h in {"pl_cream": "F4E1AD", "pl_ochre": "DCAE5C", "pl_terra": "D68A6E", "pl_teal": "93C4A6", "pl_rose": "D9A0A8",
+               "pl_white": "EFE4CC", "wood_d": "3A2630", "wood": "6A4532", "wood_l": "9C6A43", "stone": "B9AD9C",
+               "stone_d": "7D7488", "algae": "1D3B3A", "roof_terra": "B25A3E", "roof_terra_d": "7A3530",
+               "roof_slate": "4A4258", "roof_slate_d": "2E2A44", "roof_green": "2D6444", "roof_green_d": "1D3B3A",
+               "shut_teal": "2A8290", "shut_red": "7A3530", "shut_blue": "5F8FB0", "glass": "1A2240", "glow": "FFE2A0",
+               "cloth_red": "B25A3E", "cloth_cream": "EFE4CC", "cloth_blue": "5F8FB0", "cloth_green": "5A9440",
+               "cloth_yellow": "DCAE5C", "gold": "DCAE5C", "iron": "2E2A44", "rope": "A87A52", "leaf": "5A9440",
+               "leaf_d": "2D6444", "trunk": "6A4532", "fruit_r": "DE8A5E", "fruit_y": "E4E88A", "fish": "7D7488",
+               "paper": "EFE4CC"}.items():
+    _recolor(MAT[_k], _h)
+
+
 def add_mesh(name, verts, faces, mats, mat_index=None):
     me = bpy.data.meshes.new(name)
     me.from_pydata(verts, [], faces)
