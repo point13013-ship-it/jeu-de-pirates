@@ -32,6 +32,8 @@ var turn_rate: float = 0.55      ## rad/s à pleine barre et pleine vitesse
 var accel: float = 1.1           ## m/s²
 var sail_speed: float = 0.35     ## ouverture par seconde
 var drag: float = 1.0            ## facteur sur la vitesse visée : 1 à sec, moins quand la cale se remplit
+var penalty_scale: float = 1.0   ## part du malus de mauvais vent qui s'applique (lot 3 : 0,75 pour le bateau des joueurs)
+var handling: float = 1.0        ## facteur sur la maniabilité (lot 3 : la forte houle la réduit un peu)
 
 
 ## Configure le bateau depuis ses caractéristiques (données externes).
@@ -136,7 +138,7 @@ func step(dt: float) -> void:
 	var steer := MIN_STEER + (1.0 - MIN_STEER) * clampf(speed / (max_speed * 0.6), 0.0, 1.0)
 	if anchored:
 		steer = 0.3  # l'ancre fait pivoter le bateau lentement
-	yaw -= rudder * turn_rate * steer * dt
+	yaw -= rudder * turn_rate * handling * steer * dt
 	position += forward() * speed * dt * screen_comp()
 
 
@@ -144,4 +146,5 @@ const MIN_SAIL_EFF := 0.4    ## rendement minimal des voiles (vent debout + verg
 
 ## Rendement total des voiles, de MIN_SAIL_EFF (très mauvais vent / réglage) à 1 (vent arrière, vergues au mieux).
 func sail_efficiency() -> float:
-	return MIN_SAIL_EFF + (1.0 - MIN_SAIL_EFF) * clampf(wind_factor() * trim_efficiency(), 0.0, 1.0)
+	var eff := MIN_SAIL_EFF + (1.0 - MIN_SAIL_EFF) * clampf(wind_factor() * trim_efficiency(), 0.0, 1.0)
+	return 1.0 - (1.0 - eff) * penalty_scale   # (le malus de mauvais vent, réduit de `penalty_scale`)

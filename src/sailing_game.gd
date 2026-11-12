@@ -238,6 +238,12 @@ var _act_prev_t := 0.0
 var _squash: Dictionary = {}         ## id d'instance d'un sprite -> {t, kind} : écrasement d'appel ou de réception d'un saut
 var _ladder_step_t := 0.0
 var _act_prop: Node3D                ## l'accessoire en main pendant l'action (seau, marteau…)
+# ------------------------------------------------------------------ lot 3
+var _wave_amp := 1.0                 ## multiplicateur de la houle (force de la mer)
+var _wave_amp_sent := -1.0           ## dernière valeur envoyée au shader de l'eau
+var _cam_sway := Vector3.ZERO        ## balancement de la caméra par mer formée
+var _prev_rudder := 0.0
+var _helm_creak := 0.0               ## 0..1 : vitesse de rotation de la roue (grincement)
 
 
 const SEA_PATH := "res://data/sea.json"
@@ -329,6 +335,8 @@ func _setup_ship(ship_name: String) -> void:
 		_ship_skin = ShipSkin.sanitize(_profile.ship_skin)
 	ShipSkin.apply(_ship, _ship_skin)
 	_sim.configure(_load_stats(ship_name))
+	_sim.max_speed *= GameConfig.PLAYER_SHIP_SPEED_MULT        # lot 3 (3.6) : +10 %
+	_sim.penalty_scale = GameConfig.PLAYER_UPWIND_PENALTY_SCALE   # lot 3 (3.6) : malus de mauvais vent -25 %
 	_sim.yaw = deg_to_rad(float(_args.get("yaw", "0")))
 	if not _args.has("no-port"):
 		_build_port()
@@ -681,12 +689,47 @@ func _load_sea() -> void:
 	_water_mat.set_shader_parameter("waves", _waves)
 
 
-## Hauteur de la houle (m, autour du niveau de la mer) au point (x, z) du monde.
+## Hauteur de la houle (m, autour du niveau de la mer) au point (x, z) du monde. Lot 3 (3.7) : multipliée par la force de la mer.
 func _wave_height(p: Vector2) -> float:
 	var h := 0.0
 	for w: Vector4 in _waves:
 		h += w.x * sin(p.x * w.y + p.y * w.z + _sea_t * w.w)
-	return h
+	return h * _wave_amp
+
+
+## Lot 3 (3.9) : la roue tourne avec la barre (chez tout le monde : la barre est dans l'état du bateau) et grince d'autant plus
+## qu'elle tourne vite.
+func _update_helm_wheel(delta: float) -> void:
+	_ship.set_helm(_sim.rudder)
+	var rate := absf(_sim.rudder - _prev_rudder) / maxf(delta, 0.001)   # (barre par seconde : 1,6 au plus)
+	_prev_rudder = _sim.rudder
+	_helm_creak = lerpf(_helm_creak, clampf(rate / 1.6, 0.0, 1.0), 1.0 - exp(-delta * 10.0))
+	var helm: Array = _ship.meta.get("helm", [0.0, 0.0])
+	var at := _ship_point(Vector2(float(helm[0]), float(helm[1])), 1.0)
+	if _helm_creak > 0.03:
+		_sfx.loop_at("helm", Synth.wheel_creak(), at, _helm_creak * GameConfig.HELM_CREAK_VOL, 0.85 + 0.35 * _helm_creak)
+	else:
+		_sfx.stop_loop("helm")
+
+
+## Lot 3 (3.7) : la force de la mer (SkyCycle.swell, la même pour tous) agit sur la hauteur des vagues (donc le tangage et le
+## roulis), la maniabilité, la caméra et le son de coque.
+func _apply_swell(delta: float) -> void:
+	var swell := _atmo.sky.swell if _atmo != null else 0.0
+	_wave_amp = lerpf(1.0, GameConfig.SWELL_WAVE_MAX, swell)
+	if absf(_wave_amp - _wave_amp_sent) > 0.01:   # l'eau dessinée suit la même houle que la flottaison
+		_wave_amp_sent = _wave_amp
+		var scaled: Array[Vector4] = []
+		for w: Vector4 in _waves:
+			scaled.append(Vector4(w.x * _wave_amp, w.y, w.z, w.w))
+		_water_mat.set_shader_parameter("waves", scaled)
+	_sim.handling = 1.0 - GameConfig.SWELL_STEER_PENALTY * swell
+	# caméra : elle suit un peu le pont qui se soulève, et se balance doucement par mer formée (sans à-coups)
+	var on_board: bool = _loc == Loc.SHIP or _loc == Loc.NEST or (_loc == Loc.CLIMB and _climb.get("kind") == "mast")
+	var want := Vector3.ZERO
+	if on_board:
+		want = Vector3(sin(_sea_t * 0.55) * GameConfig.CAM_SWAY * swell, _ship.position.y * GameConfig.CAM_HEAVE_FOLLOW, cos(_sea_t * 0.41) * GameConfig.CAM_SWAY * 0.5 * swell)
+	_cam_sway = _cam_sway.lerp(want, 1.0 - exp(-delta * 2.5))
 
 
 func _save_frame() -> void:
@@ -2839,9 +2882,11 @@ func _process(delta_raw: float) -> void:
 	if _net.active and not _net.is_host:
 		_correct_from_host(delta)
 	_update_islands(delta)
+	_apply_swell(delta)
 	_float_ship()
 	_ship.set_sail_open(_sim.sail_open)
 	_ship.set_sail_trim(_sim.sail_trim)
+	_update_helm_wheel(delta)
 	_place_pirate()
 	_update_target(delta)
 	_update_aim_line()
@@ -4410,7 +4455,7 @@ func _update_camera(delta: float) -> void:
 	_cam.rotation = Vector3(-deg_to_rad(_elev_deg), _cam_yaw, 0.0)   # (_cam_yaw : cap de la caméra, tourné avec la molette)
 	PirateSprite.view_yaw = _cam_yaw
 	var el := deg_to_rad(_elev_deg)
-	var focus_exact := Vector3(_ship.position.x, 1.2, _ship.position.z) + _cam_offset
+	var focus_exact := Vector3(_ship.position.x, 1.2, _ship.position.z) + _cam_offset + _cam_sway
 	if _args.has("cam-world"):  # diagnostic : regarder un point précis du monde (ex. la ville)
 		var parts := str(_args["cam-world"]).split(",")
 		focus_exact = Vector3(float(parts[0]) - _world_origin.x, 1.2, float(parts[1]) - _world_origin.z)

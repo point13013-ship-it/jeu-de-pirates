@@ -455,6 +455,23 @@ static func rope() -> AudioStreamWAV:
 		return _to_stream(_normalize(out, 0.5), false))
 
 
+## PROVISOIRE (lot 3) — la roue du gouvernail qui tourne : bois et mécanisme qui grincent (boucle ; volume et hauteur réglés
+## par le jeu selon la vitesse de rotation).
+static func wheel_creak() -> AudioStreamWAV:
+	return _cached("wheel_creak", func() -> AudioStreamWAV:
+		var len := int(1.6 * RATE)
+		var nz := _highpass(_lowpass(_noise(len, 661), 2500.0), 400.0)
+		var out := PackedFloat32Array()
+		out.resize(len)
+		var ph := 0.0
+		for i in len:
+			var u := float(i) / len
+			ph += TAU * (170.0 + 40.0 * sin(TAU * 3.0 * u) + 25.0 * sin(TAU * 7.0 * u)) / RATE
+			var tick := exp(-fmod(u * 1.6, 0.11) * 60.0)   # les crans du mécanisme
+			out[i] = (sin(ph) + 0.5 * sin(2.0 * ph + 0.7)) * 0.3 * (0.6 + 0.4 * sin(TAU * 5.0 * u)) + nz[i] * 0.35 + nz[i] * tick * 0.6
+		return _to_stream(_normalize(_loopify(out, int(0.1 * RATE)), 0.5), true))
+
+
 ## Le tonnerre : un grondement qui roule.
 static func thunder() -> AudioStreamWAV:
 	return _cached("thunder", func() -> AudioStreamWAV:

@@ -16,6 +16,7 @@ var _bird_t := 3.0
 var _gull_t := 6.0
 var _creak_t := 9.0
 var _thunder_t := 14.0
+var _hull_splash_t := 2.0
 var _step_acc := 0.0
 var _step_flip := 0
 var _near_t := 0.0
@@ -108,13 +109,22 @@ func update(delta: float, ctx: Dictionary) -> void:
 	_vol("wind", 0.0 if muted else wind)
 	# la coque qui frotte les vagues : de plus en plus fort et aigu avec la vitesse du bateau (étouffée dans la cale, absente à terre et à la nage)
 	var pace := clampf(float(ctx.get("speed", 0.0)) / 8.0, 0.0, 1.0)
-	var hull := pow(pace, 1.3) * 0.75
+	var swell := float(ctx.get("swell", 0.0))
+	# lot 3 (3.8) : quasi muet à l'arrêt, fort à pleine vitesse ; la houle le renforce (la coque cogne les vagues)
+	var hull := pow(pace, 1.3) * 0.75 + swell * GameConfig.HULL_SWELL_VOL * (0.3 + 0.7 * pace)
 	if where == "land" or where == "swim":
 		hull = 0.0
 	elif in_hold:
 		hull *= 0.55
 	_vol("hull", 0.0 if muted else hull)
 	((_loops["hull"] as Dictionary)["player"] as AudioStreamPlayer).pitch_scale = 0.8 + 0.5 * pace
+	# des gerbes au hasard contre l'étrave : plus souvent et plus fort avec la vitesse et la houle (la boucle ne s'entend plus)
+	if not muted and (where == "ship" or where == "hold" or where == "other") and pace > 0.08:
+		_hull_splash_t -= delta * (0.4 + pace + swell)
+		if _hull_splash_t <= 0.0:
+			_hull_splash_t = _rng.randf_range(GameConfig.HULL_SPLASH_MIN, GameConfig.HULL_SPLASH_MAX)
+			var v := (0.12 + 0.4 * pace + 0.2 * swell) * (0.5 if in_hold else 1.0)
+			play(Synth.splash(), v, _rng.randf_range(0.8, 1.25), AudioSettings.BUS_AMBIENT)
 	_vol("insects", 0.0 if muted else insects)
 	_vol("fire", 0.0 if muted else fire)
 	_vol("rain", 0.0 if muted else rain * (0.45 if in_hold else 0.8))

@@ -87,3 +87,40 @@ const BAIL_FILL_SHARE := 0.5          ## part de l'écopage passée à remplir l
 const HAMMER_EVERY := 0.42            ## s entre deux coups de marteau
 const HOIST_REACH := 2.6              ## m : on peut attraper un camarade qui nage à cette distance du bord ou de l'échelle
 const LADDER_STEP_EVERY := 0.28       ## s entre deux pas sur l'échelle
+
+# ------------------------------------------------------------------ Lot 3 : bateau du joueur
+
+## 3.6 Navigation du bateau des joueurs (les ennemis ne changent pas ici : lot 5).
+const PLAYER_SHIP_SPEED_MULT := 1.1          ## +10 % de vitesse
+const PLAYER_UPWIND_PENALTY_SCALE := 0.75    ## malus de mauvais vent (vent debout, voiles mal réglées) réduit de 25 %
+
+## 3.7 Houle (SkyCycle.swell : 0 calme … 1 tempête).
+const SWELL_FROM_RAIN := 0.35         ## la pluie seule donne cette houle ; l'orage, la houle maximale
+const SWELL_FADE := 0.05              ## vitesse de variation de la houle (par seconde)
+const SWELL_WAVE_MAX := 2.2           ## hauteur des vagues à houle maximale (x la mer calme)
+const SWELL_STEER_PENALTY := 0.2      ## maniabilité perdue à houle maximale (20 %)
+const CAM_SWAY := 0.22                ## m : balancement de la caméra à houle maximale
+const CAM_HEAVE_FOLLOW := 0.35        ## part du soulèvement du pont que la caméra suit
+
+## 3.3 Cale : plus grande et plus vivante.
+const HOLD_FLOOR_HALF := 1.8          ## m : demi-largeur du fond plat (avant : 1,2)
+const HOLD_WALL_H := 1.8              ## m : mur du fond (avant : 1,4)
+const HOLD_LENGTH_MULT := 1.3         ## la cale est 30 % plus longue
+const HOLD_END_STORAGE := 1.3         ## m : à chaque bout, une réserve (tonneaux, caisses, sacs) où l'on ne marche pas
+const HOLD_LANTERN_EVERY := 3.2       ## m entre deux lanternes
+const HOLD_FLICKER := 0.18            ## vacillement des flammes (part de l'intensité)
+
+## 3.5 Toile des voiles : nombre de répétitions de la texture par unité du modèle (un lé = un quart de texture).
+const SAIL_CANVAS_SCALE := 0.45
+const SAIL_PANEL_DARK := 0.95         ## teinte des panneaux sombres (x la toile ; le modèle : 0,89)
+const SAIL_PANEL_LIGHT := 1.02        ## teinte des panneaux clairs (le modèle : 1,04)
+
+## 3.9 Roue du gouvernail.
+const HELM_WHEEL_RADIUS := 0.5        ## unités du modèle (la taille de l'ancien disque)
+const HELM_WHEEL_TURNS := 1.5         ## tours de roue d'une butée à l'autre
+const HELM_CREAK_VOL := 0.9           ## volume du grincement à pleine vitesse de rotation
+
+## 3.8 Son de coque : renfort par la houle et gerbes au hasard.
+const HULL_SWELL_VOL := 0.25
+const HULL_SPLASH_MIN := 1.2          ## s (à pleine vitesse, ces écarts sont raccourcis)
+const HULL_SPLASH_MAX := 3.5

@@ -8,13 +8,13 @@ extends RefCounted
 ## regarde vers le haut, donc la caméra (qui regarde d'en haut, du sud) voit l'intérieur des DEUX flancs ;
 ## les voies d'eau s'ouvrent sur ces pentes. Au-dessus de la pente, au fond, un mur droit porte l'étagère.
 
-const FLOOR_HALF := 1.2     ## demi-largeur du fond plat
+const FLOOR_HALF := GameConfig.HOLD_FLOOR_HALF   ## demi-largeur du fond plat (lot 3 : 1,2 -> 1,8)
 const RUN := 1.5            ## largeur horizontale d'une pente
 const RISE := 0.8           ## hauteur d'une pente
-const WALL_H := 1.4         ## mur du fond, au-dessus de la pente
+const WALL_H := GameConfig.HOLD_WALL_H           ## mur du fond, au-dessus de la pente (lot 3 : 1,4 -> 1,8)
 const HOLE_T := 0.55        ## position du trou sur la pente (0 = pied, 1 = haut)
 const WALK_T := 0.88        ## jusqu'où l'on monte sur la pente
-const MARGIN := 0.5         ## distance mini aux extrémités
+const MARGIN := GameConfig.HOLD_END_STORAGE      ## distance mini aux extrémités (lot 3 : on y range tonneaux et caisses)
 
 var half_len := 5.0
 var hatch_x := 0.0
@@ -30,15 +30,18 @@ func setup(ship_length: float, hatch_model_x: float, p_hull: HullDamage) -> void
 	var scale := ShipModel.SCALE
 	var span := (hull.span_end - hull.span_start) * ship_length
 	var mid := (hull.span_start + hull.span_end) * 0.5 * ship_length
-	half_len = span * scale * 0.5
-	hatch_x = (hatch_model_x - mid) * scale
+	# lot 3 (3.3) : la cale est plus longue (et plus large : FLOOR_HALF) ; les voies d'eau et l'échelle s'écartent d'autant
+	var k := GameConfig.HOLD_LENGTH_MULT
+	half_len = span * scale * 0.5 * k + (MARGIN - 0.5)
+	hatch_x = (hatch_model_x - mid) * scale * k
 	slot_xs.clear()
 	for s in hull.slots_per_side:
-		slot_xs.append((hull.slot_bx(s) - mid) * scale)
+		slot_xs.append((hull.slot_bx(s) - mid) * scale * k)
+	var e := half_len - MARGIN   # bout du passage
 	circles = [
-		[half_len - 0.9, 0.9, 0.42],
-		[half_len - 0.9, 1.65, 0.42],
-		[-half_len + 0.9, 0.95, 0.4],
+		[e - 0.4, 0.9, 0.42],
+		[e - 0.4, 1.65, 0.42],
+		[-e + 0.4, 0.95, 0.4],
 	]
 
 
@@ -87,7 +90,7 @@ func ladder_pos() -> Vector2:
 
 ## Étagère à planches, contre le mur du fond, vers l'arrière.
 func rack_pos() -> Vector2:
-	return Vector2(-half_len + 1.5, -(FLOOR_HALF + RUN * 0.8))
+	return Vector2(-half_len + MARGIN + 1.0, -(FLOOR_HALF + RUN * 0.8))
 
 
 ## Le seau pour écoper, sur le fond.

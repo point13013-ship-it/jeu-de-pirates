@@ -18,6 +18,7 @@ var _water: MeshInstance3D
 var _water_level := 0.0
 var _t := 0.0
 var _slots: Array = []        ## par voie d'eau : {open, patch, jet}
+var _lamps: Array = []        ## les lumières des lanternes (elles vacillent)
 
 
 func build(p_layout: HoldLayout) -> void:
@@ -55,9 +56,14 @@ func build(p_layout: HoldLayout) -> void:
 	bm.albedo_color = Color(1.0, 0.95, 0.75, 0.28)
 	beam.material_override = bm
 	beam.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	# lanternes
-	for lx in [-layout.half_len * 0.55, layout.half_len * 0.1, layout.half_len * 0.75]:
-		_lantern(lx)
+	# lanternes (lot 3 : une tous les ~3 m, flammes qui vacillent) ; réserves aux deux bouts, cloisons, poutres
+	var n_lamps := maxi(3, int(hold_len / GameConfig.HOLD_LANTERN_EVERY))
+	for i in n_lamps:
+		_lantern(lerpf(-layout.half_len + 1.2, layout.half_len - 1.2, (float(i) + 0.5) / float(n_lamps)))
+	_bulkheads()
+	_storage(-1)
+	_storage(1)
+	_beams()
 	# voies d'eau
 	for s in layout.hull.slot_count():
 		_slots.append(_make_hole(s))
@@ -79,6 +85,11 @@ func build(p_layout: HoldLayout) -> void:
 func _process(delta: float) -> void:
 	_t += delta
 	_refresh_water()
+	# les flammes vacillent (deux sinusoïdes désaccordées par lanterne : jamais en même temps)
+	for i in _lamps.size():
+		var l := _lamps[i] as OmniLight3D
+		var f := 1.0 + GameConfig.HOLD_FLICKER * (0.6 * sin(_t * 9.0 + i * 1.7) + 0.4 * sin(_t * 23.0 + i * 0.9))
+		l.light_energy = 1.7 * f
 
 
 ## Point de la scène pour la position (x, z) de la cale, à la hauteur h au-dessus du sol.
@@ -230,6 +241,66 @@ func _lantern(x: float) -> void:
 	light.shadow_enabled = false
 	light.position = Vector3(x, 2.3, -0.6)
 	add_child(light)
+	_lamps.append(light)
+	# la lanterne elle-même : cage de fer, chapeau, crochet au mur
+	_box(Vector3(0.2, 0.26, 0.2), Vector3(x, 2.4, -1.0), _flat(IRON.lightened(0.1)))
+	_box(Vector3(0.26, 0.05, 0.26), Vector3(x, 2.56, -1.0), _flat(IRON))
+	_box(Vector3(0.04, 0.04, 0.6), Vector3(x, 2.6, -1.3), _flat(IRON))
+
+
+## Lot 3 (3.3) : les cloisons de bois aux deux bouts de la cale.
+func _bulkheads() -> void:
+	var h := HoldLayout.RISE + HoldLayout.WALL_H
+	var depth := (HoldLayout.FLOOR_HALF + HoldLayout.RUN) * 2.0
+	for side in [-1, 1]:
+		_box(Vector3(0.14, h, depth), Vector3(side * (layout.half_len + 0.07), h * 0.5, 0.0), _wood(WOOD_WALL, Vector2(1.0, 0.8)))
+		_box(Vector3(0.2, h, 0.2), Vector3(side * (layout.half_len - 0.05), h * 0.5, -(HoldLayout.FLOOR_HALF + HoldLayout.RUN) + 0.1), _flat(WOOD_RIB))
+
+
+## Lot 3 (3.3) : la réserve d'un bout de la cale (côté `side` : -1 arrière, 1 avant), là où l'on ne marche pas : tonneaux couchés
+## et debout, caisses empilées, sacs. Un peu de hasard fixe (même cale pour tous les joueurs).
+func _storage(side: int) -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 4040 + side
+	var x0 := side * (layout.half_len - HoldLayout.MARGIN * 0.5)
+	# rangée de tonneaux debout le long de la cloison
+	var z := -HoldLayout.FLOOR_HALF + 0.45
+	while z < HoldLayout.FLOOR_HALF - 0.3:
+		var bx := x0 + side * rng.randf_range(0.0, 0.25)
+		_barrel(Vector3(bx, 0.42, z), rng.randf_range(0.34, 0.4))
+		if rng.randf() < 0.45:   # un deuxième par-dessus, parfois
+			_barrel(Vector3(bx, 1.27, z), 0.33)
+		z += rng.randf_range(0.82, 0.95)
+	# caisses empilées sur la pente du fond et sur celle de devant
+	for zs in [-(HoldLayout.FLOOR_HALF + 0.55), HoldLayout.FLOOR_HALF + 0.5]:
+		var base_y := HoldLayout.height_at(zs)
+		for k in 3:
+			var s := rng.randf_range(0.5, 0.7)
+			var y := base_y + s * 0.5 + (s * float(k) if k < 2 else 0.0)
+			var cx := x0 - side * (0.1 if k < 2 else 0.75)
+			_box(Vector3(s, s, s), Vector3(cx, y, zs), _flat(WOOD_LIGHT.darkened(rng.randf_range(0.1, 0.3))), Vector3(0, rng.randf_range(-0.3, 0.3), 0))
+			_box(Vector3(s + 0.03, 0.05, s + 0.03), Vector3(cx, y + s * 0.5, zs), _flat(WOOD_RIB))
+	# sacs de grain près des tonneaux
+	for k in 3:
+		var sack := _sphere(0.26, Vector3(x0 - side * 0.55, 0.2, -0.6 + k * 0.45), _flat(Color(0.66, 0.56, 0.4).darkened(0.08 * k)))
+		sack.scale = Vector3(1.0, 0.75, 0.85)
+
+
+func _barrel(pos: Vector3, r: float) -> void:
+	_cylinder(r, 0.85, pos, _flat(Color(0.5, 0.33, 0.18)))
+	_cylinder(r + 0.02, 0.06, pos + Vector3(0, -0.22, 0), _flat(IRON))
+	_cylinder(r + 0.02, 0.06, pos + Vector3(0, 0.22, 0), _flat(IRON))
+
+
+## Lot 3 (3.3) : les barrots du pont, au-dessus du mur du fond (on ne les met pas au-dessus du passage : ils cacheraient le pirate).
+func _beams() -> void:
+	var wall_z := -(HoldLayout.FLOOR_HALF + HoldLayout.RUN)
+	var y := HoldLayout.RISE + HoldLayout.WALL_H + 0.12
+	_box(Vector3(layout.half_len * 2.0, 0.18, 0.3), Vector3(0, y, wall_z + 0.2), _flat(WOOD_RIB))
+	var n := maxi(3, int(layout.half_len * 2.0 / 2.2))
+	for i in n + 1:
+		var x := -layout.half_len + 0.1 + (layout.half_len * 2.0 - 0.2) * float(i) / float(n)
+		_box(Vector3(0.18, 0.18, 0.9), Vector3(x, y + 0.02, wall_z + 0.5), _flat(WOOD_RIB))
 
 
 ## Un trou de coque sur la pente, avec tout ce qu'il faut pour le montrer ouvert, avec son jet, ou bouché.

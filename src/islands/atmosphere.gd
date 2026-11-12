@@ -55,6 +55,7 @@ func update(delta: float, ctx: Dictionary) -> void:
 	actx["night"] = sky.night
 	actx["rain"] = sky.rain
 	actx["storm"] = sky.storm
+	actx["swell"] = sky.swell
 	actx["muted"] = paused
 	audio.update(delta, actx)
 	# la musique : l'air suit la situation, et se fait plus discrète sous l'orage, dans la cale ou quand un menu est ouvert

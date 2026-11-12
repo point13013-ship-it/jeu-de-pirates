@@ -58,6 +58,7 @@ func load_ship(p_name: String) -> bool:
 	circles = meta.get("circles", [])
 	cabin = meta.get("cabin", {})
 	cannons = meta.get("cannons", [])
+	_apply_layout_overrides(p_name)
 	ladders = meta.get("ladders", [])
 	nests = meta.get("nests", [])
 	mast_ladder = meta.get("mast_ladder", [])
@@ -67,9 +68,225 @@ func load_ship(p_name: String) -> bool:
 	_model.scale = Vector3.ONE * SCALE
 	add_child(_model)
 	_index_nodes(_model)
+	_build_helm_wheel()
+	_dress_sails(_model)
 	_compute_low_obstacles()   # (après _index_nodes : il faut savoir où est la pile de caisses)
 	_compute_sail_pivots()
 	return true
+
+
+var _helm_disc: Node3D
+var _helm_wheel: Node3D
+var _helm_base := Transform3D.IDENTITY
+
+
+## Lot 3 (3.9) : la roue du gouvernail. Le modèle n'avait qu'un disque plat ; on le remplace (même place, même axe) par une
+## roue de bois sculptée : jante, huit rayons qui dépassent en poignées tournées, moyeu et ferrures de laiton, bois un peu usé
+## (rayons de teintes légèrement différentes). Unités du modèle (le modèle est agrandi par SCALE). Elle tourne avec la barre
+## (set_helm), chez tous les joueurs : l'angle de la barre fait partie de l'état du bateau envoyé par l'hôte.
+func _build_helm_wheel() -> void:
+	if _helm_disc == null:
+		return
+	_helm_disc.visible = false
+	_helm_base = _helm_disc.transform
+	var r := GameConfig.HELM_WHEEL_RADIUS
+	var wheel := Node3D.new()
+	wheel.name = "helm_wheel"
+	_helm_disc.get_parent().add_child(wheel)
+	wheel.transform = _helm_base
+	var wood := _mat(Color(0.42, 0.25, 0.13), 0.85)
+	var wood_dark := _mat(Color(0.33, 0.19, 0.1), 0.9)
+	var brass := _mat(Color(0.78, 0.6, 0.25), 0.35, 0.8)
+	# la jante (deux anneaux de bois, une bande de laiton entre eux)
+	for k in 2:
+		var rim := MeshInstance3D.new()
+		var tm := TorusMesh.new()
+		tm.inner_radius = r - 0.07
+		tm.outer_radius = r
+		tm.rings = 28
+		tm.ring_segments = 8
+		rim.mesh = tm
+		rim.material_override = wood if k == 0 else wood_dark
+		rim.position = Vector3(0.0, -0.022 + 0.044 * k, 0.0)
+		rim.scale = Vector3(1.0, 0.7, 1.0)
+		wheel.add_child(rim)
+	var band := MeshInstance3D.new()
+	var bt := TorusMesh.new()
+	bt.inner_radius = r - 0.045
+	bt.outer_radius = r - 0.025
+	bt.rings = 28
+	bt.ring_segments = 6
+	band.mesh = bt
+	band.material_override = brass
+	wheel.add_child(band)
+	# huit rayons, et leur poignée tournée au-delà de la jante
+	for k in 8:
+		var a := TAU * float(k) / 8.0
+		var dir := Vector3(cos(a), 0.0, sin(a))
+		var spoke := MeshInstance3D.new()
+		var cm := CylinderMesh.new()
+		cm.top_radius = 0.022
+		cm.bottom_radius = 0.032
+		cm.height = r
+		cm.radial_segments = 8
+		spoke.mesh = cm
+		spoke.material_override = wood if k % 2 == 0 else wood_dark
+		spoke.basis = _basis_along(dir)
+		spoke.position = dir * (r * 0.5)
+		wheel.add_child(spoke)
+		var handle := MeshInstance3D.new()
+		var hm := CapsuleMesh.new()
+		hm.radius = 0.034
+		hm.height = 0.2
+		hm.radial_segments = 8
+		hm.rings = 2
+		handle.mesh = hm
+		handle.material_override = wood_dark
+		handle.basis = _basis_along(dir)
+		handle.position = dir * (r + 0.1)
+		wheel.add_child(handle)
+	# moyeu de laiton et cabochon
+	var hub := MeshInstance3D.new()
+	var hc := CylinderMesh.new()
+	hc.top_radius = 0.1
+	hc.bottom_radius = 0.1
+	hc.height = 0.12
+	hc.radial_segments = 14
+	hub.mesh = hc
+	hub.material_override = brass
+	wheel.add_child(hub)
+	var cap := MeshInstance3D.new()
+	var sc := SphereMesh.new()
+	sc.radius = 0.055
+	sc.height = 0.11
+	sc.radial_segments = 10
+	sc.rings = 5
+	cap.mesh = sc
+	cap.material_override = brass
+	cap.position = Vector3(0.0, 0.07, 0.0)
+	wheel.add_child(cap)
+	_helm_wheel = wheel
+
+
+static var _canvas_tex: ImageTexture
+const SAIL_MATS := ["sail", "sail_d", "sail_p"]
+
+
+## Lot 3 (3.5) : une toile crédible sur les voiles (elles étaient unies, en panneaux de deux teintes). Les voiles du modèle n'ont
+## pas de coordonnées de texture : la toile est projetée (« triplanaire ») dans le repère du modèle. La texture est presque
+## blanche : la couleur de la matière (et celle d'un skin de voilerie) la teinte. Posée une fois sur les matières partagées.
+func _dress_sails(node: Node) -> void:
+	var mats := {}
+	_collect_sail_mats(node, mats)
+	var base: StandardMaterial3D = mats.get("sail")
+	for key: String in mats:
+		var m: StandardMaterial3D = mats[key]
+		if m.albedo_texture != null:
+			continue   # (matière partagée : déjà habillée par un autre bateau)
+		m.albedo_texture = canvas_texture()
+		m.uv1_triplanar = true
+		m.uv1_scale = Vector3.ONE * GameConfig.SAIL_CANVAS_SCALE
+		m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+		# le modèle découpe la voile en losanges de deux teintes très différentes (un damier) : on les rapproche, il reste des
+		# panneaux discrets (data/ship_skins.json fait de même pour les skins de voilerie)
+		if base != null and key != "sail":
+			m.albedo_color = base.albedo_color * (GameConfig.SAIL_PANEL_DARK if key == "sail_d" else GameConfig.SAIL_PANEL_LIGHT)
+
+
+func _collect_sail_mats(node: Node, out: Dictionary) -> void:
+	if node is MeshInstance3D and (node as MeshInstance3D).mesh != null:
+		var mi := node as MeshInstance3D
+		for s in mi.mesh.get_surface_count():
+			var m := mi.mesh.surface_get_material(s) as StandardMaterial3D
+			if m != null and m.resource_name in SAIL_MATS:
+				out[m.resource_name] = m
+	for c in node.get_children():
+		_collect_sail_mats(c, out)
+
+
+## La toile (fabriquée une fois) : tissage fin, lés cousus (deux lignes de couture et leurs points), quelques taches et zones
+## usées, un ourlet en bas. Valeurs proches du blanc (multipliées par la couleur de la voile).
+static func canvas_texture() -> ImageTexture:
+	if _canvas_tex != null:
+		return _canvas_tex
+	var n := 256
+	var img := Image.create(n, n, true, Image.FORMAT_RGB8)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 13013
+	var noise := FastNoiseLite.new()
+	noise.seed = 7
+	noise.frequency = 0.012
+	noise.fractal_octaves = 3
+	var seam := 64   # largeur d'un lé (px)
+	for y in n:
+		for x in n:
+			var v := 0.96
+			v += 0.025 * (1.0 if (x + y) % 2 == 0 else -1.0)            # tissage
+			v += 0.015 * (1.0 if (y / 2) % 2 == 0 else 0.0)
+			var stain := noise.get_noise_2d(float(x), float(y))        # usure et taches, à grande échelle
+			v -= maxf(stain, 0.0) * 0.12
+			var sx := x % seam
+			if sx == 1 or sx == 5:
+				v -= 0.13                                               # les deux lignes de couture
+			if (sx == 3) and (y % 6 < 3):
+				v -= 0.18                                               # les points
+			if sx == 2 or sx == 4:
+				v -= 0.04
+			v += rng.randf_range(-0.012, 0.012)
+			var c := Color(v, v * 0.985, v * 0.955)                     # un brin écru
+			img.set_pixel(x, y, c)
+	img.generate_mipmaps()
+	_canvas_tex = ImageTexture.create_from_image(img)
+	return _canvas_tex
+
+
+## Une base dont l'axe Y pointe vers `dir` (pour coucher un cylindre ou une capsule le long d'un rayon).
+static func _basis_along(dir: Vector3) -> Basis:
+	var y := dir.normalized()
+	var x := Vector3.UP.cross(y)
+	if x.length() < 0.01:
+		x = Vector3.RIGHT
+	x = x.normalized()
+	var z := x.cross(y).normalized()
+	return Basis(x, y, z)
+
+
+static func _mat(c: Color, rough: float, metal: float = 0.0) -> StandardMaterial3D:
+	var m := StandardMaterial3D.new()
+	m.albedo_color = c
+	m.roughness = rough
+	m.metallic = metal
+	return m
+
+
+## Tourne la roue selon la barre (-1 bâbord … 1 tribord) : GameConfig.HELM_WHEEL_TURNS tours d'une butée à l'autre.
+func set_helm(rudder_pos: float) -> void:
+	if _helm_wheel != null:
+		_helm_wheel.transform = _helm_base * Transform3D(Basis(Vector3.UP, rudder_pos * GameConfig.HELM_WHEEL_TURNS * PI), Vector3.ZERO)
+
+
+## Lot 3 (3.4) : retouches de disposition par bateau (data/ship_layout.json), appliquées par-dessus le fichier du modèle
+## (assets/models/ship/*_meta.json, que tools/art/blender/make_ship.py régénère). `cannon_x` : nouvelle abscisse de chaque canon
+## (même ordre que dans le fichier du modèle ; null : inchangé). La demi-largeur de la coque n'est pas la même partout : le canon
+## garde sa distance au plat-bord.
+func _apply_layout_overrides(p_name: String) -> void:
+	var f := FileAccess.open("res://data/ship_layout.json", FileAccess.READ)
+	if f == null:
+		return
+	var all: Variant = JSON.parse_string(f.get_as_text())
+	if not (all is Dictionary) or not (all as Dictionary).has(p_name):
+		return
+	var o: Dictionary = all[p_name]
+	var xs: Array = o.get("cannon_x", [])
+	var out: Array = []
+	for i in cannons.size():
+		var c: Array = (cannons[i] as Array).duplicate()
+		if i < xs.size() and xs[i] != null:
+			var inset := half_width(float(c[0])) - absf(float(c[1]))
+			c[0] = float(xs[i])
+			c[1] = signf(float(c[1])) * (half_width(float(c[0])) - inset)
+		out.append(c)
+	cannons = out
 
 
 ## Quels obstacles du pont un saut peut enjamber : tout ce qui n'est pas un mur de cabine ni un mât.
@@ -105,6 +322,8 @@ func _index_nodes(node: Node) -> void:
 		if s == "cannon" or s.begins_with("cannon_"):
 			cannon_stubs.append(n3)
 			n3.visible = false
+		if s == "helm" and node is MeshInstance3D:
+			_helm_disc = n3   # le disque plat du modèle : remplacé par une vraie roue (voir _build_helm_wheel)
 		if s == "crate":
 			# la pile de caisses du pont : c'est elle qui devient la caisse de provisions (voir crate_pos)
 			crate_pos = Vector2(n3.position.x - shift, -n3.position.z)

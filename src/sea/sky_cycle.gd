@@ -21,6 +21,7 @@ var daylight := 1.0
 var rain := 0.0
 var storm := 0.0
 var mist := 0.0
+var swell := 0.0                 ## force de la houle (0 : mer calme … 1 : tempête) : vagues, tangage, caméra, son de coque, maniabilité
 var flash := 0.0                 ## éclair en cours (0…1)
 var lightning := false           ## vrai à l'image où un éclair part (le jeu lance alors le tonnerre)
 var enabled := true
@@ -47,6 +48,8 @@ func setup(env: Environment, sun: DirectionalLight3D, world: Node3D, args: Dicti
 		_fixed_phase = 0.42 if str(args["light"]) == "jour" else 0.02
 	if args.has("weather"):
 		_fixed_weather = str(args["weather"])
+	if args.has("swell"):
+		args_swell = clampf(float(str(args["swell"])), 0.0, 1.0)
 	enabled = not args.has("no-cycle")
 	_build_rain(world)
 	_apply(0.0)
@@ -55,6 +58,7 @@ func setup(env: Environment, sun: DirectionalLight3D, world: Node3D, args: Dicti
 	mist = t.x
 	rain = t.y
 	storm = t.z
+	swell = swell_target()
 
 
 func _time_now() -> float:
@@ -83,6 +87,18 @@ func _weather_target() -> Vector3:
 	return Vector3(0.45, 1.0, 1.0)
 
 
+## La houle visée (lot 3, 3.7) : elle suit le gros temps (pluie, orage). Comme le reste du temps, elle se déduit de l'horloge :
+## tous les joueurs ont la même mer. (Le lot 6 y ajoute des périodes de houle plus forte hors tempête.)
+func swell_target() -> float:
+	if args_swell >= 0.0:
+		return args_swell
+	var t := _weather_target()
+	return clampf(maxf(t.z, t.y * GameConfig.SWELL_FROM_RAIN), 0.0, 1.0)
+
+
+var args_swell := -1.0           ## essai : --swell=0.8 fixe la houle
+
+
 ## Chaque image. `focus` : le point de la scène que la caméra regarde (la pluie le suit).
 func update(delta: float, focus: Vector3, paused: bool = false) -> void:
 	lightning = false
@@ -90,6 +106,7 @@ func update(delta: float, focus: Vector3, paused: bool = false) -> void:
 	mist = move_toward(mist, t.x, FADE * delta * 2.0)
 	rain = move_toward(rain, t.y, FADE * delta * 2.0)
 	storm = move_toward(storm, t.z, FADE * delta * 2.0)
+	swell = move_toward(swell, swell_target(), GameConfig.SWELL_FADE * delta)
 	phase = _fixed_phase if _fixed_phase >= 0.0 else fmod(_time_now(), DAY_SECS) / DAY_SECS
 	if storm > 0.5:
 		_flash_t -= delta
