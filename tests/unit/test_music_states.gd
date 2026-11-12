@@ -23,6 +23,13 @@ func _initialize() -> void:
 	_check(m.current() == "mer", "au large : thème de mer")
 	m.update(0.1, "combat")
 	_check(m.current() == "combat", "l'ennemi arrive : combat tout de suite")
+	# combat en couches : au calme, l'accompagnement seul ; quand ça chauffe, la mélodie entre
+	for i in 30:
+		m.update(0.1, "combat", 1.0, 0.1)
+	_check(m._top_gain < 0.05, "combat léger : mélodie absente (%.2f)" % m._top_gain)
+	for i in 30:
+		m.update(0.1, "combat", 1.0, 0.9)
+	_check(m._top_gain > 0.95, "combat corsé : mélodie pleine (%.2f)" % m._top_gain)
 	for i in 50:   # 5 s de calme
 		m.update(0.1, "mer")
 	_check(m.current() == "combat", "5 s après : toujours le combat (pas de va-et-vient)")

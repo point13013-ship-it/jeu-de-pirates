@@ -72,7 +72,7 @@ func update(delta: float, ctx: Dictionary) -> void:
 	if paused:
 		duck *= 0.6
 	duck *= 1.0 - 0.35 * sky.storm
-	music.update(delta, mood, duck)
+	music.update(delta, mood, duck, float(ctx.get("intensity", 0.0)))
 
 
 ## Le joueur frappe de son sabre vers `dir` depuis `origin` : les palmiers et buissons devant lui frémissent.

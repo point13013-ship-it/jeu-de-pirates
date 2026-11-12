@@ -94,7 +94,17 @@ const MUSIC_FADE := 3.0                ## s : fondu enchaîné ordinaire (on acc
 const MUSIC_FADE_COMBAT_IN := 1.5      ## s : le combat entre vite
 const MUSIC_FADE_COMBAT_OUT := 5.0     ## s : et s'éteint lentement
 const MUSIC_COMBAT_EXIT := 10.0        ## s sans combat avant de quitter la musique de combat
-const MUSIC_STORM_AT := 0.5            ## force de la tempête (0…1) à partir de laquelle on passe au thème de tempête
+const MUSIC_DUCK_DB := -4.0            ## « ducking » : la musique baisse d'autant sur un coup de canon proche…
+const MUSIC_DUCK_RELEASE := 0.6        ## … et remonte en ce temps (s)
+## Combat en couches : la mélodie entre à partir de cette intensité (0…1) et est pleine à MUSIC_LAYER_FULL ; elle monte en
+## MUSIC_LAYER_IN s et redescend en MUSIC_LAYER_OUT s. Intensité : ennemis engagés pondérés par leur rang, + coups reçus.
+const MUSIC_LAYER_FROM := 0.25
+const MUSIC_LAYER_FULL := 0.6
+const MUSIC_LAYER_IN := 2.0
+const MUSIC_LAYER_OUT := 6.0
+const MUSIC_HIT_HEAT := 0.35           ## un coup reçu ajoute ça à l'intensité, qui retombe en MUSIC_HEAT_DECAY s
+const MUSIC_HEAT_DECAY := 12.0
+const MUSIC_STORM_AT := 0.5          ## force de la tempête (0…1) à partir de laquelle on passe au thème de tempête
 
 ## Actions longues (règle commune) : durées en secondes.
 const ACTION_TIMES := {

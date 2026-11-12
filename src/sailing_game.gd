@@ -84,7 +84,8 @@ var _interactables: Array = []
 var _cannon_loaded: Array = []
 var _cannon_icons: Array = []
 var _cannon_nodes: Array = []       ## les canons 3D (ShipCannons) : {root, barrel}
-var _cannon_in := -1                ## le canon dans lequel je suis glissé (je serai tiré dedans), ou -1
+var _music_heat := 0.0                ## 0…1 : coups reçus récemment (fait monter la musique de combat), retombe tout seul
+var _cannon_in := -1               ## le canon dans lequel je suis glissé (je serai tiré dedans), ou -1
 var _cannon_aim := 0.0              ## rad : orientation du tir autour de la sortie du canon
 var _pface := Vector2(1, 0)         ## direction où je regarde sur le pont (repère du bateau)
 var _target: Dictionary = {}        ## l'objet du pont que E actionnerait (devant moi, à portée), ou {}
@@ -1993,6 +1994,7 @@ func hit_visual(kind: int, bx: float, side: int, opened: int) -> void:
 	var at := _ship.to_global(Vector3((bx + _ship.shift) * ShipModel.SCALE, _ship.deck_height(bx) - 0.6,
 			-float(side) * _ship.half_width(bx) * ShipModel.SCALE))
 	_ball_sound("hull_hit", at)   # boulet ou récif : le bois qui éclate (chez tous)
+	_music_heat = minf(_music_heat + GameConfig.MUSIC_HIT_HEAT, 1.0)   # on prend des coups : la musique de combat se corse
 	for k in 12:
 		var chip := _make_ball(0.07, Color(0.82, 0.64, 0.40))
 		(chip.material_override as StandardMaterial3D).shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
@@ -2489,6 +2491,8 @@ func apply_action(peer: int, kind: String, arg: String, pos: Vector2, dir: Vecto
 	if _args.has("log"):
 		print("[action] joueur %d : %s %s vers %s" % [peer, kind, arg, dir])
 	match kind:
+		"ball_hit":   # l'hôte a vu un boulet toucher un ennemi (bateau ou mob) : le choc s'entend chez tous
+			_ball_sound("hull_hit", _world_fixed.to_global(Vector3(pos.x, SEA_Y + 0.6, pos.y)))
 		"act", "act_end":   # lot 2 : une action longue commence ou finit
 			_remote_act(peer, kind, arg)
 		"down", "up", "dead", "water":   # lot 4 : son état (à terre, relevé, mort, temps dans l'eau)
@@ -3044,6 +3048,8 @@ func _update_player(delta: float) -> void:
 	if _loc == Loc.SHIP and _mode == Mode.CANNON:
 		_cannon_aim = clampf(_cannon_aim + move.x * 0.9 * delta, -0.7, 0.7)
 		return
+	if _gun_i >= 0:
+		return   # au canon : on reste à son poste derrière la culasse (R pour lâcher) ; avant, on partait se promener en visant
 	# marche à pied : les flèches suivent l'écran (même caméra tournée) et la vitesse est la même à l'écran vers le haut, le bas et les côtés
 	var sm := _screen_move(move)
 	var walk_mul := sm.length() if sm != Vector2.ZERO else 1.0
@@ -3581,6 +3587,15 @@ var _gun_line: MeshInstance3D
 func _gun_enter(i: int) -> void:
 	_gun_i = i
 	_cannon_aim = 0.0
+	# on se met à son poste : juste derrière la culasse, face à la mer, et on n'en bouge plus tant qu'on vise
+	var c: Array = _ship.cannons[i]
+	var side := float(c[2])
+	var spot := Vector2(float(c[0]), float(c[1]))
+	while not _ship.is_walkable(spot) and absf(spot.y - float(c[1])) < 2.0:
+		spot.y -= side * 0.02
+	_ppos = spot
+	_walkto = Vector2.INF
+	_pface = Vector2(0.0, side)
 
 
 ## On lâche le canon : le tube reprend sa place.
@@ -4427,15 +4442,20 @@ func _update_atmosphere(delta: float) -> void:
 	_atmo_prev_kind = kind
 	# l'ennemi est là : un bateau ennemi en chasse à moins de 120 m, ou un ennemi d'île éveillé tout près
 	var battle := false
+	var heat := 0.0   # l'ardeur du combat, pour la musique en couches : un navire compte selon son rang, un mob 0,15
 	for es: Dictionary in _fleet.ships:
 		if es["state"] == "chase" and (es["sim"] as ShipSim).position.distance_to(_sim.position) < 120.0:
 			battle = true
+			heat += 0.12 * float(es.get("rank", 1)) + 0.1
 	if _loc == Loc.LAND:
 		for en: IslandEnemy in _islands.enemies:
 			if en.state != IslandEnemy.State.IDLE and en.state != IslandEnemy.State.DEAD and en.pos.distance_to(_lpos) < 12.0:
 				battle = true
+				heat += 0.15
+	_music_heat = maxf(_music_heat - delta / GameConfig.MUSIC_HEAT_DECAY, 0.0)   # les coups reçus réchauffent, puis ça retombe
 	_atmo.update(delta, {"pos": pos, "where": where, "speed": _sim.speed / maxf(_sim.max_speed, 0.1) * 8.0, "moved": moved,
-			"face": _face, "focus": _cam_focus, "paused": _pause.is_open(), "battle": battle})
+			"face": _face, "focus": _cam_focus, "paused": _pause.is_open(), "battle": battle,
+			"intensity": clampf(heat + _music_heat, 0.0, 1.0)})
 	_apply_grade()
 	_spawn_castaways()
 
@@ -5950,6 +5970,8 @@ func _leave_helm() -> void:
 func _cannon_boom(at: Vector3) -> void:
 	_sfx.play_at(Synth.recorded("cannon_fire"), at, GameConfig.CANNON_BLAST_VOL, 1.0, true)
 	_sfx.play_at(Synth.recorded("cannon_tail"), at, GameConfig.CANNON_TAIL_VOL, 1.0, true)
+	if _atmo != null and _sfx.get_parent() != null and at.distance_to(_my_scene_pos()) < GameConfig.SFX_FAR_RANGE * 0.5:
+		_atmo.music.punch()   # proche : la musique se creuse un instant pour laisser éclater le coup
 
 
 ## Un boulet qui arrive : `what` = "hull_hit" (dans une coque, un mob, un récif) ou "ball_splash" (à l'eau).
@@ -6031,6 +6053,7 @@ func _update_projectiles(delta: float) -> void:
 					if int(hit["gold"]) > 0:
 						_give_loot(_my_id(), int(hit["gold"]), hit["at"])
 				_ball_sound("hull_hit", node.global_position)
+				_send_action("ball_hit", "", Vector2(node.position.x, node.position.z), Vector2.ZERO)
 				_splash(Vector3(node.position.x, node.position.y, node.position.z))
 				node.queue_free()
 				_projectiles.remove_at(i)
@@ -6046,6 +6069,7 @@ func _update_projectiles(delta: float) -> void:
 			if eid >= 0:
 				_fleet.hurt(eid, 18.0)   # un boulet de joueur touche un bateau ennemi
 				_ball_sound("hull_hit", node.global_position)
+				_send_action("ball_hit", "", Vector2(node.position.x, node.position.z), Vector2.ZERO)
 				_splash(Vector3(node.position.x, SEA_Y + 0.05, node.position.z))
 				node.queue_free()
 				_projectiles.remove_at(i)
