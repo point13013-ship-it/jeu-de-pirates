@@ -784,7 +784,7 @@ def square_sail(x, z0, z1, width, bulge, emblem, patch=None):
     verts, faces, uvs = [], [], []
     # v2 (passe 2) : voiles plus gonflées (creux x1,3, ventre placé un peu bas), et la bordure (le bas) remonte en arc au milieu,
     # comme une vraie voile carrée tenue aux deux coins : la silhouette n'est plus un trapèze
-    bulge_k = 1.3 if V2 else 1.0
+    bulge_k = 1.15 if V2 else 1.0   # (13/11 : 1,3 ; le creux de la misaine traversait les focs)
     roach = 0.32 * (z1 - z0) / 3.0 if V2 else 0.0
 
     def surf(u, v, off=0.0):
@@ -897,20 +897,45 @@ for _dz in (0.9, 1.7):   # accroches du mât, pour que l'échelle ne flotte pas
     pass
 
 if CFG["jib"]:
+    # 13/11 : les focs ne partent plus du mât (leur bord arrière longeait le mât : la misaine gonflée les traversait). Chaque foc
+    # est envergué sur son étai, entre le mât et le beaupré, et son point d'écoute reste devant le creux de la misaine.
     fx, fh = CFG["masts"][0][0], CFG["masts"][0][1]
-    add_mesh("sail_z%d_jib" % round((fh - 0.9) * 100), [(fx + 0.3, 0, fh - 0.9), (x_b + 3.0, 0, dz_b + 1.5), (fx + 0.5, 0, 1.7)], [(0, 1, 2)], "sail",
-             uvs=[(0.05, 1.0), (0.95, 0.35), (0.05, 0.0)])
-    rope((fx, 0, fh - 0.2), (x_b + 3.0, 0, dz_b + 1.5))
-    if V2:   # un second foc, plus petit, devant le premier
-        add_mesh("sail_z%d_jibavant" % round((fh - 2.2) * 100), [(fx + 1.4, 0, fh - 2.2), (x_b + 3.9, 0, dz_b + 1.9), (fx + 1.6, 0, 2.3)],
-                 [(0, 1, 2)], "sail", uvs=[(0.05, 1.0), (0.95, 0.35), (0.05, 0.0)])
-        rope((fx + 0.1, 0, fh - 1.6), (x_b + 3.9, 0, dz_b + 1.9))
+    _low = CFG["masts"][0][2][0]                          # la basse voile de misaine : (z0, z1, largeur, creux, emblème)
+    _reach = fx + 0.12 + _low[3] * (1.15 if V2 else 1.0) * 1.75   # jusqu'où avance son creux, voiles gonflées
+
+    def _on(a, b, t):
+        return (a[0] + (b[0] - a[0]) * t, 0, a[1] + (b[1] - a[1]) * t)
+
+    A2, B2 = (fx + 0.15, fh - 0.2), (x_b + (3.9 if V2 else 3.0), dz_b + (1.9 if V2 else 1.5))   # étai du grand foc
+    if V2:
+        A1, B1 = (fx + 0.15, fh * 0.72), (x_b + 1.2, dz_b + 1.0)                                 # étai de trinquette
+        h1 = _on(A1, B1, 0.33)
+        add_mesh("sail_z%d_jib" % round(h1[2] * 100), [h1, _on(A1, B1, 0.96), (_reach + 1.1, 0, _low[0] + 0.05)], [(0, 1, 2)],
+                 "sail", uvs=[(0.05, 1.0), (0.95, 0.35), (0.05, 0.0)])
+        rope((A1[0], 0, A1[1]), (B1[0], 0, B1[1]), r=0.04)
+        # le grand foc, entre les deux étais : son point d'écoute reste devant l'étai de trinquette
+        _zc = _low[0] + 0.75
+        _xc = A1[0] + (A1[1] - _zc) / (A1[1] - B1[1]) * (B1[0] - A1[0]) + 0.45
+        h2 = _on(A2, B2, 0.2)
+        add_mesh("sail_z%d_jibavant" % round(h2[2] * 100), [h2, _on(A2, B2, 0.97), (_xc, 0, _zc)], [(0, 1, 2)], "sail",
+                 uvs=[(0.05, 1.0), (0.95, 0.35), (0.05, 0.0)])
+    else:
+        h2 = _on(A2, B2, 0.2)
+        add_mesh("sail_z%d_jib" % round(h2[2] * 100), [h2, _on(A2, B2, 0.97), (_reach + 0.9, 0, _low[0] + 0.6)], [(0, 1, 2)], "sail",
+                 uvs=[(0.05, 1.0), (0.95, 0.35), (0.05, 0.0)])
+    rope((A2[0], 0, A2[1]), (B2[0], 0, B2[1]), r=0.04)
 if CFG["gaff"]:
     gx, gh, gend = CFG["gaff"]
     sz = max(2.6, top + 0.4)
-    add_mesh("sail_z%d_spanker" % round(gh * 100), [(gx - 0.3, 0, gh), (gend, 0, sz), (gx - 0.3, 0, sz)], [(0, 1, 2)], "sail",
+    # 13/11 : quand la brigantine est sur le mât qui porte l'échelle de mât, son bord d'attaque passait entre les montants de
+    # l'échelle (la voile traversait les barreaux). Il est reculé derrière l'échelle, tenu au mât par une corne et une bôme.
+    _gl = 1.25 if abs(gx - _tall[0]) < 0.1 else 0.3
+    add_mesh("sail_z%d_spanker" % round(gh * 100), [(gx - _gl, 0, gh), (gend, 0, sz), (gx - _gl, 0, sz)], [(0, 1, 2)], "sail",
              uvs=[(0.05, 1.0), (0.95, 0.0), (0.05, 0.0)])
-    rope((gx, 0, gh), (gend, 0, sz))
+    rope((gx, 0, gh + 0.25), (gend, 0, sz))
+    if _gl > 0.5:
+        rope((gx, 0, gh + 0.25), (gx - _gl, 0, gh), r=0.05, mat="mast")
+        rope((gx, 0, sz - 0.1), (gend, 0, sz - 0.1), r=0.06, mat="mast")
 
 # pavillon noir avec tête de mort, sur le mât choisi
 fmx, fmh, _s = CFG["masts"][CFG["flag_mast"]]

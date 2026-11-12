@@ -277,6 +277,7 @@ const WIND_STREAK_HEIGHT := 5.5        ## m au-dessus de l'eau : à hauteur des 
 const SAIL_FADE := false               ## voiles transparentes quand elles cachent le pirate (abandonné le 12/11 : clignotait)
 const SAIL_BULGE_SLACK := 0.08        ## (12/11 : 0,35 ; plus de contraste) creux des voiles qui ne prennent pas le vent (x le creux du modèle)
 const SAIL_BULGE_FULL := 1.75          ## (12/11 : 1,3) creux des voiles gonflées (vent bien pris)
+const SAIL_BULGE_TRIMMED := 0.7        ## (13/11) part du creux gardée quand les vergues sont orientées à fond (les voiles ne se touchent plus)
 const SAIL_LUFF_AT := 0.5              ## en dessous de ce rendement, des voiles hissées battent (faseyent)
 const SAIL_LUFF_FLAP := 0.38           ## (12/11 : 0,22) amplitude du battement
 const SAIL_FILL_SOUND_AT := 0.6        ## rendement qu'on franchit en montant : « vlouf » des voiles qui se gonflent

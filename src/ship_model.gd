@@ -802,6 +802,7 @@ func _apply_sails() -> void:
 		if not is_nan(pivot):
 			# le creux de la voile (son bombement, vers l'étrave) autour de l'axe du mât : gonflée ou flasque, et qui bat
 			var bulge := lerpf(GameConfig.SAIL_BULGE_SLACK, GameConfig.SAIL_BULGE_FULL, _fill)
+			bulge *= lerpf(1.0, GameConfig.SAIL_BULGE_TRIMMED, clampf(absf(_sail_trim_v) / ShipSim.MAX_TRIM, 0.0, 1.0))
 			bulge += _luff * GameConfig.SAIL_LUFF_FLAP * sin(_wind_t * 17.0 + float(k) * 1.7) * (1.0 + 0.5 * sin(_wind_t * 5.3))
 			m = Transform3D(Basis(), Vector3(pivot, 0.0, 0.0)) * Transform3D(Basis.from_scale(Vector3(maxf(bulge, 0.05), 1.0, 1.0)), Vector3.ZERO) \
 					* Transform3D(Basis(), Vector3(-pivot, 0.0, 0.0)) * m

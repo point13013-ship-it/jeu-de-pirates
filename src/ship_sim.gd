@@ -23,7 +23,7 @@ var sail_trim_target := 0.0
 var trim_input := 0.0            ## -1..1 : quelqu'un tourne les vergues au mât
 var auto_trim_pending := true    ## voiles affalées : au prochain hissage, l'équipage les règle d'emblée au mieux
 
-const MAX_TRIM := 1.13           ## rad (65°)
+const MAX_TRIM := 0.96           ## rad (55° ; 13/11 : 65°, à fond les voiles de deux mâts voisins se croisaient)
 const TRIM_SPEED := 0.55         ## rad/s : vitesse à laquelle les vergues tournent
 const TRIM_FLOOR := 0.18         ## rendement d'une voile très mal réglée (elle ne tire presque plus)
 
