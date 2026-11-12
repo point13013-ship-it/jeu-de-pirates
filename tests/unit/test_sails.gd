@@ -19,6 +19,19 @@ func _initialize() -> void:
 			var n := String((e["node"] as Node).name)
 			_check_true("%s : %s lue à %.2f, sous le haut du mât (%.2f)" % [ship_name, n, float(e["top"]), max_h],
 					float(e["top"]) > 0.5 and float(e["top"]) <= max_h + 0.01)
+		# les vergues suivent leur voile : chaque voile carrée a ses deux vergues, rattachées à un mât
+		var squares := 0
+		for e: Dictionary in ship._sails:
+			var n2 := String((e["node"] as Node).name)
+			if not n2.contains("jib") and not n2.contains("spanker") and not n2.contains("patch"):
+				squares += 1
+		_check_true("%s : %d voiles carrées, %d vergues" % [ship_name, squares, ship._yards.size()], ship._yards.size() == squares * 2)
+		for y: Dictionary in ship._yards:
+			_check_true("%s : %s tourne autour d'un mât" % [ship_name, String((y["node"] as Node).name)], not is_nan(float(y["pivot"])))
+		ship.set_sail_trim(0.6)
+		for y: Dictionary in ship._yards:
+			_check_true("%s : %s a tourné avec sa voile" % [ship_name, String((y["node"] as Node).name)],
+					not (y["node"] as Node3D).transform.basis.is_equal_approx((y["base"] as Transform3D).basis))
 		ship.free()
 	print("RÉSULTAT : %d échec(s)" % _failed)
 	quit(1 if _failed > 0 else 0)

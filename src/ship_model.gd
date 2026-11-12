@@ -36,6 +36,7 @@ const LOW_CLEAR := 0.5         ## m : hauteur de saut qui suffit pour enjamber u
 var _model: Node3D
 var _sails: Array = []         ## {node, top, base: Transform3D, alpha}
 var _sail_pivot: Array = []    ## par voile : abscisse (repère du glb) de l'axe du mât autour duquel elle pivote, NAN si elle ne pivote pas
+var _yards: Array = []         ## vergues : {node, top (de leur voile), base: Transform3D, low: bool, pivot}
 var _sail_open_v := 1.0
 var _sail_trim_v := 0.0
 var _cuts: Array = []          ## {node, normal: Vector2, always: bool}
@@ -506,6 +507,11 @@ func _index_nodes(node: Node) -> void:
 			stash_pos = Vector2(n3.position.x - shift, -n3.position.z)
 		if s.begins_with("sail_z"):
 			_sails.append({"node": n3, "top": sail_top(s), "base": n3.transform, "alpha": 1.0})
+		elif s.begins_with("yard_z") or s.begins_with("yardlow_z"):
+			# les vergues de la voile « sail_zNNN » (13/11) : elles tournent avec elle ; celle du bas remonte quand on cargue
+			var low := s.begins_with("yardlow_z")
+			_yards.append({"node": n3, "top": sail_top("sail_z" + s.substr(9 if low else 6)), "base": n3.transform, "low": low,
+					"pivot": NAN})
 		elif s.begins_with("cut_"):
 			var info := {"node": n3, "normal": Vector2.ZERO, "always": true}
 			if s.begins_with("cut_wall_") or s.begins_with("cut_win_"):
@@ -805,6 +811,17 @@ func _apply_sails() -> void:
 			var rot := Transform3D(Basis(Vector3.UP, -_sail_trim_v), Vector3.ZERO)
 			t = Transform3D(Basis(), Vector3(pivot, 0.0, 0.0)) * rot * Transform3D(Basis(), Vector3(-pivot, 0.0, 0.0)) * t
 		(entry["node"] as Node3D).transform = t
+	# les vergues suivent leur voile (13/11 : seule la toile pivotait, les voiles semblaient détachées du bateau) : même
+	# rotation autour du mât ; la vergue du bas remonte avec la bordure quand on cargue
+	for y: Dictionary in _yards:
+		var yt := y["base"] as Transform3D
+		if y["low"]:
+			yt = Transform3D(Basis(), Vector3(0.0, (float(y["top"]) - yt.origin.y) * (1.0 - s), 0.0)) * yt
+		var yp: float = y["pivot"]
+		if not is_nan(yp) and absf(_sail_trim_v) > 0.0001:
+			var yrot := Transform3D(Basis(Vector3.UP, -_sail_trim_v), Vector3.ZERO)
+			yt = Transform3D(Basis(), Vector3(yp, 0.0, 0.0)) * yrot * Transform3D(Basis(), Vector3(-yp, 0.0, 0.0)) * yt
+		(y["node"] as Node3D).transform = yt
 
 
 ## Cherche pour chaque voile le mât qui la porte (le plus proche de son centre) : l'abscisse du pivot, NAN pour les
@@ -825,6 +842,13 @@ func _compute_sail_pivots() -> void:
 					best = absf(mx - center.x)
 					pivot = mx
 		_sail_pivot.append(pivot)
+	for y: Dictionary in _yards:
+		var best_y := 1.6
+		for m: Array in masts:
+			var mx2 := float(m[0]) + shift
+			if absf(mx2 - (y["base"] as Transform3D).origin.x) < best_y:
+				best_y = absf(mx2 - (y["base"] as Transform3D).origin.x)
+				y["pivot"] = mx2
 
 
 ## Les voiles que l'on voit à travers : celles que le rayon du pirate vers la caméra traverse deviennent transparentes

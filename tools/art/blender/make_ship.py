@@ -790,9 +790,9 @@ def square_sail(x, z0, z1, width, bulge, emblem, patch=None):
     def surf(u, v, off=0.0):
         wv = width * (1.0 - 0.18 * v)
         if V2:
-            prof = math.sin(math.pi * u) ** 0.8 * math.sin(math.pi * (0.06 + 0.8 * v ** 0.85))
+            prof = math.sin(math.pi * u) ** 0.8 * math.sin(math.pi * (0.10 + 0.90 * v ** 0.85))
         else:
-            prof = math.sin(math.pi * u) * math.sin(math.pi * (0.12 + 0.76 * v))
+            prof = math.sin(math.pi * u) * math.sin(math.pi * (0.12 + 0.88 * v))
         bx = bulge * bulge_k * prof
         lift = roach * math.sin(math.pi * u) * (1.0 - v) ** 2
         return (x + bx + off, (u - 0.5) * wv, z0 + lift + v * (z1 - z0 - lift))
@@ -827,8 +827,10 @@ def square_sail(x, z0, z1, width, bulge, emblem, patch=None):
                     a = j * (n + 1) + i
                     pff.append((a, a + 1, a + n + 2, a + n + 1))
             add_mesh(tag + "_patch" + side, pvv, pff, "sail_d", uvs=puv)
-    cyl("yard", x, 0, z1, 0.11, width * 0.82 + 0.6, "mast", rot=(math.radians(90), 0, 0))
-    cyl("yard_low", x, 0, z0, 0.07, width + 0.2, "mast", rot=(math.radians(90), 0, 0), verts=6)
+    # 13/11 : les vergues portent le nom de leur voile (« yard_zNNN », « yardlow_zNNN ») : le jeu les fait tourner avec elle, et la
+    # vergue du bas remonte quand on cargue. Avant, seule la toile pivotait : les voiles semblaient flotter, détachées du bateau.
+    cyl("yard_z%d" % round(z1 * 100), x, 0, z1, 0.11, width * 0.82 + 0.6, "mast", rot=(math.radians(90), 0, 0))
+    cyl("yardlow_z%d" % round(z1 * 100), x, 0, z0, 0.07, width + 0.2, "mast", rot=(math.radians(90), 0, 0), verts=6)
 
 
 max_top = 0.0

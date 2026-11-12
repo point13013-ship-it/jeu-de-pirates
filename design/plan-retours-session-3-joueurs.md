@@ -254,3 +254,23 @@ Ordre conseillé : 3 puis 1 (peu coûteux, changent tout de suite la raison d'ac
 8. **Haute ville** : toutes les maisons droites, ou seulement celles qui gênent le passage ?
 9. **Boussole** : je confirme « guidage seulement boussole en main » ?
 10. **Publication** : une version dans le lanceur après chaque lot, ou après les lots 1 à 3 d'un coup ?
+
+---
+
+## Réponses de Jimmy (13/11) : elles remplacent les propositions ci-dessus
+
+1. **Grab** = le crochet. Ce qui ne marche pas : **hisser un coéquipier qui est dans l'eau** pour le remettre à bord (lot 3).
+2. **Frapper le bateau** = pouvoir se servir des armes à bord, sur notre bateau comme sur celui des ennemis : **l'abordage**.
+   Monté sur un bateau ennemi, on tue les squelettes sur place : les canonniers (ils reviennent après un délai), le timonier
+   (le bateau ne manœuvre plus), et on peut jeter leur ancre. Ajouté au lot 5, c'est son plus gros morceau.
+   Reste à préciser : les coups entre coéquipiers font-ils des dégâts ?
+3. **Stun** : un ennemi touché par balle se fige, on n'a plus qu'à recharger et retirer. Il ne doit plus se figer : un petit
+   recul, et il continue d'avancer (lot 5).
+4. **Bateaux ennemis** : au-dessus du bateau, le nom et le rang, sans barre de vie.
+5. **Porter** : postes bloqués (barre, ancre…) tant qu'on porte un objet ; il faut le poser d'abord. (Le clic gauche pour
+   lâcher reste à confirmer.)
+6. **Naufrage** : les trésors flottent sur place 5 minutes, puis disparaissent.
+7. **Boulets** : limite à 10 comme les planches ; on les reprend au coffre (une action de plus pour recharger).
+8. Haute ville : pas encore de réponse.
+9. **Boussole** : guidage seulement boussole en main ; son affichage est à refaire plus proprement (lot 11).
+10. Publication : pas encore de réponse.
