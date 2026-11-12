@@ -47,6 +47,16 @@ func _initialize() -> void:
 				p = np
 				steps += 1
 			_check("%s : de la barre à l'avant par %s (arrivé à x=%.1f / %.1f)" % [ship_name, "bâbord" if side > 0 else "tribord", p.x, x_end], p.x >= x_end)
+		# canons solides : on ne les traverse pas, mais on peut toujours s'en approcher assez pour les prendre (portée 1,15 m)
+		for i in m.cannons.size():
+			var c: Array = m.cannons[i]
+			var cpos := Vector2(float(c[0]), float(c[1]))
+			_check("%s : canon %d solide" % [ship_name, i], not m.is_walkable(cpos))
+			var spot := cpos
+			while not m.is_walkable(spot) and spot.distance_to(cpos) < 2.0:   # en reculant vers l'axe du bateau
+				spot -= Vector2(0.0, float(c[2]) * 0.02)
+			var dist := spot.distance_to(cpos) * ShipModel.SCALE
+			_check("%s : canon %d atteignable (%.2f m)" % [ship_name, i, dist], dist <= 1.1)
 		m.free()
 	quit(1 if _failed > 0 else 0)
 

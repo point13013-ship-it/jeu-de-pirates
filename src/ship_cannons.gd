@@ -13,7 +13,25 @@ const WOOD_L := Color(0.70, 0.50, 0.28)
 const AXIS_HEIGHT := 0.50        ## m : hauteur de l'axe du fût au-dessus du pont
 const MUZZLE_X := 1.18           ## m : la bouche, devant l'axe du nœud
 const RECOIL := 0.42             ## m : recul du fût au tir
-const GROW := 1.4                ## agrandissement de tout le canon (les haubans et le gréement cachent un petit canon)
+## agrandissement de tout le canon (les haubans et le gréement cachent un petit canon) : GameConfig.CANNON_SIZE
+## Emprise au sol d'un canon de taille 1, en m dans son repère (x vers l'extérieur) : culasse et bouton derrière, affût, roues.
+const FOOT_BACK := 0.62
+const FOOT_FRONT := 0.5
+const FOOT_HALF_W := 0.47
+
+
+## Taille d'un canon (repère : [x, y, côté, z] des données du bateau) : plus petit vers l'étrave, où le pont se resserre.
+static func scale_of(c: Array) -> float:
+	return GameConfig.CANNON_SIZE * clampf(absf(float(c[1])) * ShipModel.SCALE / 1.9, 0.72, 1.0)
+
+
+## Emprise au sol (unités du modèle) : [x0, y0, x1, y1]. Ce qui dépasse au-dessus du plat-bord ne gêne pas la marche.
+static func footprint(c: Array) -> Array:
+	var s := scale_of(c) / ShipModel.SCALE
+	var side := float(c[2])
+	var y_in := float(c[1]) - side * FOOT_BACK * s
+	var y_out := float(c[1]) + side * FOOT_FRONT * s
+	return [float(c[0]) - FOOT_HALF_W * s, minf(y_in, y_out), float(c[0]) + FOOT_HALF_W * s, maxf(y_in, y_out)]
 
 static var _mats: Dictionary = {}
 
@@ -71,7 +89,7 @@ static func build(ship: ShipModel) -> Array:
 		root.rotation.y = side * PI / 2.0   # l'axe X du nœud regarde vers l'extérieur
 		# plus gros que nature : on doit les repérer d'un coup d'œil ; vers l'étrave, où le pont se resserre, un peu moins
 		# (sinon la culasse des deux canons d'un même rang se touche au milieu)
-		root.scale = Vector3.ONE * GROW * clampf(absf(float(c[1])) * ShipModel.SCALE / 1.9, 0.72, 1.0)
+		root.scale = Vector3.ONE * scale_of(c)
 		ship.add_child(root)
 		# affût : deux flancs rouges, un plateau et une traverse
 		for z in [-0.30, 0.30]:

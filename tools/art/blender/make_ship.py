@@ -44,7 +44,9 @@ CFG = {
 }[SHIP]
 # canons (abscisses d'origine, un par bord à chaque abscisse) et échelle de coque : repris des réglages faits à la main
 CFG["cannon_x"] = {"sloop": [1.3], "brigantin": [-1.0, 1.72], "galion": [-2.0, -0.5, 1.0]}[SHIP]
-CFG["ladder_x"] = {"sloop": -0.288, "brigantin": 1.197, "galion": 2.52}[SHIP]
+# distance du canon (son axe) au bord de la coque : plus près du plat-bord, la bouche sort par-dessus, l'affût mange moins le pont
+CANNON_INSET = 0.36
+CFG["ladder_x"] ={"sloop": -0.288, "brigantin": 1.197, "galion": 2.52}[SHIP]
 CFG["L"] *= KL
 CFG["WID"] *= KW
 CFG["DEP"] *= 1.15
@@ -251,7 +253,7 @@ for side in (-1, 1):
     for cx_o in CFG["cannon_x"]:
         u = (cx_o * KL + L / 2) / L
         x, hw, dz, dp = station(u)
-        CANNONS.append((x, side * (hw - 0.5), side, dz + 0.34))
+        CANNONS.append((x, side * (hw - CANNON_INSET), side, dz + 0.34))
         cyl("cannon", x, side * (hw - 0.5), dz + 0.34, 0.18, 1.0, "iron", rot=(math.radians(90), 0, 0))
         cyl("cannon_end", x, side * (hw - 0.05), dz + 0.34, 0.22, 0.2, "iron", rot=(math.radians(90), 0, 0))
 

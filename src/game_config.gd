@@ -201,6 +201,9 @@ const HELM_CREAK_VOL := 0.9           ## volume du grincement à pleine vitesse 
 ## 3.1 Coques agrandies (12/11/2026) : facteur de longueur appliqué par tools/art/blender/make_ship.py (KL). Sert à garder la poupe
 ## à sa place d'avant au port. À changer en même temps que KL dans le script Blender.
 const HULL_LENGTH_GROWTH := 1.35
+## Canons (12/11) : taille (avant 1,4) ; ils sont solides (on ne les traverse plus) mais bas : un saut les enjambe.
+## Leur position vers le plat-bord se règle dans make_ship.py (CANNON_INSET : distance du bord, unités du modèle).
+const CANNON_SIZE := 1.2
 
 ## 3.8 Son de coque : renfort par la houle et gerbes au hasard.
 const HULL_SWELL_VOL := 0.25

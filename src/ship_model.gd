@@ -71,6 +71,10 @@ func load_ship(p_name: String) -> bool:
 	_build_helm_wheel()
 	_dress_sails(_model)
 	_compute_low_obstacles()   # (après _index_nodes : il faut savoir où est la pile de caisses)
+	# les canons sont solides (12/11) : leur emprise au sol est un obstacle bas, qu'un saut enjambe
+	for c: Array in cannons:
+		boxes.append(ShipCannons.footprint(c))
+		low_boxes.append(boxes.size() - 1)
 	_compute_sail_pivots()
 	return true
 
