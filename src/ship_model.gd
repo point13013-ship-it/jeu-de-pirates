@@ -79,7 +79,39 @@ func load_ship(p_name: String) -> bool:
 		boxes.append(ShipCannons.footprint(c))
 		low_boxes.append(boxes.size() - 1)
 	_compute_sail_pivots()
+	_setup_pennant()
 	return true
+
+
+# ------------------------------------------------------------------ la flamme (brigantin v2, 12/11/2026)
+# La longue banderole rouge en tête du grand mât indique le vent : elle pivote autour du mât pour filer sous le vent, et ondule.
+var _pennant_pivot: Node3D
+
+
+func _setup_pennant() -> void:
+	var p := _find(_model, "pennant") as MeshInstance3D
+	if p == null or p.mesh == null:
+		return
+	var box := p.get_aabb()
+	var pivot := Node3D.new()
+	pivot.name = "pennant_pivot"
+	p.get_parent().add_child(pivot)
+	pivot.transform = p.transform * Transform3D(Basis.IDENTITY, Vector3(box.end.x, box.get_center().y, 0.0))
+	p.get_parent().remove_child(p)
+	pivot.add_child(p)
+	p.transform = Transform3D(Basis.IDENTITY, -Vector3(box.end.x, box.get_center().y, 0.0))
+	_pennant_pivot = pivot
+
+
+## Oriente la flamme selon le vent (`world_wind` : direction vers laquelle le vent souffle, monde x/z) ; `t` : le temps (ondulation).
+func set_pennant_wind(world_wind: Vector2, t: float, delta: float) -> void:
+	if _pennant_pivot == null or world_wind.length() < 0.01:
+		return
+	var d := (_model.global_transform.basis.orthonormalized().inverse() * Vector3(world_wind.x, 0.0, world_wind.y))
+	# la flamme est dessinée vers -x (l'arrière) ; tournée de a autour de y, -x devient (-cos a, 0, sin a)
+	var a := atan2(d.z, -d.x) + sin(t * 5.3) * 0.1 + sin(t * 8.7) * 0.05
+	_pennant_pivot.rotation.y = lerp_angle(_pennant_pivot.rotation.y, a, 1.0 - exp(-delta * 3.0))
+	_pennant_pivot.rotation.x = sin(t * 6.1) * 0.12   # elle se tord un peu sur elle-même
 
 
 var _helm_disc: Node3D

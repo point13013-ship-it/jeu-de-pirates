@@ -6247,6 +6247,7 @@ func _update_wind_feel(delta: float) -> void:
 	var fill := pull * smoothstep(0.05, 0.4, hoisted)
 	var luff := hoisted * clampf((GameConfig.SAIL_LUFF_AT - pull) / GameConfig.SAIL_LUFF_AT, 0.0, 1.0)
 	_ship.set_sail_wind(fill, luff, delta)
+	_ship.set_pennant_wind(_sim.wind_dir, _time, delta)   # la flamme du grand mât file sous le vent (brigantin v2)
 	var center := _ship.global_position
 	_wind_streaks.update(center, _sim.wind_dir, fill, _loc != Loc.LAND and _loc != Loc.HOLD and _atmo.sky.enabled)
 	var mast_at := center + Vector3(0.0, 5.0, 0.0)
