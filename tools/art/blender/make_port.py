@@ -543,10 +543,336 @@ for (x, y) in [(-39, 20), (-2, 35.5), (31.5, 20), (-34, 35)]:  # buissons
                "leaf" if k % 2 else "leaf_d", 0.8)
     CIRCLES.append((x, y, 1.1))
 
+# ====================================================================== haute ville (12/11/2026, refonte du monde)
+# Demande de Jimmy : une ville plus grande, deux ou trois rangées de plus, pas alignées, des chemins sur les côtés, de la
+# verdure, rien de rectiligne. La ville basse ne bouge pas (ses boutiques, ses intérieurs, ses escaliers) : la haute ville est
+# un plateau au niveau du chemin de ronde (2,4 m), derrière les remparts, où l'on passe par une porte. Maisons décalées et un
+# peu tournées, ruelles qui serpentent, jardins, vergers, une placette avec sa fontaine, un clocher pour repère, et une
+# colline verte derrière. Le sol est un niveau du jeu (meta « levels ») : ses obstacles ne valent que là-haut.
+UP_Z = 2.4
+UP = (-41.2, 51.2, 41.2, 92.0)        # le plateau praticable
+U_OBST: list = []                      # obstacles du plateau (repère du port)
+U_CIRC: list = []
+U_DECOR: list = []                     # décor posé par le jeu (TownBuilder) : bancs, réverbères, massifs
+PAVED: list = [{"pts": [[2.0, 72.0]], "w": 11.0}]   # ruelles pavées et placette (sons de pas)
+_up_start = len(parts)
+
+# le plateau : un massif de terre et de pierre, de la mer (ou du sol de la ville) jusqu'à 2,4 m ; dessus, de l'herbe
+box("ground_grass_haute", -42.0, 51.0, -3.2, 42.0, 92.4, UP_Z, "ground_grass")
+for sx in (-1, 1):                    # murs de soutènement sur les flancs, comme le quai (pierre, algues, couronnement)
+    xo = 42.0 * sx
+    xa, xb = (xo - 0.45, xo + 0.02) if sx < 0 else (xo - 0.02, xo + 0.45)
+    box("up_wall", min(xa, xb), 51.0, -3.2, max(xa, xb), 92.4, UP_Z - 0.05, "stone")
+    box("up_algae", min(xa, xb) - 0.03, 51.0, -1.75, max(xa, xb) + 0.03, 92.4, -1.25, "algae")
+    box("up_cap", min(xa, xb) - 0.08, 51.0, UP_Z - 0.1, max(xa, xb) + 0.08, 92.4, UP_Z + 0.05, "stone_d")
+# parapets bas sur les bords du plateau (on ne tombe pas sans le vouloir : le bord est aussi la fin du sol praticable)
+for (xa, ya, xb, yb) in ((-41.4, 51.4, -41.0, 92.0), (41.0, 51.4, 41.4, 92.0), (-41.4, 91.8, 41.4, 92.3)):
+    box("up_parapet", xa, ya, UP_Z, xb, yb, UP_Z + 0.75, "stone")
+    box("up_parapet_cap", xa - 0.06, ya - 0.06, UP_Z + 0.75, xb + 0.06, yb + 0.06, UP_Z + 0.85, "stone_d")
+
+# la porte du rempart (le mur du chemin de ronde est dessiné par le jeu ; la porte, ici)
+for sx in (-1, 1):
+    xa, xb = sorted((sx * 1.8, sx * 2.5))
+    box("up_gate_pillar", xa, 50.85, UP_Z, xb, 51.6, UP_Z + 3.6, "stone")
+    box("up_gate_cap", xa - 0.1, 50.75, UP_Z + 3.6, xb + 0.1, 51.7, UP_Z + 3.85, "stone_d")
+    lantern("up_gate_", sx * 2.15, 50.85, UP_Z + 2.4)
+for k in range(9):                    # l'arc : des claveaux sur un demi-cercle
+    a0, a1 = math.pi * k / 9, math.pi * (k + 1) / 9
+    xa, xb = -1.8 * math.cos(a0), -1.8 * math.cos(a1)
+    za, zb = UP_Z + 2.7 + 1.0 * math.sin(a0), UP_Z + 2.7 + 1.0 * math.sin(a1)
+    box("up_gate_arch", min(xa, xb) - 0.02, 50.9, min(za, zb) - 0.05, max(xa, xb) + 0.02, 51.55, max(za, zb) + 0.3, "stone_d")
+box("up_gate_top", -2.5, 50.8, UP_Z + 3.85, 2.5, 51.65, UP_Z + 4.15, "stone")
+
+
+def smooth_path(pts, steps=6):
+    """Catmull-Rom : une ligne brisée devient une courbe douce."""
+    out = []
+    P = [pts[0]] + list(pts) + [pts[-1]]
+    for i in range(1, len(P) - 2):
+        p0, p1, p2, p3 = (Vector((*P[j], 0)) for j in (i - 1, i, i + 1, i + 2))
+        for s in range(steps):
+            t = s / steps
+            q = 0.5 * ((2 * p1) + (-p0 + p2) * t + (2 * p0 - 5 * p1 + 4 * p2 - p3) * t * t + (-p0 + 3 * p1 - 3 * p2 + p3) * t ** 3)
+            out.append((q.x, q.y))
+    out.append(pts[-1])
+    return out
+
+
+def lane(name, pts, width, mat, z=UP_Z + 0.015, border=True):
+    """Une ruelle qui serpente : une bande de sol (pavés ou terre battue) le long d'une courbe, bordée de pierres."""
+    c = smooth_path(pts)
+    if mat == "ground_cobble":        # (le jeu y fait sonner les pas sur la pierre ; ailleurs sur le plateau, sur l'herbe)
+        PAVED.append({"pts": [[round(p[0], 2), round(p[1], 2)] for p in c], "w": width})
+    left, right = [], []
+    for i, p in enumerate(c):
+        a = Vector((*c[max(i - 1, 0)], 0))
+        b = Vector((*c[min(i + 1, len(c) - 1)], 0))
+        d = (b - a).normalized()
+        n = Vector((-d.y, d.x, 0))
+        w = width * (1.0 + 0.1 * math.sin(i * 0.22))   # largeur qui respire un peu (lentement : sinon les bords font des dents)
+        left.append(Vector((*p, z)) + n * w / 2)
+        right.append(Vector((*p, z)) - n * w / 2)
+    verts, faces = [], []
+    for i in range(len(c)):
+        verts += [tuple(left[i]), tuple(right[i])]
+    for i in range(len(c) - 1):
+        faces.append((2 * i, 2 * i + 1, 2 * i + 3, 2 * i + 2))
+    add_mesh(name, verts, faces, mat)
+    if border:
+        for side in (left, right):
+            for i in range(0, len(side) - 1, 2):
+                pa, pb = side[i], side[min(i + 2, len(side) - 1)]
+                if (pb - pa).length < 0.05:
+                    continue
+                m = (pa + pb) / 2
+                bpy.ops.mesh.primitive_cube_add(location=(m.x, m.y, z + 0.04))
+                ob = bpy.context.active_object
+                ob.scale = ((pb - pa).length / 2 + 0.05, 0.11, 0.06)
+                ob.rotation_euler = (0, 0, math.atan2(pb.y - pa.y, pb.x - pa.x))
+                ob.name = "up_curb"
+                ob.data.materials.append(MAT["stone"])
+                parts.append(ob)
+
+
+# les ruelles : la grand-rue part de la porte, serpente jusqu'à la placette, puis monte vers le fond ; deux ruelles partent
+# vers l'ouest et vers l'est ; des sentiers de terre battue mènent aux jardins
+lane("ground_cobble_up_main", [(0, 51.0), (1.5, 56), (-1.5, 61), (0.5, 66.5), (2.0, 70)], 3.6, "ground_cobble")
+lane("ground_cobble_up_main_n", [(2.0, 74), (-0.5, 79), (1.5, 84), (0.5, 91.6)], 3.2, "ground_cobble")
+lane("ground_cobble_up_west", [(-3.0, 69.5), (-9, 67.5), (-17, 69.0), (-24, 66.5), (-31, 68.5), (-39, 66.0)], 2.8, "ground_cobble")
+lane("ground_cobble_up_east", [(7.5, 73.5), (14, 75.5), (21, 73.5), (28, 76.0), (35, 74.5), (40.5, 76.0)], 2.8, "ground_cobble")
+lane("ground_sand_up_p1", [(-24, 66), (-23, 62), (-26, 58.5), (-24, 54)], 1.4, "ground_sand", UP_Z + 0.02, False)
+lane("ground_sand_up_p2", [(-27.5, 69), (-27.5, 74), (-25.5, 78.5), (-28.5, 83), (-27, 90)], 1.4, "ground_sand", UP_Z + 0.02, False)
+lane("ground_sand_up_p3", [(16, 75), (15.5, 70), (18.5, 66), (16.5, 61), (17, 53)], 1.4, "ground_sand", UP_Z + 0.02, False)
+lane("ground_sand_up_p4", [(28, 76), (27.5, 80), (29.5, 84), (27.5, 90)], 1.3, "ground_sand", UP_Z + 0.02, False)
+# la placette : un disque de pavés autour d'une fontaine
+_sq = (2.0, 72.0)
+n_ = 28
+verts = [(_sq[0], _sq[1], UP_Z + 0.02)] + [(_sq[0] + 6.2 * math.cos(2 * math.pi * k / n_) * (1 + 0.05 * math.sin(k * 1.3)),
+                                            _sq[1] + 5.4 * math.sin(2 * math.pi * k / n_) * (1 + 0.05 * math.cos(k * 1.7)),
+                                            UP_Z + 0.02) for k in range(n_)]
+add_mesh("ground_cobble_up_square", verts, [(0, 1 + k, 1 + (k + 1) % n_) for k in range(n_)], "ground_cobble")
+cyl("up_fountain", _sq[0], _sq[1], UP_Z, UP_Z + 0.65, 1.7, "stone", 20)
+cyl("up_fountain_water", _sq[0], _sq[1], UP_Z + 0.5, UP_Z + 0.62, 1.5, "glass", 20)
+cyl("up_fountain_pillar", _sq[0], _sq[1], UP_Z + 0.5, UP_Z + 1.9, 0.28, "stone", 10)
+cyl("up_fountain_bowl", _sq[0], _sq[1], UP_Z + 1.8, UP_Z + 2.1, 0.75, "stone_d", 14, 0.95)
+sphere("up_fountain_top", _sq[0], _sq[1], UP_Z + 2.35, 0.25, "gold")
+U_CIRC.append((_sq[0], _sq[1], 1.9))
+U_DECOR += [["bench", _sq[0] - 4.2, _sq[1] - 2.6], ["bench", _sq[0] + 4.4, _sq[1] - 2.4]]
+
+
+def up_building(bid, x0, x1, y0, y1, floors, wall, roof, rot_deg=0.0, **kw):
+    """Une maison de la haute ville : la maison ordinaire, posée sur le plateau et tournée de quelques degrés."""
+    start = len(parts)
+    n_obst = len(OBST)
+    _building_body(bid, x0, x1, y0, y1, floors, wall, roof, kw.get("shutters", rnd.choice(["shut_teal", "shut_red", "shut_blue"])),
+                   kw.get("timber", False), kw.get("balcony", False), None, None, None, kw.get("roof_rise", 2.6))
+    del OBST[n_obst:]                 # (ses obstacles vont dans le niveau du plateau, pas au sol de la ville basse)
+    a = math.radians(rot_deg)
+    cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
+    ca, sa = math.cos(a), math.sin(a)
+    for ob in parts[start:]:
+        lx, ly = ob.location.x - cx, ob.location.y - cy
+        ob.location.x = cx + lx * ca - ly * sa
+        ob.location.y = cy + lx * sa + ly * ca
+        ob.location.z += UP_Z
+        ob.rotation_euler.z += a
+    GROUPS[f"bldg_{bid}"] = parts[start:]
+    # obstacle : la boîte englobante du rectangle tourné (avec le perron devant la porte)
+    corners = [(x0 - 0.1, y0 - 0.35), (x1 + 0.1, y0 - 0.35), (x1 + 0.1, y1 + 0.1), (x0 - 0.1, y1 + 0.1)]
+    rc = [(cx + (px - cx) * ca - (py - cy) * sa, cy + (px - cx) * sa + (py - cy) * ca) for px, py in corners]
+    U_OBST.append((min(p[0] for p in rc), min(p[1] for p in rc), max(p[0] for p in rc), max(p[1] for p in rc)))
+
+
+# les maisons (façade et porte au sud, vers la caméra) : tailles, hauteurs, couleurs et angles variés
+up_building("haut_so1", -24.5, -15.0, 53.6, 60.5, 2, "pl_white", "roof_terra", 4, timber=True)
+up_building("haut_se1", 5.6, 13.6, 56.2, 62.6, 2, "pl_rose", "roof_slate", -5, balcony=True)
+up_building("haut_se2", 19.6, 29.6, 54.4, 62.4, 3, "pl_ochre", "roof_terra", 3, balcony=True)
+up_building("haut_se3", 31.5, 39.5, 57.5, 65.0, 2, "pl_teal", "roof_green", -3, timber=True)
+up_building("haut_no1", -38.5, -30.0, 71.6, 79.0, 2, "pl_cream", "roof_slate", 5)
+up_building("haut_no2", -25.0, -15.5, 71.2, 78.6, 3, "pl_terra", "roof_green", -4, balcony=True)
+up_building("haut_no3", -13.0, -5.8, 72.6, 79.6, 2, "pl_ochre", "roof_terra", 2, timber=True)
+up_building("haut_no4", -38.0, -30.5, 83.6, 90.4, 2, "pl_rose", "roof_terra", -3)
+up_building("haut_no5", -24.0, -12.0, 84.2, 90.6, 3, "pl_cream", "roof_slate", 6, timber=True)
+up_building("haut_no6", -9.5, -3.6, 83.0, 89.4, 2, "pl_teal", "roof_terra", -6)
+up_building("haut_ne1", 6.5, 15.0, 80.4, 87.6, 2, "pl_white", "roof_green", -3, balcony=True)
+up_building("haut_ne2", 18.0, 26.0, 81.0, 89.0, 3, "pl_rose", "roof_slate", 4)
+up_building("haut_ne3", 30.5, 39.0, 80.0, 87.0, 2, "pl_ochre", "roof_terra", -2, timber=True)
+
+# le clocher : une tour haute et étroite sur la placette, le repère de la haute ville vu du port
+_bt = (9.6, 64.2, 13.4, 68.0)
+_t0 = len(parts)
+box("bldg_clocher_tower", _bt[0], _bt[1], UP_Z, _bt[2], _bt[3], UP_Z + 11.0, "pl_white")
+box("bldg_clocher_base", _bt[0] - 0.1, _bt[1] - 0.1, UP_Z, _bt[2] + 0.1, _bt[3] + 0.1, UP_Z + 0.7, "stone")
+for zb in (4.0, 8.0):
+    box("bldg_clocher_band", _bt[0] - 0.12, _bt[1] - 0.12, UP_Z + zb - 0.1, _bt[2] + 0.12, _bt[3] + 0.12, UP_Z + zb + 0.15, "stone")
+box("bldg_clocher_door", 11.5 - 0.6, _bt[1] - 0.12, UP_Z, 11.5 + 0.6, _bt[1] - 0.05, UP_Z + 2.4, "wood_d")
+box("bldg_clocher_belfry", _bt[0] + 0.7, _bt[1] - 0.06, UP_Z + 8.8, _bt[2] - 0.7, _bt[1] + 0.02, UP_Z + 10.4, "glass")
+cyl("bldg_clocher_bell", 11.5, (_bt[1] + _bt[3]) / 2, UP_Z + 9.1, UP_Z + 10.0, 0.55, "gold", 12, 0.25)
+box("bldg_clocher_clock", 11.5 - 0.6, _bt[1] - 0.1, UP_Z + 6.3, 11.5 + 0.6, _bt[1] - 0.04, UP_Z + 7.5, "paper")
+bpy.ops.mesh.primitive_cone_add(vertices=4, radius1=2.95, radius2=0.0, depth=3.6, location=(11.5, 66.1, UP_Z + 12.8),
+                                rotation=(0, 0, math.pi / 4))
+_ob = bpy.context.active_object
+_ob.name = "bldg_clocher_spire"
+_ob.data.materials.append(MAT["roof_slate"])
+parts.append(_ob)
+box("bldg_clocher_eave", _bt[0] - 0.3, _bt[1] - 0.3, UP_Z + 10.9, _bt[2] + 0.3, _bt[3] + 0.3, UP_Z + 11.1, "wood_d")
+cyl("bldg_clocher_vane", 11.5, 66.1, UP_Z + 14.4, UP_Z + 15.6, 0.04, "iron", 6)
+box("bldg_clocher_vane_flag", 11.5, 66.06, UP_Z + 15.1, 12.3, 66.14, UP_Z + 15.5, "gold")
+GROUPS["bldg_clocher"] = parts[_t0:]
+U_OBST.append((_bt[0] - 0.15, _bt[1] - 0.3, _bt[2] + 0.15, _bt[3] + 0.15))
+
+
+def tree(x, y, h=4.2, r=1.7, z=UP_Z, kind="leaf"):
+    """Un arbre feuillu (manguier, figuier) : tronc et houppier en trois boules."""
+    cyl("up_tree_trunk", x, y, z, z + h * 0.62, 0.2, "trunk", 8, 0.14)
+    for k in range(3):
+        a = k / 3 * math.tau + rnd.uniform(0, 1)
+        sphere("up_tree_crown", x + math.cos(a) * r * 0.45, y + math.sin(a) * r * 0.45, z + h * 0.75 + rnd.uniform(-0.2, 0.3),
+               r * rnd.uniform(0.72, 0.9), kind if k != 1 else "leaf_d", 0.82)
+    sphere("up_tree_crown", x, y, z + h * 0.95, r * 0.7, kind, 0.8)
+    U_CIRC.append((x, y, 0.45))
+
+
+def hedge(x0, y0, x1, y1):
+    box("up_hedge", x0, y0, UP_Z, x1, y1, UP_Z + 0.75, "leaf_d")
+    U_OBST.append((x0, y0, x1, y1))
+
+
+def fence(x0, y0, x1, y1, gap=None):
+    """Palissade de bois le long d'un côté (droit selon x ou y), avec une ouverture facultative (début, fin)."""
+    horiz = abs(y1 - y0) < 1e-3
+    L_ = (x1 - x0) if horiz else (y1 - y0)
+    n = max(1, int(L_ / 0.45))
+    for k in range(n + 1):
+        t = k / n
+        px, py = x0 + (x1 - x0) * t, y0 + (y1 - y0) * t
+        along = px if horiz else py
+        if gap and gap[0] < along < gap[1]:
+            continue
+        box("up_fence_post", px - 0.05, py - 0.05, UP_Z, px + 0.05, py + 0.05, UP_Z + 0.9 + 0.08 * (k % 2), "wood_l")
+    segs = [(x0 if horiz else y0, gap[0]), (gap[1], x1 if horiz else y1)] if gap else [(x0 if horiz else y0, x1 if horiz else y1)]
+    for a_, b_ in segs:
+        for zr in (0.35, 0.72):
+            if horiz:
+                box("up_fence_rail", a_, y0 - 0.03, UP_Z + zr, b_, y0 + 0.03, UP_Z + zr + 0.06, "wood")
+            else:
+                box("up_fence_rail", x0 - 0.03, a_, UP_Z + zr, x0 + 0.03, b_, UP_Z + zr + 0.06, "wood")
+        U_OBST.append((a_, y0 - 0.12, b_, y0 + 0.12) if horiz else (x0 - 0.12, a_, x0 + 0.12, b_))
+
+
+def veg_bed(x0, y0, x1, y1, crop):
+    """Un carré de potager : terre sombre, rangées de plants."""
+    box("up_bed_soil", x0, y0, UP_Z, x1, y1, UP_Z + 0.12, "trunk")
+    y = y0 + 0.35
+    while y < y1 - 0.2:
+        x = x0 + 0.3
+        while x < x1 - 0.2:
+            sphere("up_bed_plant", x, y, UP_Z + 0.24, 0.2, crop if rnd.random() < 0.8 else "leaf_d", 0.7)
+            x += 0.55
+        y += 0.6
+
+
+def flowers(x, y, n=6, spread=1.2):
+    for k in range(n):
+        sphere("up_flower", x + rnd.uniform(-spread, spread), y + rnd.uniform(-spread * 0.6, spread * 0.6), UP_Z + 0.25,
+               rnd.uniform(0.18, 0.3), rnd.choice(["fruit_r", "fruit_y", "cloth_cream", "cloth_red", "leaf"]), 0.75)
+
+
+# potager clos au sud-ouest (palissade, portillon sur le sentier), et sa cabane à outils
+fence(-37.5, 53.0, -28.0, 53.0)
+fence(-37.5, 53.0, -37.5, 61.0)
+fence(-37.5, 61.0, -28.0, 61.0)
+fence(-28.0, 53.0, -28.0, 61.0, gap=(56.0, 57.6))
+for (bx, by, crop) in ((-36.6, 54.0, "leaf"), (-32.6, 54.0, "fruit_r"), (-36.6, 57.4, "fruit_y"), (-32.6, 57.4, "leaf")):
+    veg_bed(bx, by, bx + 3.2, by + 2.6, crop)
+U_OBST.append((-37.0, 53.4, -28.6, 60.6))
+box("up_shed", -31.0, 59.0, UP_Z, -28.6, 60.6, UP_Z + 2.0, "wood")
+gable_roof("up_shed_", -31.0, -28.6, 59.0, 60.6, UP_Z + 2.0, 0.7, "roof_terra", 0.2)
+# verger au sud de la grand-rue (à l'ouest) et jardins fleuris devant les maisons
+for (x, y) in ((-11.5, 54.5), (-7.5, 57.5), (-12.0, 60.0), (-5.5, 53.5)):
+    tree(x, y, rnd.uniform(3.8, 4.8), rnd.uniform(1.5, 1.9), kind="leaf")
+for (x, y) in ((-21.0, 52.4), (-17.0, 52.6), (9.5, 54.4), (24.5, 52.6), (35.5, 55.8), (-34.0, 69.8), (-20.5, 69.8),
+               (11.0, 78.8), (22.0, 79.4), (34.5, 78.8), (-30.0, 81.8), (-17.0, 82.4)):
+    flowers(x, y, 7, 1.3)
+hedge(26.5, 52.3, 33.0, 52.9)
+hedge(-14.5, 81.6, -10.5, 82.2)
+# arbres le long des ruelles et sur la placette, palmiers dans les coins
+for (x, y) in ((-4.5, 75.5), (8.0, 68.0), (-6.5, 63.5), (16.0, 65.0), (24.0, 69.0), (37.5, 69.5), (-36.0, 64.0), (-15.5, 64.0),
+               (4.5, 79.0), (-1.5, 87.0), (38.5, 90.0), (13.0, 90.4)):
+    tree(x, y, rnd.uniform(3.6, 5.0), rnd.uniform(1.3, 1.8), kind=rnd.choice(["leaf", "leaf_d"]))
+for (x, y, h, lean) in ((-39.5, 88.5, 6.5, 0.8), (40.0, 54.0, 6.0, -0.9), (6.0, 52.8, 5.5, 0.6), (-40.0, 54.0, 6.2, 0.5)):
+    _p0 = len(parts)
+    palm(x, y, h, lean)
+    for ob in parts[_p0:]:
+        ob.location.z += UP_Z
+    CIRCLES.pop()                     # (palm() l'a ajouté au sol de la ville basse)
+    U_CIRC.append((x, y, 0.45))
+# réverbères le long de la grand-rue et des ruelles, quelques tonneaux et bancs
+U_DECOR += [["lamp", 3.6, 58.5], ["lamp", -2.2, 64.5], ["lamp", -10.0, 70.4], ["lamp", -26.0, 64.6], ["lamp", 14.0, 77.2],
+            ["lamp", 29.0, 74.2], ["lamp", 3.4, 82.0], ["bench", -8.0, 61.5], ["bench", 20.5, 70.5],
+            ["barrel", -5.0, 80.9], ["barrel", 16.6, 79.9], ["bed", 30.0, 66.6], ["bed", -10.5, 81.0]]
+for d in U_DECOR:
+    if d[0] in ("barrel", "bench", "bed"):
+        U_CIRC.append((d[1], d[2], 0.5 if d[0] == "barrel" else 0.9))
+
+# la colline derrière le plateau : une pente d'herbe qui monte vers le nord et retombe dans la mer sur les côtés, avec des
+# arbres et un moulin au sommet (décor : on n'y marche pas)
+nx_, ny_ = 30, 16
+hv, hf = [], []
+for j in range(ny_ + 1):
+    y = 92.0 + j * 2.6
+    for i in range(nx_ + 1):
+        x = -66.0 + i * (132.0 / nx_)
+        side = max(0.0, min(1.0, (66.0 - abs(x)) / 22.0))
+        hgt = UP_Z + (y - 92.0) * 0.36 + 1.6 * math.sin(x * 0.11 + j * 0.7) * min(1.0, (y - 92.0) / 8.0)
+        z = -3.0 + (hgt + 3.0) * (side ** 0.7 if abs(x) > 44 else 1.0)
+        if j == 0:
+            z = UP_Z if abs(x) <= 42.4 else -3.0 + (UP_Z + 3.0) * side
+        hv.append((x, y, z))
+for j in range(ny_):
+    for i in range(nx_):
+        a = j * (nx_ + 1) + i
+        hf.append((a, a + 1, a + nx_ + 2, a + nx_ + 1))
+add_mesh("ground_grass_colline", hv, hf, "ground_grass")
+
+
+def hill_z(x, y):
+    i = min(nx_ - 1, max(0, int((x + 66.0) / (132.0 / nx_))))
+    j = min(ny_ - 1, max(0, int((y - 92.0) / 2.6)))
+    return hv[j * (nx_ + 1) + i][2]
+
+
+for k in range(46):
+    x, y = rnd.uniform(-58, 58), rnd.uniform(95, 132)
+    z = hill_z(x, y)
+    if z < 0.5:
+        continue
+    n0 = len(U_CIRC)
+    tree(x, y, rnd.uniform(3.5, 5.5), rnd.uniform(1.4, 2.2), z=z - 0.2, kind=rnd.choice(["leaf", "leaf_d"]))
+    del U_CIRC[n0:]
+# le moulin, au sommet de la colline
+_mx, _my = -14.0, 126.0
+_mz = hill_z(_mx, _my) - 0.3
+cyl("mill_tower", _mx, _my, _mz, _mz + 7.5, 2.2, "pl_white", 14, 1.6)
+bpy.ops.mesh.primitive_cone_add(vertices=14, radius1=1.9, radius2=0.2, depth=2.2, location=(_mx, _my, _mz + 8.6))
+_ob = bpy.context.active_object
+_ob.name = "mill_cap"
+_ob.data.materials.append(MAT["roof_terra"])
+parts.append(_ob)
+for k in range(4):
+    a = math.radians(20 + k * 90)
+    hub = Vector((_mx, _my - 1.8, _mz + 7.6))
+    tip = hub + Vector((math.cos(a) * 5.0, 0, math.sin(a) * 5.0))
+    rope("mill_arm", tuple(hub), tuple(tip), 0.09, "wood_d")
+    side = Vector((-math.sin(a), 0, math.cos(a))) * 0.7
+    mid = hub + (tip - hub) * 0.25
+    add_mesh("mill_sail", [tuple(mid), tuple(tip), tuple(tip + side), tuple(mid + side)], [(0, 1, 2, 3)], "cloth_cream")
+
 # ====================================================================== export
 for ob in parts:
     if ob.type == "MESH":
-        smooth = ob.name.startswith(("palm", "bush", "well", "barrel", "boat_hull", "goods", "flower", "palm_nuts"))
+        smooth = ob.name.startswith(("palm", "bush", "well", "barrel", "boat_hull", "goods", "flower", "palm_nuts", "up_tree",
+                                     "up_flower", "up_bed_plant", "up_fountain", "mill_tower", "mill_cap"))
         for poly in ob.data.polygons:
             poly.use_smooth = smooth
 
@@ -583,8 +909,16 @@ bpy.ops.export_scene.gltf(filepath=str(OUT / "port.glb"), export_format="GLB", u
 meta = {
     "walk_rects": [[LAND[0] + 0.5, 0.3, LAND[2] - 0.5, LAND[3] - 0.5],
                    [MAIN_PIER[0] + 0.3, MAIN_PIER[2] + 0.4, MAIN_PIER[1] - 0.3, 0.5],
-                   [-23.7, -13.6, -21.3, 0.5]],
+                   [-23.7, -13.6, -21.3, 0.5],
+                   list(UP)],
     "obstacles": OBST, "circles": CIRCLES, "npcs": NPCS,
+    # la haute ville : un niveau du jeu (data/town.json en a le même format), ajouté à ceux de la ville au chargement. Le mur du
+    # chemin de ronde la sépare des remparts, sauf à la porte (x de -1,8 à 1,8).
+    "levels": [{"id": "haute_ville", "rect": list(UP), "h": UP_Z, "solid": True, "style": "none",
+                "obstacles": [[round(v, 2) for v in o] for o in U_OBST] + [[UP[0], UP[1] - 0.1, -1.8, UP[1] + 0.3],
+                                                                         [1.8, UP[1] - 0.1, UP[2], UP[1] + 0.3]],
+                "circles": [[round(v, 2) for v in c] for c in U_CIRC], "decor": U_DECOR}],
+    "grass_rect": list(UP), "paved_paths": PAVED,
     "spawn": [2.0, 9.0],
     "dock": {"pier_x1": MAIN_PIER[1], "y": -14.0, "heading": "sud"},
     "sea_z": -1.45,

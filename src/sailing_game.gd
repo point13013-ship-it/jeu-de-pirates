@@ -1690,7 +1690,12 @@ func _read_json(path: String) -> Dictionary:
 
 ## La vie de la ville : terrasses et escaliers, intérieurs, habitants et promeneurs (data/town.json, npcs.json).
 func _build_town() -> void:
-	_land.load_town(_read_json("res://data/town.json"))
+	var town_cfg := _read_json("res://data/town.json")
+	# la haute ville (12/11) : son plateau est décrit par la méta du port (fabriquée avec le modèle), au même format
+	var town_levels: Array = (town_cfg.get("levels", []) as Array).duplicate()
+	town_levels.append_array(_port_meta.get("levels", []))
+	town_cfg["levels"] = town_levels
+	_land.load_town(town_cfg)
 	TownBuilder.build_levels(_world_fixed, _land)
 	for it: Dictionary in _land.interiors:
 		var root := ShopBuilder.build(it) if it.has("kind") else TownBuilder.build_tavern(it)
@@ -4704,8 +4709,22 @@ func _ground_kind() -> int:
 	if _land.interior_at(_lpos) >= 0:
 		return 2
 	var m := Vector2(_lpos.x, -_lpos.y)   # (repère du fichier du port)
+	# la haute ville (12/11) : herbe, sauf sur ses ruelles pavées et sa placette
+	var up: Array = _port_meta.get("grass_rect", [])
+	if up.size() == 4 and m.x >= float(up[0]) and m.x <= float(up[2]) and m.y >= float(up[1]) and m.y <= float(up[3]):
+		for path: Dictionary in _port_meta.get("paved_paths", []):
+			var pts: Array = path["pts"]
+			var half := float(path["w"]) * 0.5 + 0.2
+			for i in pts.size():
+				var a := Vector2(float(pts[i][0]), float(pts[i][1]))
+				var b := Vector2(float(pts[mini(i + 1, pts.size() - 1)][0]), float(pts[mini(i + 1, pts.size() - 1)][1]))
+				if Geometry2D.get_closest_point_to_segment(m, a, b).distance_to(m) < half:
+					return 4
+		return 1
 	for k in range(1, _land.walk_rects.size()):   # le premier rectangle est le quai et la ville ; les suivants, les pontons
 		var r: Array = _land.walk_rects[k]
+		if r == up:
+			continue
 		if m.x >= float(r[0]) and m.x <= float(r[2]) and m.y >= float(r[1]) and m.y <= float(r[3]):
 			return 2
 	return 4

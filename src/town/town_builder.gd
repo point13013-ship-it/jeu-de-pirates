@@ -32,8 +32,11 @@ static func _deck(root: Node3D, lvl: Dictionary, x0: float, y0: float, x1: float
 	var w := x1 - x0
 	var d := y1 - y0
 	var style := str(lvl.get("style", "deck"))
-	ProcKit.box(root, Vector3(w, h - 0.05, d), ProcKit.w(cx, cy, (h - 0.05) * 0.5), ProcKit.flat(STONE))
+	if style != "none":   # (« none » : le sol est déjà dans le modèle du port, comme le plateau de la haute ville)
+		ProcKit.box(root, Vector3(w, h - 0.05, d), ProcKit.w(cx, cy, (h - 0.05) * 0.5), ProcKit.flat(STONE))
 	match style:
+		"none":
+			pass
 		"plaza":   # dalles de pierre claire
 			ProcKit.box(root, Vector3(w + 0.1, 0.09, d + 0.1), ProcKit.w(cx, cy, h - 0.045), ProcKit.flat(STONE.lightened(0.16)))
 		"garden":   # herbe

@@ -7,7 +7,8 @@ extends RefCounted
 ## Terre qui arrête les bateaux (x0, z0, x1, z1) : quai pavé, pontons, plage. Mesurés sur les maillages du
 ## port (ground_cobble, pier_main/west_ground_planks, ground_sand).
 const SHIP_LAND: Array = [
-	[-42.0, -52.0, 42.0, 0.0],
+	[-42.0, -92.4, 42.0, 0.0],
+	[-50.0, -132.0, 50.0, -92.0],   # (12/11 : la haute ville et sa colline, derrière les remparts)
 	[14.0, -0.2, 18.0, 30.0],
 	[-24.0, -0.2, -21.0, 14.0],
 	# (la plage à l'ouest, [-62, -52, -42, 4], a été retirée : bug 1.5 du lot 1 ; c'est désormais la mer jusqu'au quai)
