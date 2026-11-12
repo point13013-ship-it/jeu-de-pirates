@@ -223,6 +223,21 @@ var _spell_cd_max: Array[float] = [1.0, 1.0, 1.0, 1.0]
 var _face := Vector2(0, 1)           ## direction où je regarde à terre (monde x/z)
 var _popups: Array = []              ## textes qui flottent (or gagné) : {node, t}
 var _heal_t := 0.0
+# ------------------------------------------------------------------ lot 2
+var _sfx: Sfx3D                      ## bruitages placés dans la scène (voir Sfx3D)
+var _ground_vel := Vector2.ZERO      ## m/s (monde x/z) : ma vitesse à pied, l'élan que prend un saut
+var _air_vel := Vector2.ZERO         ## m/s (monde x/z) : ma vitesse horizontale en l'air
+var _act: TimedAction = null         ## l'action longue en cours (ancre, réparation, écopage, hisser un allié…), ou null
+var _act_gauge: ActionGauge          ## sa jauge circulaire au centre de l'écran
+var _remote_acts: Dictionary = {}    ## id du pair -> {kind, t, dur} : l'action longue qu'il fait (pour l'animer chez moi)
+var _carry_nodes: Dictionary = {}    ## id du pair -> Node3D : ce qu'il porte, entre ses mains
+var _remote_carry: Dictionary = {}   ## id du pair -> code de ce qu'il porte ("", "ball", "plank", "t:<id>")
+var _act_loc := -1                   ## où l'action en cours a commencé (Loc) : changer de lieu l'interrompt
+var _act_hurt := false               ## j'ai pris un coup pendant l'action
+var _act_prev_t := 0.0
+var _squash: Dictionary = {}         ## id d'instance d'un sprite -> {t, kind} : écrasement d'appel ou de réception d'un saut
+var _ladder_step_t := 0.0
+var _act_prop: Node3D                ## l'accessoire en main pendant l'action (seau, marteau…)
 
 
 const SEA_PATH := "res://data/sea.json"
@@ -343,7 +358,7 @@ func _setup_ship(ship_name: String) -> void:
 
 
 func _start_host(ship_name: String) -> void:
-	var err := _net.host(ship_name, not _args.has("no-upnp"))
+	var err := _net.host(ship_name, not _args.has("no-upnp"), _args.has("local-only"))
 	if err != OK:
 		_set_status("Impossible d'héberger (erreur %d) : le port %d est peut-être déjà utilisé (une autre partie est-elle ouverte ?)" % [err, SailingNet.PORT])
 		return
@@ -635,6 +650,11 @@ func _build_view() -> void:
 	_world_fixed = Node3D.new()
 	_world.add_child(_world_fixed)
 	_world_fixed.add_child(_sea)
+	# bruitages placés dans la scène (lot 2), entendus depuis le pirate du joueur
+	_viewport.audio_listener_enable_3d = true
+	_sfx = Sfx3D.new()
+	_sfx.name = "Sfx3D"
+	_world.add_child(_sfx)
 	_load_sea()
 	if _args.has("debug-water"):
 		_water_mat.set_shader_parameter("debug_view", int(str(_args["debug-water"])) if str(_args["debug-water"]).is_valid_int() else 1)
@@ -1208,6 +1228,8 @@ func _build_hud() -> void:
 	_hud_root.add_child(_weapon_label)
 	_island_hud = IslandHud.new()
 	_hud_root.add_child(_island_hud)
+	_act_gauge = ActionGauge.new()   # la jauge circulaire des actions longues (lot 2)
+	_hud_root.add_child(_act_gauge)
 	_rep_hud = ReputationHud.new()   # la réputation : rang, barre de progression et bannière de rang
 	_rep_hud.set_points(_profile.reputation)
 	_hud_root.add_child(_rep_hud)
@@ -1375,7 +1397,15 @@ func _apply_test_args() -> void:
 		var fr := str(_args["fake-remote"]).split(",")
 		var fr_off := Vector2(float(fr[0]), float(fr[1])) if fr.size() > 1 else Vector2(0.8, 0.0)
 		get_tree().create_timer(1.0).timeout.connect(func() -> void:
-			apply_remote_player(990001, _ppos + fr_off, false, Loc.SHIP, 0.0, 0.0))
+			if _args.has("fake-swim"):   # essai : --fake-swim il nage à côté de moi (je suis sur le pont) : de quoi le hisser
+				apply_remote_player(990001, _ship_to_world(_ppos) + fr_off, "", 5, 0.0, 0.0)
+			elif _loc == Loc.LAND:   # à côté de moi, là où je suis (à terre : en mètres du monde)
+				apply_remote_player(990001, _lpos + fr_off, str(_args.get("fake-carry", "")), 1, 0.0, _lh)
+			else:
+				apply_remote_player(990001, _ppos + fr_off, str(_args.get("fake-carry", "")), Loc.SHIP, 0.0, 0.0))
+		if _args.has("fake-act"):   # essai : --fake-act=repair le « joueur distant » fait cette action longue (2 s après)
+			get_tree().create_timer(2.0).timeout.connect(func() -> void:
+				apply_action(990001, "act", "%s|%.2f" % [str(_args["fake-act"]), TimedAction.duration_of(str(_args["fake-act"]))], Vector2.ZERO, Vector2(0, 1)))
 		get_tree().create_timer(1.3).timeout.connect(func() -> void:
 			apply_remote_look(990001, local_look_json()))
 	if _args.has("gold"):   # essai : --gold=150 donne de l'or
@@ -1851,7 +1881,7 @@ func _pick_up_treasure(id: String) -> void:
 	_carry_kind = "treasure"
 	_carry_item = id
 	_treasure_icon = Treasure.make_icon(id)
-	_treasure_icon.scale = Vector3.ONE * 1.5
+	_treasure_icon.scale = Vector3.ONE * GameConfig.CARRY_TREASURE_SCALE
 	_treasure_icon.position = Vector3(0.0, 2.25, 0.0)
 	_sprite.add_child(_treasure_icon)
 	_say("%s : %d or. Rapporte-le dans le coffre du capitaine (cabine), puis au receleur sur le quai" % [Treasure.name_of(id), Treasure.value_of(id)], 5.0)
@@ -2282,7 +2312,13 @@ func _aim_at_click(click: Vector2) -> void:
 
 ## Coup de sabre vers `_face` : le croissant s'affiche tout de suite, l'hôte décide qui est touché.
 func _try_attack(secondary: bool = false) -> void:
+	if _act != null:
+		_cancel_action()   # frapper coupe l'action en cours
+		return
 	if _loc != Loc.LAND or _atk_cd > 0.0 or _hp <= 0 or _dialog.is_open() or _shop_menu.is_open() or _chart.is_open() or _jump_wind > 0.0:
+		return
+	if _carrying:   # lot 2 (2.4) : les deux mains sont prises
+		_say("Les mains prises : G pour poser ce que tu portes, puis défends-toi", 2.5)
 		return
 	var wid: String = _profile.secondary_weapon() if secondary else _profile.weapon   # clic gauche : arme principale ; clic droit : secondaire
 	if wid != _profile.weapon:
@@ -2361,6 +2397,8 @@ func apply_action(peer: int, kind: String, arg: String, pos: Vector2, dir: Vecto
 	if _args.has("log"):
 		print("[action] joueur %d : %s %s vers %s" % [peer, kind, arg, dir])
 	match kind:
+		"act", "act_end":   # lot 2 : une action longue commence ou finit
+			_remote_act(peer, kind, arg)
 		"slash":
 			var sl := arg.split("|")
 			var ssk := WeaponSkins.def_of("sabre", sl[1] if sl.size() > 1 else WeaponSkins.CLASSIC)
@@ -2536,6 +2574,9 @@ func apply_swing(peer: int, pos: Vector2, dir: Vector2) -> void:
 func _try_cast(slot: int) -> void:
 	if _profile.berry == "" or _loc != Loc.LAND or _hp <= 0 or _spell_cd[slot] > 0.0 or _dialog.is_open() or _shop_menu.is_open() or _chart.is_open() or _jump_wind > 0.0:
 		return
+	if _carrying:   # lot 2 (2.4) : les mains prises, pas de pouvoir non plus
+		_say("Les mains prises : G pour poser ce que tu portes", 2.5)
+		return
 	var spell := BerryBook.spell(_profile.berry, slot)
 	if spell.is_empty():
 		return
@@ -2681,6 +2722,7 @@ func _popup(text: String, at: Vector2, color: Color) -> void:
 func apply_hurt(damage: int, from: Vector2) -> void:
 	if _inv_t > 0.0 or _hp <= 0 or _loc != Loc.LAND:
 		return
+	_act_hurt = true   # lot 2 : un coup reçu interrompt l'action en cours
 	_hp = maxi(_hp - damage, 0)
 	_inv_t = float(_islands.player_cfg.get("invulnerable_secs", 1.0))
 	_island_hud.flash = 1.0
@@ -2722,8 +2764,11 @@ func _update_loot_pickup(delta: float) -> void:
 	_loot_cd = maxf(_loot_cd - delta, 0.0)
 	if _loot_cd > 0.0 or (_loc != Loc.LAND and _loc != Loc.SWIM) or _loot.count() == 0:
 		return
+	# lot 2 (2.4) : à terre, un trésor ne se ramasse plus en passant dessus mais avec E (sinon on reprendrait aussitôt celui
+	# qu'on vient de poser pour se défendre) ; à la nage, il se ramasse toujours au passage
+	var on_land := _loc == Loc.LAND
 	var id := _loot.nearest(_lpos, WorldLoot.PICK_RANGE, func(kind: String) -> bool:
-		return not kind.begins_with("t:") or not _carrying)
+		return not kind.begins_with("t:") or (not _carrying and not on_land))
 	if id < 0:
 		return
 	_loot_cd = 0.3
@@ -2782,6 +2827,7 @@ func _process(delta_raw: float) -> void:
 	else:
 		_stuck_t = 0.0
 	_update_player(delta)
+	_update_timed_action(delta)
 	_update_rafts(delta)
 	var prev_sim_pos := _sim.position
 	var prev_sim_yaw := _sim.yaw
@@ -2833,6 +2879,7 @@ func _process(delta_raw: float) -> void:
 	_update_camera(delta)
 	_update_atmosphere(delta)
 	_animate_pirates(delta)
+	_update_lot2_visuals(delta)
 	_sync_pirate_palette()
 	_snap_sprite()
 	_update_hud()
@@ -2905,18 +2952,45 @@ func _update_player(delta: float) -> void:
 	if _jump_wind > 0.0:
 		return   # accroupi avant de sauter
 	var airborne := _pz > 0.05 or _vz != 0.0
+	var talking := (_dialog != null and _dialog.is_open()) or (_shop_menu != null and _shop_menu.is_open())
+	# Lot 2 (2.2) : en l'air on garde l'élan pris au sol et on ne le corrige qu'un peu (GameConfig.AIR_CONTROL) ; avant, les
+	# flèches dirigeaient le saut librement, 1,3 fois plus vite qu'à pied : on planait sur 7 m en courant.
+	if airborne and (_loc == Loc.LAND or (_loc == Loc.SHIP and _walkto == Vector2.INF)):
+		var wish := Vector2.ZERO if talking else move * WALK_SPEED * walk_mul
+		if wish == Vector2.ZERO:
+			_air_vel = _air_vel.move_toward(Vector2.ZERO, GameConfig.AIR_DRAG * delta)   # on lâche les flèches : l'élan s'use un peu
+		else:
+			# on infléchit la trajectoire, sans jamais aller plus vite que l'élan pris (ou que la marche, si on a sauté sur place)
+			var cap := maxf(_air_vel.length(), wish.length() * GameConfig.AIR_STANDING_SPEED)
+			_air_vel = _air_vel.move_toward(wish.normalized() * cap, GameConfig.AIR_CONTROL * delta)
+		var v := _air_vel * delta
+		if v == Vector2.ZERO:
+			return
+		if _loc == Loc.LAND:
+			_face = v.normalized()
+			# en plein saut on n'est plus tenu par le bord du quai ni de la plage : on franchit le vide, on passe au-dessus des
+			# poteaux et des tonneaux (seuls les murs arrêtent)
+			var before := _lpos
+			_lpos = _land.air_move(_lpos, v, _pz, _lh)
+			if _lpos.distance_to(before) < v.length() * 0.5:
+				_air_vel *= 0.4   # contre un mur : l'élan se brise
+		else:
+			var before_p := _ppos
+			var dir_s := _ship_dir(v)
+			_pface = dir_s
+			_ppos = _ship.move_air(_ppos, dir_s * (v.length() / ShipModel.SCALE), _pz)   # un saut enjambe les caisses et passe le bastingage
+			if _ppos.distance_to(before_p) < v.length() / ShipModel.SCALE * 0.5:
+				_air_vel *= 0.4
+		return
+	_ground_vel = Vector2.ZERO
 	if _loc == Loc.LAND:
-		if move != Vector2.ZERO and not _dialog.is_open() and not _shop_menu.is_open():
+		if move != Vector2.ZERO and not talking:
 			_face = move.normalized()
-			var step_l := move * WALK_SPEED * walk_mul * _sprint_factor() * delta
-			if airborne:
-				# en plein saut on n'est plus tenu par le bord du quai ni de la plage : on franchit le vide, on passe
-				# au-dessus des poteaux et des tonneaux (seuls les murs arrêtent)
-				_lpos = _land.air_move(_lpos, step_l * AIR_SPEED, _pz, _lh)
-			else:
-				var r := _land.step(_lpos, step_l, _lh)
-				_lpos = Vector2(r.x, r.y)
-				_lh = r.z
+			_ground_vel = move * WALK_SPEED * walk_mul * _sprint_factor()
+			var step_l := _ground_vel * delta
+			var r := _land.step(_lpos, step_l, _lh)
+			_lpos = Vector2(r.x, r.y)
+			_lh = r.z
 		return
 	var step_units := WALK_SPEED * walk_mul * _sprint_factor() / ShipModel.SCALE * delta
 	if _walkto != Vector2.INF:
@@ -2929,10 +3003,8 @@ func _update_player(delta: float) -> void:
 		return
 	var dir_ship := _ship_dir(move)
 	_pface = dir_ship
-	if airborne:
-		_ppos = _ship.move_air(_ppos, dir_ship * step_units * AIR_SPEED, _pz)   # un saut enjambe les caisses et passe le bastingage
-	else:
-		_ppos = _ship.move_with_slide(_ppos, dir_ship * step_units)
+	_ground_vel = move * WALK_SPEED * walk_mul * _sprint_factor()   # (monde, m/s : l'élan que prendra un saut)
+	_ppos = _ship.move_with_slide(_ppos, dir_ship * step_units)
 
 
 ## Flèches (écran : x vers la droite, y vers le bas) -> déplacement dans le monde, caméra tournée comprise. La longueur du
@@ -2976,9 +3048,9 @@ func _land_point(w: Vector2, h: float) -> Vector3:
 	return Vector3(w.x - _world_origin.x, h, w.y - _world_origin.z)
 
 
-## Maj maintenue : on court (marche du pont, de la cale et de la terre).
+## Maj maintenue : on court (marche du pont, de la cale et de la terre). Lot 2 (2.1) : 10 % moins vite qu'avant.
 func _sprint_factor() -> float:
-	return SPRINT_MULT if Input.is_physical_key_pressed(KEY_SHIFT) else 1.0
+	return SPRINT_MULT * GameConfig.SPRINT_SCALE if Input.is_physical_key_pressed(KEY_SHIFT) else 1.0
 
 
 ## Saut : un temps d'accroupissement, puis une parabole. Possible à terre comme sur le pont.
@@ -2992,7 +3064,9 @@ func _update_jump(delta: float) -> void:
 		_jump_wind -= delta
 		if _jump_wind <= 0.0:
 			_vz = JUMP_SPEED
+			_air_vel = _ground_vel   # l'élan du sol (immobile : on saute sur place)
 			_air_origin = {"loc": _loc, "ppos": _ppos, "lpos": _lpos, "lh": _lh}
+			_jump_fx("jump")
 			_dbg("saute depuis (%.1f, %.1f)" % [_lpos.x, _lpos.y])
 	if _loc != Loc.SHIP and _loc != Loc.LAND:
 		_vz = 0.0   # sur une échelle, dans le nid, à la nage ou en vol : pas de gravité de saut, la hauteur est dictée ailleurs
@@ -3002,10 +3076,13 @@ func _update_jump(delta: float) -> void:
 	var floor_h := _fall_floor()
 	if _vz != 0.0 or _pz > floor_h + 0.001:
 		_pz += _vz * delta
-		_vz -= GRAVITY * delta
+		# Lot 2 (2.2) : la descente est plus franche que la montée (on ne flotte plus en haut du saut)
+		_vz -= GRAVITY * (GameConfig.FALL_GRAVITY_MULT if _vz < 0.0 else 1.0) * delta
 		floor_h = _fall_floor()
 		if _pz <= floor_h and _vz < 0.0:
 			_touch_down(floor_h)
+			if _land_t > 0.1 and (_loc == Loc.LAND or _loc == Loc.SHIP):
+				_jump_fx("land")   # (à l'eau, c'est le plouf qui joue)
 
 
 ## Hauteur (relative au pont ou au sol où je me tiens) du plancher sous mes pieds : 0 au-dessus du pont ou de la terre,
@@ -3814,9 +3891,11 @@ func local_player_state() -> Dictionary:
 		code = 6
 	elif _loc == Loc.RAFT:
 		code = 7
+	if _loc == Loc.CLIMB and _climb.get("kind") == "hull":
+		code = 8   # lot 2 (4.4) : sur l'échelle de coque (les autres voient le pirate grimper, et non sauter)
 	var pos := _hpos if _loc == Loc.HOLD else (_lpos if (on_land or code >= 5) else _ppos)
 	var pz := float(_flight.get("y", 0.0)) if _loc == Loc.FLIGHT else _pz
-	return {"pos": pos, "carrying": _carrying, "loc": code, "pz": pz, "lh": _lh}
+	return {"pos": pos, "carry": _carry_code(), "loc": code, "pz": pz, "lh": _lh}
 
 
 ## Hôte : état du bateau diffusé aux clients.
@@ -3881,7 +3960,7 @@ func _correct_from_host(delta: float) -> void:
 	_sim.yaw = lerp_angle(_sim.yaw, yaw, k)
 
 
-func apply_remote_player(id: int, pos: Vector2, carrying: bool, loc: int, pz: float, lh: float = 0.0) -> void:
+func apply_remote_player(id: int, pos: Vector2, carry: String, loc: int, pz: float, lh: float = 0.0) -> void:
 	if _ship == null:
 		return
 	if not _remotes.has(id):
@@ -3897,11 +3976,22 @@ func apply_remote_player(id: int, pos: Vector2, carrying: bool, loc: int, pz: fl
 			if n.get_parent() != holder:
 				n.reparent(holder, false)
 	r["target"] = pos
+	# lot 2 (2.3) : il saute ou se réceptionne : même petit écrasement, même son que chez lui
+	var was_up := float(r.get("pz", 0.0)) > 0.05
+	var up := pz > 0.05 and (loc == 0 or loc == 1)
+	if up and not was_up:
+		_squash_sprite(r["sprite"], "jump")
+		_sfx.play_at(Synth.jump(), (r["sprite"] as Node3D).global_position, 0.5)
+	elif was_up and not up and (loc == 0 or loc == 1):
+		_squash_sprite(r["sprite"], "land")
+		r["land_t"] = 0.14
+		_sfx.play_at(Synth.land(loc == 0), (r["sprite"] as Node3D).global_position, 0.6)
 	r["pz"] = pz
 	r["lh"] = lh
-	# dans la cale on porte une planche, sur le pont un boulet
-	(r["ball"] as MeshInstance3D).visible = carrying and loc != 4
-	(r["plank"] as MeshInstance3D).visible = carrying and loc == 4
+	# lot 2 (2.4) : ce qu'il porte, entre ses mains, tel qu'il l'a (boulet, planche ou le trésor lui-même)
+	(r["ball"] as MeshInstance3D).visible = false
+	(r["plank"] as MeshInstance3D).visible = false
+	_set_remote_carry(id, carry)
 
 
 ## Le pseudo en petit, au-dessus de la tête d'un pirate : toujours de face, visible même derrière un décor, vide = rien.
@@ -3959,7 +4049,7 @@ func _update_remotes(delta: float) -> void:
 		if int(r["loc"]) == 4:
 			sprite.global_position = _hold.point(p, 0.02)
 			blob.global_position = _hold.point(p, 0.07)
-		elif int(r["loc"]) == 1:
+		elif int(r["loc"]) == 1 or int(r["loc"]) == 8:   # (8 : sur l'échelle de coque, position comme à terre)
 			var rlh: float = r.get("lh", 0.0)
 			sprite.global_position = _land_point(p, 0.02 + pz + rlh)
 			blob.global_position = _land_point(p, 0.04 + rlh)
@@ -3978,7 +4068,7 @@ func _update_remotes(delta: float) -> void:
 			var up := pz if int(r["loc"]) == 3 else 0.0
 			sprite.global_position = _ship_point(p, 0.02 + pz)
 			blob.global_position = _ship_point(p, 0.04 + up)
-		blob.visible = int(r["loc"]) != 2 and int(r["loc"]) != 5 and int(r["loc"]) != 7
+		blob.visible = int(r["loc"]) != 2 and int(r["loc"]) != 5 and int(r["loc"]) != 7 and int(r["loc"]) != 8
 
 
 ## Mon apparence : celle de l'éditeur (sauvegardée), sinon celle par défaut.
@@ -4105,8 +4195,14 @@ func _animate_pirates(delta: float) -> void:
 		air = 2
 	if _loc == Loc.FLIGHT:
 		air = 1
-	var climbing: bool = _loc == Loc.CLIMB and _climb.get("kind") == "mast"
-	_sprite.drive(delta, move, _carrying, _loc == Loc.SHIP and _mode == Mode.HELM, helm_dir, air, climbing, helm_dir)
+	var climbing: bool = _loc == Loc.CLIMB
+	# lot 2 (4.4) : sur l'échelle de coque aussi on grimpe (avant : un petit saut en arc), face à la coque
+	var climb_face := helm_dir
+	if _loc == Loc.CLIMB and _climb.get("kind") == "hull":
+		climb_face = (_climb["to"] as Vector2) - (_climb["from"] as Vector2)
+		if not bool(_climb.get("board", false)):
+			climb_face = -climb_face   # en descendant vers le quai, on reste face au bateau
+	_sprite.drive(delta, move, _carrying, _loc == Loc.SHIP and _mode == Mode.HELM, helm_dir, air, climbing, climb_face)
 	_prev_ppos = _ppos
 	_prev_lpos = _lpos
 	_prev_hpos = _hpos
@@ -4120,14 +4216,21 @@ func _animate_pirates(delta: float) -> void:
 		var d := p - (r["prev"] as Vector2)
 		var m := Vector2.ZERO if loc == 7 else (d if (loc == 1 or loc == 4 or loc >= 5) else _screen_of_ship(d))
 		var rair := 1 if ((float(r["pz"]) > 0.05 and (loc == 0 or loc == 1)) or loc == 6) else 0
-		var r_carry: bool = (r["ball"] as MeshInstance3D).visible or (r["plank"] as MeshInstance3D).visible
-		(r["sprite"] as PirateSprite).drive(delta, m, r_carry,
-				loc == 0 and _helm_owner == id, helm_dir, rair, loc == 2, helm_dir)
+		r["land_t"] = maxf(float(r.get("land_t", 0.0)) - delta, 0.0)
+		if rair == 0 and float(r["land_t"]) > 0.0:
+			rair = 2   # lot 2 (2.3) : sa réception aussi
+		var r_carry: bool = str(_remote_carry.get(id, "")) != ""
+		var r_face := helm_dir if loc != 8 else (d if d.length() > 0.001 else Vector2(0, -1))
+		(r["sprite"] as PirateSprite).drive(delta, m if loc != 8 else Vector2.ZERO, r_carry,
+				loc == 0 and _helm_owner == id, helm_dir, rair, loc == 2 or loc == 8, r_face)
 		r["prev"] = p
 
 
 ## Un joueur est parti : son pirate disparaît, et la barre se libère s'il la tenait.
 func on_peer_left(id: int) -> void:
+	_end_remote_act(id)
+	_set_remote_carry(id, "")
+	_remote_carry.erase(id)
 	if _remotes.has(id):
 		for key in ["sprite", "blob"]:
 			(_remotes[id][key] as Node).queue_free()
@@ -4559,8 +4662,14 @@ func _unhandled_input(event: InputEvent) -> void:
 		elif key.physical_keycode == KEY_R:
 			_dialog.refuse()
 		return
+	# une action longue en cours : une touche d'action la coupe (et ne fait rien d'autre cette fois)
+	if _act != null and key.physical_keycode in [KEY_E, KEY_R, KEY_F, KEY_SPACE, KEY_G, KEY_1, KEY_2, KEY_3, KEY_4]:
+		_cancel_action()
+		return
 	if key.physical_keycode == KEY_ESCAPE:
 		_toggle_pause()
+	elif key.physical_keycode == KEY_G:
+		_drop_to_ground()   # lot 2 (2.4) : poser au sol ce que je porte
 	elif key.physical_keycode == KEY_J:
 		_open_quests()
 	elif key.physical_keycode == KEY_TAB:
@@ -4608,6 +4717,7 @@ func _hold_nearest() -> Dictionary:
 
 func _interact_hold(secondary: bool) -> void:
 	var it := _hold_nearest()
+	_dbg("cale : E près de %s (eau %.2f)" % [str(it.get("kind", "rien")), _hull.water])
 	if it.is_empty():
 		return
 	if secondary and it["kind"] != "rack":
@@ -4618,14 +4728,13 @@ func _interact_hold(secondary: bool) -> void:
 		"rack":
 			_interact_rack(secondary)
 		"bucket":
-			if _bail_cd <= 0.0 and _hull.water > 0.0:
-				_bail_cd = _hull.bail_cooldown
-				_request("bail", 0)
-				_splash_bucket()
+			if _hull.water > 0.0:
+				_start_action("bail", "Écoper")   # lot 2 (4.3) : remplir le seau, puis le vider ; l'eau baisse à la fin
+			else:
+				_say("La cale est sèche", 2.0)
 		"hole":
 			if _carry_kind == "plank":
-				_request("patch", int(it["slot"]))
-				_drop_carried()
+				_start_action("repair", "Clouer la planche", int(it["slot"]))   # lot 2 (4.2) : la voie d'eau est bouchée à la fin
 			else:
 				_say("Il te faut une planche : l'étagère est au fond, à l'arrière")
 
@@ -4695,6 +4804,8 @@ func _interact(secondary: bool) -> void:
 				_talk_fence(npc)
 			else:
 				_talk(npc)
+		elif not secondary and _pick_up_ground_treasure():
+			pass   # lot 2 (2.4) : on reprend le trésor posé à ses pieds
 		elif not secondary:
 			var chest := _islands.nearest_chest(_lpos)
 			var berry := _islands.nearest_berry(_lpos)
@@ -4726,6 +4837,10 @@ func _interact(secondary: bool) -> void:
 	if _mode == Mode.CANNON:
 		_leave_cannon(not secondary)
 		return
+	var swimmer := _hoist_candidate()
+	if swimmer != 0 and not secondary:   # lot 2 (4.5) : un camarade à l'eau, à portée de bras : on le hisse
+		_start_action("hoist", "Hisser %s" % _remote_label(swimmer), swimmer)
+		return
 	var it := _nearest_interactable()
 	if it.is_empty():
 		return
@@ -4750,7 +4865,7 @@ func _interact(secondary: bool) -> void:
 				_enter_sails(it)
 		"anchor":
 			if not secondary:
-				_request("anchor", 0)
+				_start_action("anchor", "Lever l'ancre" if _sim.anchored else "Jeter l'ancre")   # lot 2 (4.1) : au cabestan
 		"hatch":
 			if not secondary:
 				_enter_hold()
@@ -5016,6 +5131,23 @@ func apply_request(peer: int, kind: String, value: int) -> void:
 					fire_visual(value, true)
 		"anchor":
 			_sim.anchored = not _sim.anchored
+		"drop":   # lot 2 (2.4) : poser au sol ce qu'on porte (valeur : indice du trésor, -1 boulet, -2 planche)
+			var dkind := "ball" if value == -1 else ("plank" if value == -2 else "t:" + Treasure.id_at(value))
+			var dpos := Vector2.INF
+			if peer == _my_id():
+				dpos = _lpos if _loc == Loc.LAND else Vector2.INF
+			elif _remotes.has(peer) and int(_remotes[peer]["loc"]) == 1:
+				dpos = _remotes[peer]["target"]
+			if dpos != Vector2.INF and dkind != "t:":
+				_loot.spawn(dkind, dpos, GameConfig.DROPPED_TTL)
+		"hoist":   # lot 2 (4.5) : `peer` hisse le camarade `value` hors de l'eau
+			var swimming := false
+			if value == _my_id():
+				swimming = _loc == Loc.SWIM
+			elif _remotes.has(value):
+				swimming = int(_remotes[value]["loc"]) == 5
+			if swimming:
+				_do_hoist(value)
 		"patch":
 			if _hull.patch(value):
 				_refresh_hull_visuals()
@@ -6488,6 +6620,445 @@ func apply_remote_raft(id: int, s: Array) -> void:
 		_dbg("radeau de %d vu à distance en (%.1f, %.1f)" % [id, float(s[0]), float(s[1])])
 	rr.set_meta("target", Vector2(float(s[0]), float(s[1])))
 	rr.apply_pose(float(s[2]), float(s[3]), float(s[4]))
+
+
+# ================================================================== lot 2 : actions longues, saut, port d'objet, échelle
+
+## Où je suis dans le repère de mon lieu (pont, cale, terre, eau) : sert à savoir si je bouge pendant une action.
+func _act_pos() -> Vector2:
+	if _loc == Loc.HOLD:
+		return _hpos
+	if _loc == Loc.SHIP:
+		return _ppos
+	return _lpos
+
+
+## Le point de la scène où je me tiens (pour y placer un son ou une gerbe).
+func _my_scene_pos() -> Vector3:
+	return _sprite.global_position if _sprite != null else Vector3.ZERO
+
+
+## Commence une action longue (règle commune du lot 2). Sans effet si une autre est en cours.
+func _start_action(kind: String, label: String, arg: int = 0) -> void:
+	if _act != null:
+		return
+	_act = TimedAction.create(kind, label, TimedAction.duration_of(kind), _act_pos(), arg)
+	_act_loc = _loc
+	_act_hurt = false
+	_act_prev_t = -0.001
+	_make_act_prop(_sprite, kind)
+	_send_action("act", "%s|%.2f" % [kind, _act.duration], _my_world_pos(), _face)
+	_dbg("action %s commencée (%.1f s)" % [kind, _act.duration])
+
+
+## Chaque image : l'action avance, s'interrompt (je bouge, je saute, je change de lieu, je prends un coup) ou se termine.
+func _update_timed_action(delta: float) -> void:
+	if _act == null:
+		return
+	var input := Vector2(_axis([KEY_A, KEY_LEFT], [KEY_D, KEY_RIGHT]), _axis([KEY_W, KEY_UP], [KEY_S, KEY_DOWN]))
+	if _test_move != Vector2.ZERO:
+		input = _test_move
+	var menus := (_chart != null and _chart.is_open()) or (_pause != null and _pause.is_open()) or (_inventory != null and _inventory.is_open())
+	var moving := (input != Vector2.ZERO and not menus) or _jump_wind > 0.0 or _pz > 0.05 or _loc != _act_loc
+	var finished := _act.step(delta, _act_pos(), moving, _act_hurt)
+	_act_hurt = false
+	if _act.cancelled:
+		_end_action(false)
+		return
+	_act_gauge.show_progress(_act.label, _act.progress())
+	_work_fx(_act.kind, _act_prev_t, _act.t, _act.duration, _my_scene_pos(), "me")
+	_act_prev_t = _act.t
+	if finished:
+		_apply_action_effect(_act)
+		_end_action(true)
+
+
+## Coupe l'action en cours (une autre touche d'action, un coup reçu…).
+func _cancel_action() -> void:
+	if _act != null:
+		_act.cancelled = true
+		_end_action(false)
+
+
+func _end_action(ok: bool) -> void:
+	if _act == null:
+		return
+	_dbg("action %s %s" % [_act.kind, "terminée" if ok else "interrompue"])
+	_act = null
+	if ok:
+		_act_gauge.finish()
+	else:
+		_act_gauge.interrupt()
+	_sfx.stop_loop("me")
+	_clear_act_prop(_sprite)
+	_send_action("act_end", "1" if ok else "0", _my_world_pos(), _face)
+
+
+## L'effet d'une action menée à son terme : on le demande à l'hôte, qui fait autorité.
+func _apply_action_effect(a: TimedAction) -> void:
+	match a.kind:
+		"anchor":
+			_request("anchor", 0)
+			_say("L'ancre est jetée" if not _sim.anchored else "L'ancre est levée", 2.0)
+		"repair":
+			if _carry_kind == "plank":
+				_request("patch", a.arg)
+				_drop_carried()
+				_say("Voie d'eau bouchée", 2.0)
+		"bail":
+			_request("bail", 0)
+		"hoist":
+			_request("hoist", a.arg)
+
+
+## Les sons et effets d'une action à l'instant t (de t0 à t1 pendant cette image), à l'endroit `at` (scène). `key` : de qui c'est
+## (« me » ou « p<id> ») pour les sons qui durent. Joué chez tout le monde, pour soi comme pour les autres.
+func _work_fx(kind: String, t0: float, t1: float, dur: float, at: Vector3, key: String) -> void:
+	match kind:
+		"anchor":
+			_sfx.loop_at(key, Synth.capstan(), at, 0.8, 0.95 + 0.1 * sin(t1 * 2.0))
+		"repair":
+			var n0 := floori(maxf(t0, 0.0) / GameConfig.HAMMER_EVERY)
+			var n1 := floori(t1 / GameConfig.HAMMER_EVERY)
+			if t0 < 0.0 or n1 > n0:
+				_sfx.play_at(Synth.hammer(n1 % 3), at + Vector3(0.0, 0.6, 0.0), 0.9, randf_range(0.95, 1.08))
+				_chips(at + Vector3(0.0, 0.7, 0.0), Color(0.72, 0.52, 0.3))
+		"bail":
+			var cut := dur * GameConfig.BAIL_FILL_SHARE
+			if t0 < 0.0:
+				_sfx.play_at(Synth.bucket_fill(), at, 0.8)
+			if t0 < cut and t1 >= cut:
+				_sfx.play_at(Synth.bucket_pour(), at + Vector3(0.0, 1.2, 0.0), 0.85)
+				_chips(at + Vector3(0.0, 1.3, 0.0), Color(0.7, 0.88, 1.0), 9, 1.3)
+		"hoist":
+			if t0 < 0.0:
+				_sfx.play_at(Synth.rope(), at, 0.8)
+		"revive":
+			pass
+
+
+## Petite gerbe (copeaux de bois, eau) en `at` (scène).
+func _chips(at: Vector3, color: Color, count: int = 5, lift: float = 0.5) -> void:
+	for k in count:
+		var drop := _make_ball(0.04, color)
+		(drop.material_override as StandardMaterial3D).shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		drop.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		_world.add_child(drop)
+		drop.global_position = at
+		var a := TAU * float(k) / float(count) + randf() * 0.7
+		var d := Vector3(cos(a), 0.0, sin(a)) * randf_range(0.15, 0.4)
+		var tw := drop.create_tween()
+		tw.set_parallel(true)
+		tw.tween_property(drop, "global_position:x", at.x + d.x, 0.35)
+		tw.tween_property(drop, "global_position:z", at.z + d.z, 0.35)
+		tw.tween_property(drop, "global_position:y", at.y + randf_range(0.15, lift), 0.15).set_ease(Tween.EASE_OUT)
+		tw.chain().tween_property(drop, "global_position:y", at.y - 0.5, 0.2).set_ease(Tween.EASE_IN)
+		tw.chain().tween_callback(drop.queue_free)
+
+
+## L'accessoire tenu pendant une action (le pixel art n'a pas d'images pour ces gestes) : un seau pour écoper, un marteau pour
+## clouer. PROVISOIRE : à remplacer par de vraies animations du pirate quand elles seront dessinées.
+func _make_act_prop(sprite: PirateSprite, kind: String) -> void:
+	_clear_act_prop(sprite)
+	var prop: Node3D = null
+	match kind:
+		"bail":
+			var mi := MeshInstance3D.new()
+			var cyl := CylinderMesh.new()
+			cyl.top_radius = 0.16
+			cyl.bottom_radius = 0.12
+			cyl.height = 0.26
+			mi.mesh = cyl
+			var m := StandardMaterial3D.new()
+			m.albedo_color = Color(0.55, 0.36, 0.2)
+			mi.material_override = m
+			prop = mi
+		"repair":
+			var mh := MeshInstance3D.new()
+			var bm := BoxMesh.new()
+			bm.size = Vector3(0.08, 0.32, 0.08)
+			mh.mesh = bm
+			var mm := StandardMaterial3D.new()
+			mm.albedo_color = Color(0.45, 0.3, 0.18)
+			mh.material_override = mm
+			var head := MeshInstance3D.new()
+			var hb := BoxMesh.new()
+			hb.size = Vector3(0.18, 0.08, 0.08)
+			head.mesh = hb
+			var hm := StandardMaterial3D.new()
+			hm.albedo_color = Color(0.5, 0.52, 0.56)
+			hm.metallic = 0.6
+			head.material_override = hm
+			head.position = Vector3(0.0, 0.16, 0.0)
+			mh.add_child(head)
+			prop = mh
+	if prop == null:
+		return
+	prop.name = "ActProp"
+	sprite.add_child(prop)
+
+
+func _clear_act_prop(sprite: PirateSprite) -> void:
+	if sprite == null:
+		return
+	var old := sprite.get_node_or_null("ActProp")
+	if old != null:
+		old.queue_free()
+		sprite.remove_child(old)
+
+
+## Le geste d'une action, sur le sprite (balancement, coup de marteau, seau qui plonge puis se lève) et son accessoire.
+## Renvoie l'écrasement à appliquer au sprite (voir _update_lot2_visuals) : positif, le pirate se tasse ; négatif, il s'étire.
+func _work_pose(sprite: PirateSprite, kind: String, t: float, dur: float) -> float:
+	var prop := sprite.get_node_or_null("ActProp") as Node3D
+	var to_cam := _cam.global_transform.basis.z
+	var base := sprite.global_position
+	match kind:
+		"anchor":   # on pousse sur les barres du cabestan : un balancement lent
+			return 0.05 * sin(t * TAU * 0.9)
+		"repair":   # coups de marteau
+			var ph := fmod(t, GameConfig.HAMMER_EVERY) / GameConfig.HAMMER_EVERY
+			if prop != null:
+				prop.global_position = base + Vector3(0.0, 0.75 + 0.35 * (1.0 - ph), 0.0) + to_cam * 0.4
+				prop.rotation = Vector3(0.0, 0.0, -1.2 * (1.0 - ph))
+			return 0.06 * (1.0 - ph)   # tassé au moment du coup
+		"bail":   # le seau plonge (remplir), puis monte au-dessus de la tête (vider)
+			var k := clampf(t / maxf(dur, 0.01), 0.0, 1.0)
+			var h := 0.25 if k < GameConfig.BAIL_FILL_SHARE else lerpf(0.4, 1.8, smoothstep(GameConfig.BAIL_FILL_SHARE, 1.0, k))
+			if prop != null:
+				prop.global_position = base + Vector3(0.0, h, 0.0) + to_cam * 0.35
+				prop.rotation = Vector3(0.0, 0.0, 0.0 if k < 0.8 else -2.0 * (k - 0.8) / 0.2)
+			return 0.08 if k < GameConfig.BAIL_FILL_SHARE else -0.04   # accroupi pour remplir, dressé pour vider
+		"hoist", "revive":   # on se penche et on tire
+			return 0.07 * (0.5 + 0.5 * sin(t * TAU * 1.2))
+	return 0.0
+
+
+## Saut (lot 2, 2.3) : à l'appel et à la réception, un petit écrasement du sprite, un son, et de la poussière à la réception.
+func _jump_fx(kind: String) -> void:
+	_squash_sprite(_sprite, kind)
+	var at := _my_scene_pos()
+	if kind == "jump":
+		_sfx.play_at(Synth.jump(), at, 0.6, randf_range(0.95, 1.1))
+	else:
+		var on_wood := _loc == Loc.SHIP or (_loc == Loc.LAND and _lh > 0.1)
+		_sfx.play_at(Synth.land(on_wood), at, 0.75, randf_range(0.92, 1.08))
+		_chips(at + Vector3(0.0, 0.05, 0.0), Color(0.78, 0.7, 0.58, 1.0), 6, 0.25)
+
+
+func _squash_sprite(sprite: Node3D, kind: String) -> void:
+	if sprite != null:
+		_squash[sprite.get_instance_id()] = {"t": 0.0, "kind": kind, "node": sprite}
+
+
+## Chaque image : écrasements de saut et gestes d'action (les miens et ceux des autres), objets portés entre les mains, oreille.
+func _update_lot2_visuals(delta: float) -> void:
+	_sfx.set_listener(_my_scene_pos() + Vector3(0.0, 1.0, 0.0))
+	var poses: Dictionary = {}   # id d'instance -> écrasement de geste
+	if _act != null:
+		poses[_sprite.get_instance_id()] = _work_pose(_sprite, _act.kind, _act.t, _act.duration)
+	for id: int in _remote_acts.keys():
+		if not _remotes.has(id):
+			_remote_acts.erase(id)
+			continue
+		var ra: Dictionary = _remote_acts[id]
+		var rs := _remotes[id]["sprite"] as PirateSprite
+		var t0 := float(ra["t"])
+		ra["t"] = t0 + delta
+		_work_fx(str(ra["kind"]), t0 if t0 > 0.0 else -0.001, float(ra["t"]), float(ra["dur"]), rs.global_position, "p%d" % id)
+		poses[rs.get_instance_id()] = _work_pose(rs, str(ra["kind"]), float(ra["t"]), float(ra["dur"]))
+		if float(ra["t"]) > float(ra["dur"]) + 2.0:   # (le message de fin s'est perdu : on arrête de l'animer)
+			_end_remote_act(id)
+	# écrasements de saut : vite écrasé, puis retour (étiré un instant à l'appel)
+	var squash: Dictionary = {}
+	for key: int in _squash.keys():
+		var s: Dictionary = _squash[key]
+		if not is_instance_valid(s["node"]):
+			_squash.erase(key)
+			continue
+		s["t"] = float(s["t"]) + delta
+		var k := float(s["t"]) / GameConfig.JUMP_SQUASH_TIME
+		if k >= 2.0:
+			_squash.erase(key)
+			continue
+		var amt := GameConfig.JUMP_SQUASH * (sin(PI * minf(k, 1.0)) if k < 1.0 else 0.0)
+		squash[key] = amt if str(s["kind"]) == "land" else -amt * 0.6 + (GameConfig.JUMP_SQUASH * 0.5 * sin(PI * (k - 1.0)) if k >= 1.0 else 0.0)
+	for sprite: PirateSprite in _all_sprites():
+		var key := sprite.get_instance_id()
+		var sq := float(squash.get(key, 0.0)) + float(poses.get(key, 0.0))
+		# sq > 0 : écrasé (plus large, moins haut) ; sq < 0 : étiré. (Glissé dans un canon, mon pirate est caché en étant réduit
+		# à rien : on n'y touche pas.)
+		if sprite == _sprite and _mode == Mode.CANNON:
+			continue
+		sprite.scale = Vector3(1.0 + sq * 0.6, 1.0 - sq, 1.0)
+	# ce que chacun porte, entre les mains (et non plus au-dessus de la tête), visible par tous
+	var to_cam := _cam.global_transform.basis.z
+	var mine: Node3D = _treasure_icon if _treasure_icon != null else (_ball_icon if _ball_icon.visible else (_plank_icon if _plank_icon.visible else null))
+	for n: Node3D in [_treasure_icon, _ball_icon, _plank_icon]:
+		if n != null and n == mine:
+			n.global_position = _sprite.global_position + Vector3(0.0, GameConfig.CARRY_HANDS_HEIGHT, 0.0) + to_cam * GameConfig.CARRY_TOWARD_CAMERA
+	for id: int in _carry_nodes:
+		var cn := _carry_nodes[id] as Node3D
+		if is_instance_valid(cn) and _remotes.has(id):
+			cn.global_position = (_remotes[id]["sprite"] as Node3D).global_position + Vector3(0.0, GameConfig.CARRY_HANDS_HEIGHT, 0.0) + to_cam * GameConfig.CARRY_TOWARD_CAMERA
+	# l'échelle : des pas sur le bois pendant qu'on grimpe (coque et mât)
+	if _loc == Loc.CLIMB:
+		_ladder_step_t -= delta
+		if _ladder_step_t <= 0.0:
+			_ladder_step_t = GameConfig.LADDER_STEP_EVERY
+			_sfx.play_at(Synth.step(2, randi() % 3), _my_scene_pos(), 0.55, randf_range(0.95, 1.12))
+	else:
+		_ladder_step_t = 0.0
+
+
+func _all_sprites() -> Array:
+	var out: Array = [_sprite]
+	for id in _remotes:
+		out.append(_remotes[id]["sprite"])
+	return out
+
+
+## Un autre joueur commence ou finit une action longue (reçu par le réseau) : je joue chez moi son geste et ses sons.
+func _remote_act(peer: int, kind: String, arg: String) -> void:
+	if not _remotes.has(peer):
+		return
+	var rs := _remotes[peer]["sprite"] as PirateSprite
+	if kind == "act":
+		var p := arg.split("|")
+		_remote_acts[peer] = {"kind": p[0], "t": 0.0, "dur": float(p[1]) if p.size() > 1 else 1.0}
+		_make_act_prop(rs, p[0])
+	else:
+		_end_remote_act(peer)
+
+
+func _end_remote_act(peer: int) -> void:
+	_remote_acts.erase(peer)
+	_sfx.stop_loop("p%d" % peer)
+	if _remotes.has(peer):
+		_clear_act_prop(_remotes[peer]["sprite"] as PirateSprite)
+
+
+# ------------------------------------------------------------------ porter (2.4)
+
+## Ce que je porte, à envoyer aux autres : "" (rien), "ball", "plank" ou "t:<trésor>".
+func _carry_code() -> String:
+	if not _carrying:
+		return ""
+	if _carry_kind == "treasure":
+		return "t:" + _carry_item
+	return _carry_kind
+
+
+## L'objet porté par un autre joueur, tel qu'il le tient (reçu avec sa position) : on refait sa maquette quand il change.
+func _set_remote_carry(id: int, code: String) -> void:
+	if str(_remote_carry.get(id, "")) == code:
+		return
+	_remote_carry[id] = code
+	if _carry_nodes.has(id) and is_instance_valid(_carry_nodes[id]):
+		(_carry_nodes[id] as Node).queue_free()
+	_carry_nodes.erase(id)
+	if code == "" or not _remotes.has(id):
+		return
+	var node: Node3D = null
+	if code.begins_with("t:") and Treasure.exists(code.substr(2)):
+		node = Treasure.make_icon(code.substr(2))
+		node.scale = Vector3.ONE * GameConfig.CARRY_TREASURE_SCALE
+	elif code == "ball":
+		node = _make_ball(0.14, Color(0.12, 0.12, 0.16))
+	elif code == "plank":
+		node = _plank_icon.duplicate() as Node3D
+		node.visible = true
+	if node == null:
+		return
+	(_remotes[id]["sprite"] as Node3D).add_child(node)
+	_carry_nodes[id] = node
+
+
+## G : poser au sol ce que je porte (pour avoir les mains libres et me défendre). On le reprend avec E.
+func _drop_to_ground() -> void:
+	if not _carrying:
+		return
+	if _loc != Loc.LAND or _pz > 0.05:
+		_say("Pose-le à terre : sur le bateau, range-le (coffre du capitaine, caisse, étagère de la cale)", 3.5)
+		return
+	var value := -1 if _carry_kind == "ball" else (-2 if _carry_kind == "plank" else Treasure.index_of(_carry_item))
+	if _carry_kind == "treasure" and value < 0:
+		return
+	_request("drop", value)
+	_sfx.play_at(Synth.thump(), _my_scene_pos(), 0.8)
+	_drop_carried()
+	_loot_cd = 0.6
+	_say("Posé au sol : E pour le reprendre", 2.5)
+
+
+## E à terre, mains libres : je reprends un trésor posé (ou échoué) à mes pieds. Vrai si j'en ai pris un.
+func _pick_up_ground_treasure() -> bool:
+	if _carrying or _loot.count() == 0:
+		return false
+	var id := _loot.nearest(_lpos, WorldLoot.PICK_RANGE, func(kind: String) -> bool: return kind.begins_with("t:"))
+	if id < 0:
+		return false
+	_request("loot_take", id)
+	_sfx.play_at(Synth.thump(), _my_scene_pos(), 0.6, 1.15)
+	return true
+
+
+# ------------------------------------------------------------------ hisser un camarade (4.5)
+
+## Le nom d'un autre joueur (son pseudo, sinon « ton camarade »).
+func _remote_label(id: int) -> String:
+	var n := str(_remote_names.get(id, ""))
+	return n if n != "" else "ton camarade"
+
+
+## Un camarade qui nage assez près de moi pour que je l'attrape (je suis sur le pont, au bord ou en haut d'une échelle) : son id, ou 0.
+func _hoist_candidate() -> int:
+	if _loc != Loc.SHIP or _mode != Mode.WALK or _carrying:
+		return 0
+	var me := _ship_to_world(_ppos)
+	var best := 0
+	var best_d := GameConfig.HOIST_REACH
+	for id in _remotes:
+		var r: Dictionary = _remotes[id]
+		if int(r["loc"]) != 5:
+			continue
+		var d := me.distance_to(r["pos"] as Vector2)
+		if d < best_d:
+			best_d = d
+			best = id
+	return best
+
+
+## Hôte : un camarade est hissé à bord. Il remonte par l'échelle la plus proche (montée normale de l'échelle).
+func _do_hoist(target: int) -> void:
+	if target == _my_id():
+		apply_hoisted()
+	elif _net != null and _net.active:
+		_net.send_hoist(target)
+
+
+## On me hisse hors de l'eau (un camarade m'a attrapé) : je remonte par l'échelle la plus proche.
+func apply_hoisted() -> void:
+	if _loc != Loc.SWIM:
+		return
+	var best := 0
+	var best_d := INF
+	for i in _ship.ladders.size():
+		var l: Array = _ship.ladders[i]
+		var d := _lpos.distance_to(_ship_to_world(Vector2(float(l[0]), float(l[3]))))
+		if d < best_d:
+			best_d = d
+			best = i
+	var l2: Array = _ship.ladders[best]
+	var deck := _ship.nearest_walkable(Vector2(float(l2[0]), float(l2[1])))
+	_cancel_action()
+	_loc = Loc.CLIMB
+	_mode = Mode.WALK
+	_climb = {"kind": "hull", "t": 0.0, "dur": 1.0, "from": _lpos, "to": _ship_to_world(deck), "board": true, "deck": deck,
+			"y0": SEA_Y - SWIM_DEPTH, "y1": _ship.position.y + _ship.deck_height(deck.x)}
+	_splash_burst(_lpos)
+	_sfx.play_at(Synth.rope(), _my_scene_pos(), 0.8)
+	_say("Un camarade t'a hissé à bord !", 2.5)
 
 
 ## Invite de la ligne du bas sur le radeau.

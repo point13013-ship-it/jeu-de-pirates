@@ -340,6 +340,121 @@ static func creak() -> AudioStreamWAV:
 		return _to_stream(_normalize(out, 0.45), false))
 
 
+# ------------------------------------------------------------------ lot 2 : bruitages d'actions (PROVISOIRES)
+# Fabriqués par le code faute de fichiers : à remplacer par de vrais enregistrements (Epidemic Sound), voir la liste des assets
+# du lot 2. Chacun garde le même nom de fonction : il suffira de charger le fichier à la place.
+
+## PROVISOIRE — un cliquet de cabestan qui tourne : une série de « clac » de bois et de fer, avec un grincement dessous.
+static func capstan() -> AudioStreamWAV:
+	return _cached("capstan", func() -> AudioStreamWAV:
+		var len := int(1.2 * RATE)
+		var nz := _lowpass(_noise(len, 501), 3200.0)
+		var out := PackedFloat32Array()
+		out.resize(len)
+		var ph := 0.0
+		for i in len:
+			var t := float(i) / RATE
+			var click := fmod(t, 0.15)
+			var k := exp(-click * 70.0) * (1.0 if click < 0.05 else 0.0)
+			ph += TAU * (120.0 + 15.0 * sin(t * 7.0)) / RATE
+			out[i] = nz[i] * k * 1.4 + sin(TAU * 900.0 * t) * k * 0.25 + (sin(ph) + 0.5 * sin(2.0 * ph)) * 0.12
+		return _to_stream(_normalize(_loopify(out, int(0.05 * RATE)), 0.6), true))
+
+
+## PROVISOIRE — un coup de marteau sur un clou : un toc métallique bref, un peu de bois qui résonne.
+static func hammer(variant: int = 0) -> AudioStreamWAV:
+	return _cached("hammer%d" % variant, func() -> AudioStreamWAV:
+		var len := int(0.22 * RATE)
+		var nz := _highpass(_noise(len, 520 + variant), 900.0)
+		var out := PackedFloat32Array()
+		out.resize(len)
+		var f := 1650.0 + variant * 140.0
+		for i in len:
+			var t := float(i) / RATE
+			out[i] = (sin(TAU * f * t) * 0.6 + sin(TAU * 230.0 * t) * 0.7) * exp(-t * 32.0) + nz[i] * exp(-t * 90.0) * 0.8
+		return _to_stream(_normalize(out, 0.6), false))
+
+
+## PROVISOIRE — le seau qu'on plonge et qui se remplit : un glouglou.
+static func bucket_fill() -> AudioStreamWAV:
+	return _cached("bucket_fill", func() -> AudioStreamWAV:
+		var len := int(0.7 * RATE)
+		var hp := _highpass(_lowpass(_noise(len, 541), 2600.0), 300.0)
+		var out := PackedFloat32Array()
+		out.resize(len)
+		for i in len:
+			var u := float(i) / len
+			out[i] = hp[i] * sin(PI * u) * (0.6 + 0.4 * sin(u * 70.0 + sin(u * 13.0) * 2.0))
+		return _to_stream(_normalize(out, 0.5), false))
+
+
+## PROVISOIRE — le seau vidé par-dessus bord : une gerbe qui tombe.
+static func bucket_pour() -> AudioStreamWAV:
+	return _cached("bucket_pour", func() -> AudioStreamWAV:
+		var len := int(0.8 * RATE)
+		var hp := _highpass(_lowpass(_noise(len, 561), 5200.0), 450.0)
+		var out := PackedFloat32Array()
+		out.resize(len)
+		for i in len:
+			var u := float(i) / len
+			out[i] = hp[i] * pow(sin(PI * minf(u * 1.4, 1.0)), 0.7) * (1.0 - u * 0.5)
+		return _to_stream(_normalize(out, 0.55), false))
+
+
+## PROVISOIRE — l'élan d'un saut : un froissement de tissu.
+static func jump() -> AudioStreamWAV:
+	return _cached("jump", func() -> AudioStreamWAV:
+		var len := int(0.18 * RATE)
+		var hp := _highpass(_lowpass(_noise(len, 581), 4000.0), 1200.0)
+		var out := PackedFloat32Array()
+		out.resize(len)
+		for i in len:
+			var u := float(i) / len
+			out[i] = hp[i] * sin(PI * u)
+		return _to_stream(_normalize(out, 0.35), false))
+
+
+## PROVISOIRE — la réception d'un saut : un choc sourd (bois ou sol).
+static func land(on_wood: bool) -> AudioStreamWAV:
+	return _cached("land%d" % int(on_wood), func() -> AudioStreamWAV:
+		var len := int(0.2 * RATE)
+		var lp := _lowpass(_noise(len, 601), 900.0 if on_wood else 600.0)
+		var out := PackedFloat32Array()
+		out.resize(len)
+		for i in len:
+			var t := float(i) / RATE
+			out[i] = lp[i] * exp(-t * 25.0) * 1.5 + (sin(TAU * 85.0 * t) * exp(-t * 30.0) * 0.8 if on_wood else 0.0)
+		return _to_stream(_normalize(out, 0.55), false))
+
+
+## PROVISOIRE — on pose (ou ramasse) un objet lourd : un « tomp » de bois.
+static func thump() -> AudioStreamWAV:
+	return _cached("thump", func() -> AudioStreamWAV:
+		var len := int(0.25 * RATE)
+		var lp := _lowpass(_noise(len, 621), 1400.0)
+		var out := PackedFloat32Array()
+		out.resize(len)
+		for i in len:
+			var t := float(i) / RATE
+			out[i] = (sin(TAU * 140.0 * t) * 0.9 + lp[i] * 0.6) * exp(-t * 18.0)
+		return _to_stream(_normalize(out, 0.55), false))
+
+
+## PROVISOIRE — une corde qu'on tire (hisser un camarade) : un frottement qui grince.
+static func rope() -> AudioStreamWAV:
+	return _cached("rope", func() -> AudioStreamWAV:
+		var len := int(0.9 * RATE)
+		var bp := _highpass(_lowpass(_noise(len, 641), 3000.0), 600.0)
+		var out := PackedFloat32Array()
+		out.resize(len)
+		var ph := 0.0
+		for i in len:
+			var u := float(i) / len
+			ph += TAU * lerpf(260.0, 190.0, u) / RATE
+			out[i] = (bp[i] * 0.8 + sin(ph) * 0.25 * (0.5 + 0.5 * sin(u * 40.0))) * sin(PI * u)
+		return _to_stream(_normalize(out, 0.5), false))
+
+
 ## Le tonnerre : un grondement qui roule.
 static func thunder() -> AudioStreamWAV:
 	return _cached("thunder", func() -> AudioStreamWAV:

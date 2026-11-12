@@ -22,7 +22,7 @@ const ISLAND_RATE := 12.0   ## fois par seconde : état des ennemis et des coffr
 const LOOT_RATE := 6.0      ## fois par seconde : butin du monde
 const FLEET_RATE := 10.0    ## fois par seconde : bateaux ennemis
 const META_RATE := 2.0      ## fois par seconde : coffres, baies, tonneaux, îles générées
-const PROTOCOL := 10   # 10 : réputation (points envoyés par l'hôte), tir de canon visé (angle dans l'événement de tir) ; 9 : îles capturées et cabanes (coffre partagé) ; 8 : grappin visé, radeaux des joueurs
+const PROTOCOL := 11   # 11 : objet porté envoyé avec la position (trésor compris), hisser un camarade, échelle de coque (lieu 8), actions longues ; 10 : réputation (points envoyés par l'hôte), tir de canon visé (angle dans l'événement de tir) ; 9 : îles capturées et cabanes (coffre partagé) ; 8 : grappin visé, radeaux des joueurs
 
 var game: Node
 var active := false
@@ -68,8 +68,10 @@ func invite_info() -> Dictionary:
 ## port (UPnP, refermé en quittant) pour que des amis d'ailleurs puissent rejoindre. L'adresse IP et le
 ## code d'invitation arrivent ensuite par `invite_changed` (et `invite_info`). Renvoie OK ou le code
 ## d'erreur d'ENet.
-func host(p_ship: String, open_box: bool = true) -> Error:
+func host(p_ship: String, open_box: bool = true, local_only: bool = false) -> Error:
 	var peer := ENetMultiplayerPeer.new()
+	if local_only:
+		peer.set_bind_ip("127.0.0.1")   # essais : la partie n'écoute que cet ordinateur (pas d'alerte du pare-feu)
 	var err := peer.create_server(PORT, MAX_PLAYERS - 1)
 	if err != OK:
 		return err
@@ -91,7 +93,7 @@ func host(p_ship: String, open_box: bool = true) -> Error:
 		invite_note = "La box n'a pas été touchée : seuls les amis du même réseau peuvent te rejoindre."
 	status.emit("Partie hébergée")
 	invite_changed.emit()
-	if not open_box:
+	if not open_box and not local_only:
 		_fetch_public_ip()
 	return OK
 
@@ -228,7 +230,7 @@ func tick(delta: float) -> void:
 	if _player_timer >= 1.0 / PLAYER_RATE:
 		_player_timer = 0.0
 		var p: Dictionary = game.local_player_state()
-		_player_state.rpc(p["pos"], p["carrying"], p["loc"], p["pz"], p["lh"])
+		_player_state.rpc(p["pos"], p["carry"], p["loc"], p["pz"], p["lh"])
 		var raft: Array = game.raft_net_state()
 		if not raft.is_empty() or _raft_sent:
 			_raft_state.rpc(raft)
@@ -423,9 +425,21 @@ func _raft_state(s: Array) -> void:
 	game.apply_remote_raft(multiplayer.get_remote_sender_id(), s)
 
 
+## `carry` : ce que le joueur porte ("", "ball", "plank", "t:<trésor>") : tout le monde le voit entre ses mains.
 @rpc("any_peer", "call_remote", "unreliable_ordered")
-func _player_state(pos: Vector2, carrying: bool, loc: int, pz: float, lh: float) -> void:
-	game.apply_remote_player(multiplayer.get_remote_sender_id(), pos, carrying, loc, pz, lh)
+func _player_state(pos: Vector2, carry: String, loc: int, pz: float, lh: float) -> void:
+	game.apply_remote_player(multiplayer.get_remote_sender_id(), pos, carry, loc, pz, lh)
+
+
+## Hôte -> un joueur à la nage : un camarade l'a attrapé, il remonte à bord par l'échelle.
+func send_hoist(peer: int) -> void:
+	if active and is_host:
+		_hoisted.rpc_id(peer)
+
+
+@rpc("authority", "call_remote", "reliable")
+func _hoisted() -> void:
+	game.apply_hoisted()
 
 
 ## Chaque joueur envoie son apparence (JSON) à chaque nouvel arrivant, et reçoit la leur.

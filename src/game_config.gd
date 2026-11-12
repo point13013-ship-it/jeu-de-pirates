@@ -47,3 +47,43 @@ const RAIN_RENDER_PRIORITY := 10      ## dessinée après la surface de la mer (
 const HULL_OUTSIDE_MARGIN := 0.15
 ## À la nage, on ne remonte à bord que par une échelle de coque : à moins de cette distance (m) de son pied.
 const LADDER_SWIM_REACH := 1.8
+
+# ------------------------------------------------------------------ Lot 2 : personnage, actions et interactions
+
+## 2.1 Sprint : multiplicateur appliqué à l'ancien facteur de course (1,7) : -10 %.
+const SPRINT_SCALE := 0.9
+
+## 2.2 Saut : on garde l'élan pris au sol, on ne peut que l'infléchir ; la descente est plus rapide que la montée.
+const AIR_CONTROL := 6.0              ## m/s² : de combien on peut corriger sa vitesse horizontale en l'air
+const AIR_DRAG := 1.5                 ## m/s² : l'élan s'use un peu si on lâche les flèches
+const AIR_STANDING_SPEED := 0.55      ## saut sur place : vitesse horizontale maximale qu'on peut se donner (x la marche)
+const FALL_GRAVITY_MULT := 1.7        ## la gravité en descente (x la gravité en montée)
+
+## 2.3 Saut : petit écrasement à l'appel et à la réception (le sprite est en pixel art : pas d'images dédiées), poussière.
+const JUMP_SQUASH := 0.14             ## part d'écrasement
+const JUMP_SQUASH_TIME := 0.12        ## s
+
+## 2.4 Porter : un trésor posé au sol y reste ce temps (s), puis disparaît ; à terre on le reprend avec E.
+const DROPPED_TTL := 300.0
+const CARRY_HANDS_HEIGHT := 0.82      ## m : hauteur de l'objet porté (dans les mains, devant le torse)
+const CARRY_TREASURE_SCALE := 1.1     ## taille de la maquette d'un trésor porté (avant : 1,5 au-dessus de la tête)
+const CARRY_TOWARD_CAMERA := 0.35     ## m : avancé vers la caméra, pour passer devant le sprite
+
+## Sons placés dans le monde (Sfx3D).
+const SFX_HEAR_RANGE := 22.0          ## m : au-delà, on n'entend plus
+const SFX_UNIT_SIZE := 4.0            ## m : distance où le son est à plein volume
+const SFX_DB := -4.0                  ## décalage général des bruitages (mixage)
+
+## Actions longues (règle commune) : durées en secondes.
+const ACTION_TIMES := {
+	"anchor": 3.5,    # lever / jeter l'ancre (3 à 4 s)
+	"repair": 2.5,    # boucher une voie d'eau avec une planche (2 à 3 s par trou)
+	"bail": 1.5,      # un seau : remplir puis vider
+	"hoist": 1.6,     # hisser un camarade hors de l'eau
+	"revive": 4.0,    # relever un camarade à terre (lot 4)
+}
+const ACTION_MOVE_TOLERANCE := 0.12   ## de combien (unités du lieu) on peut glisser sans couper l'action (le pont tangue)
+const BAIL_FILL_SHARE := 0.5          ## part de l'écopage passée à remplir le seau (le reste : le vider)
+const HAMMER_EVERY := 0.42            ## s entre deux coups de marteau
+const HOIST_REACH := 2.6              ## m : on peut attraper un camarade qui nage à cette distance du bord ou de l'échelle
+const LADDER_STEP_EVERY := 0.28       ## s entre deux pas sur l'échelle
