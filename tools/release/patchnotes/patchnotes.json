@@ -2,6 +2,21 @@
   "_commentaire": "Les nouveautés affichées dans la salle de jeux (bouton Nouveautés, et après chaque mise à jour). La plus récente d'abord. 'version': 'prochaine' est remplacé par le numéro de la version au moment de la publication (publish.ps1). Les images sont les fichiers de ce dossier ; publish.ps1 les envoie avec la version.",
   "versions": [
     {
+      "version": "2026.11.12-2257",
+      "titre": "Grande refonte : nouveau brigantin, haute ville, vrais sons",
+      "points": [
+        "Nouveau rendu : lumière franche, contours nets, ombres de contact, et une palette de couleurs refaite pour la ville et les bateaux.",
+        "Le brigantin est refait : figure de proue en serpent de mer, poupe à balcon doré, voiles gonflées et rapiécées, flamme qui suit le vent, cabine du capitaine meublée.",
+        "Haute ville : passe la porte au milieu des remparts. Ruelles, placette et fontaine, clocher, jardins, et une colline avec son moulin.",
+        "La cale : le soleil n'entre que par l'écoutille, lanternes et hamacs.",
+        "Vrais bruitages : sabre, un bruit de tir par arme, nage, pas selon le sol, canons, voiles, requins.",
+        "Sac refait : cases avec icônes, l'or à part, deux armes (1 et 2, glisse pour les échanger), fabrication à droite.",
+        "En mer : le vent compte plus (vitesse et voiles), vraies vagues, coques plus grandes et pont dégagé, ancre plus rapide, la vue porte plus loin devant le bateau.",
+        "Nage, requins et sirène revus. À la mort : 15 s d'attente, et tu perds boulets, planches et munitions (pas l'or).",
+        "Clic droit pour lâcher ce que tu portes. Corrigés : PNJ sans peau, visage noir à l'arrêt, brume qui couvrait tout."
+      ]
+    },
+    {
       "version": "2026.11.11-2244",
       "titre": "Clics rétablis, canons 1-2-3, fenêtres agrandissables",
       "points": [
