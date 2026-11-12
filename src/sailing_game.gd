@@ -2604,12 +2604,18 @@ func _inventory_rows() -> Array:
 		rows.append({"kind": "craft", "id": recipe, "label": Crafting.recipe_name(recipe), "right": need, "enabled": lack.is_empty(),
 				"desc": str(Crafting.get_def(recipe).get("desc", ""))})
 	rows.append({"head": true, "label": "Provisions"})
-	for line: Array in [["Or", _profile.gold], ["Boulets", _profile.balls], ["Planches", _profile.planks],
-			["Balles", _profile.bullets], ["Cartouches", _profile.shells]]:
-		rows.append({"kind": "none", "id": "", "label": "%s : %d" % [line[0], int(line[1])], "right": "", "enabled": false, "desc": ""})
+	# (12/11 : des cases avec une icône et un nombre, comme dans les jeux actuels, au lieu de lignes de texte)
+	for line: Array in [["gold", "Or", _profile.gold, "Pour acheter au port : armes, planches, boulets, apparences."],
+			["balls", "Boulets", _profile.balls, "Pour les canons. Ils sont rangés dans le tonneau de boulets du pont."],
+			["planks", "Planches", _profile.planks, "Pour boucher les voies d'eau (dans la cale) et fabriquer. Rangées dans la caisse à planches."],
+			["bullets", "Balles", _profile.bullets, "Munitions du pistolet et du fusil."],
+			["shells", "Cartouches", _profile.shells, "Munitions du tromblon."]]:
+		rows.append({"kind": "item", "id": line[0], "label": line[1], "count": int(line[2]), "right": "%d" % int(line[2]),
+				"enabled": false, "desc": line[3]})
 	if _carry_kind == "treasure":
-		rows.append({"kind": "none", "id": "", "label": "Dans tes bras : %s (%d or)" % [Treasure.name_of(_carry_item), Treasure.value_of(_carry_item)],
-				"right": "", "enabled": false, "desc": "Rapporte-le dans le coffre du capitaine (cabine), puis vends-le à Corbin."})
+		rows.append({"kind": "treasure", "id": _carry_item, "label": "Dans tes bras : %s" % Treasure.name_of(_carry_item),
+				"right": "%d or" % Treasure.value_of(_carry_item), "enabled": false,
+				"desc": "Rapporte-le dans le coffre du capitaine (cabine), puis vends-le à Corbin."})
 	return rows
 
 
