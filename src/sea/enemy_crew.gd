@@ -8,7 +8,7 @@ extends RefCounted
 ## Même code chez l'hôte et chez les clients (pour que tout le monde voie les mêmes allées et venues) ; seul l'hôte
 ## décide si un canon est chargé, les clients reçoivent le masque (voir `apply_mask`).
 
-const GUNNERS := {"sloop": 2, "brigantin": 3}
+const GUNNERS := {"sloop": 2, "brigantin": 3, "galion": 4}
 const WALK_SPEED := 2.4        ## m/s
 const GRAB_TIME := 0.5         ## s : prendre un boulet au tonneau
 const LOAD_TIME := 0.9         ## s : bourrer le canon
@@ -31,6 +31,7 @@ var _spots: Array = []                   ## par canon : où se tient le canonnie
 var _faces: Array = []                   ## par canon : direction du regard du canonnier (repère de la scène : x, z)
 var _time := 0.0
 var _cfg: Dictionary = {}
+var extra_gunners := 0                   ## lot 5 (6.2) : canonniers en plus selon le rang du bateau (avant build)
 
 
 ## Monte l'équipage sur `p_model`. `rng` : pour qui est chargé au départ.
@@ -69,7 +70,7 @@ func build(p_model: ShipModel, p_cannons: Array, kind: String, rng: RandomNumber
 	_helm_bp = model.nearest_walkable(Vector2(float(helm[0]) - 0.55, float(helm[1])))
 	helmsman = _make_skeleton(1, _helm_bp, Vector2(1.0, 0.0))
 	# les canonniers partent du tonneau de boulets
-	var count := int(GUNNERS.get(kind, 2))
+	var count := mini(int(GUNNERS.get(kind, 3)) + extra_gunners, model.cannons.size())   # lot 5 (6.2) : plus nombreux aux rangs élevés
 	for k in count:
 		var bp := model.nearest_walkable(_ammo_spot + Vector2(-0.3 * k, 0.25 * (k % 2) - 0.1))
 		var g := {"enemy": _make_skeleton(10 + k, bp, Vector2(1.0, 0.0)), "bp": bp, "state": "idle", "cannon": -1,

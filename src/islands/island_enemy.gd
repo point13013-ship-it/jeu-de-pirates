@@ -5,7 +5,7 @@ extends RefCounted
 ## joueur peut reculer), frappe, récupère. Les autres joueurs reçoivent seulement l'état (position, vie, phase)
 ## et jouent l'animation. Réglages dans data/enemies.json.
 
-enum State { IDLE, CHASE, WINDUP, RECOVER, DEAD }
+enum State { IDLE, CHASE, WINDUP, RECOVER, DEAD, HEAL }
 
 var id := 0
 var kind := ""
@@ -36,6 +36,9 @@ var _moving := 0.0
 var _death_t := 0.0
 var _flash: StandardMaterial3D
 var _flash_on := false
+var slow_t := 0.0             ## lot 5 (6.8) : s de ralentissement restantes (touché par un boulet)
+var food := GameConfig.MOB_FOOD   ## lot 5 (6.9) : rations qui lui restent
+var _shown_hp := -1           ## (chez tous : les PV remontent = il vient de manger)
 
 
 static func create(p_id: int, p_kind: String, p_island: int, p_home: Vector2, p_cfg: Dictionary) -> IslandEnemy:
@@ -65,8 +68,23 @@ func is_dead() -> bool:
 func step(delta: float, targets: Array, world: IslandWorld, rng: RandomNumberGenerator) -> Array:
 	var out: Array = []
 	hurt_t = maxf(hurt_t - delta, 0.0)
+	slow_t = maxf(slow_t - delta, 0.0)
 	if state == State.DEAD:
 		timer -= delta
+		return out
+	# lot 5 (6.9) : blessé, à l'écart des joueurs, il mange une ration pour se soigner (ça prend du temps)
+	if state == State.HEAL:
+		timer -= delta
+		if timer <= 0.0:
+			hp = mini(hp + maxi(int(round(max_hp * GameConfig.MOB_HEAL_FRAC)), 1), max_hp)
+			food -= 1
+			state = State.IDLE
+		return out
+	var near := _nearest(targets)
+	var safe := near.is_empty() or pos.distance_to(near["pos"]) > GameConfig.MOB_HEAL_SAFE
+	if food > 0 and safe and hp < max_hp * GameConfig.MOB_HEAL_BELOW and (state == State.IDLE or state == State.CHASE):
+		state = State.HEAL
+		timer = GameConfig.MOB_HEAL_TIME
 		return out
 	if knock.length() > 0.05:
 		_move(knock * delta, world)
@@ -143,6 +161,8 @@ func _wander(delta: float, world: IslandWorld, rng: RandomNumberGenerator) -> vo
 
 
 func _move(delta_pos: Vector2, world: IslandWorld) -> void:
+	if slow_t > 0.0:
+		delta_pos *= GameConfig.MOB_SLOW_FACTOR   # lot 5 (6.8) : sonné par un boulet
 	var r := 0.35 * float(cfg["scale"])
 	var t := pos + delta_pos
 	if absf(world.height(island, t) - world.height(island, pos)) > 0.3:
@@ -169,8 +189,8 @@ func hurt(dmg: int, from: Vector2, power: float) -> bool:
 		state = State.DEAD
 		timer = 0.0
 		return true
-	if state == State.IDLE:
-		state = State.CHASE
+	if state == State.IDLE or state == State.HEAL:
+		state = State.CHASE   # (un coup interrompt son repas)
 	elif state == State.WINDUP:
 		# un coup reçu en armant le sien le casse parfois : l'ennemi doit reprendre son élan
 		timer = float(cfg["windup"]) * 0.6
@@ -187,6 +207,8 @@ func revive() -> void:
 	_death_t = 0.0
 	hurt_t = 0.0
 	timer = 0.0
+	food = GameConfig.MOB_FOOD
+	slow_t = 0.0
 
 
 # ------------------------------------------------------------------ réseau
@@ -477,6 +499,13 @@ func update_visual(delta: float, time: float, authority: bool) -> void:
 		head.rotation.z = sin(time * 1.4 + id) * 0.04
 	# coup reçu : flash teinté court (rouge-orangé, qui s'éteint) au lieu de l'ancien voile blanc opaque qui faisait un fantôme,
 	# un petit recul visuel du corps (chez tout le monde, même si seul l'hôte déplace vraiment l'ennemi) et une gerbe d'étincelles
+	# lot 5 (6.9) : il mange (penché, qui mâche) ; quand ses PV remontent, une gerbe verte
+	if state == State.HEAL:
+		node.position.y += 0.03 * absf(sin(time * 9.0))
+		node.rotation.x = 0.25
+	if _shown_hp >= 0 and hp > _shown_hp:
+		_heal_burst()
+	_shown_hp = hp
 	var flash_k := clampf(hurt_t / GameConfig.HIT_FLASH_TIME, 0.0, 1.0)
 	if flash_k > 0.0:
 		var mat := _flash_mat()
@@ -516,6 +545,32 @@ func _flash_mat() -> StandardMaterial3D:
 		_flash.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 		_flash.blend_mode = BaseMaterial3D.BLEND_MODE_MIX
 	return _flash
+
+
+## Lot 5 (6.9) : il vient de se soigner : des croix vertes montent autour de lui.
+func _heal_burst() -> void:
+	if node == null or node.get_parent() == null:
+		return
+	var parent := node.get_parent() as Node3D
+	for k in 6:
+		var p := MeshInstance3D.new()
+		var bm := BoxMesh.new()
+		bm.size = Vector3(0.12, 0.12, 0.04)
+		p.mesh = bm
+		var m := StandardMaterial3D.new()
+		m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		m.albedo_color = Color(0.45, 1.0, 0.5)
+		p.material_override = m
+		p.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		parent.add_child(p)
+		var a := TAU * float(k) / 6.0
+		var base := node.position + Vector3(cos(a) * 0.45, 0.6, sin(a) * 0.45)
+		p.position = base
+		var tw := p.create_tween()
+		tw.set_parallel(true)
+		tw.tween_property(p, "position:y", base.y + 1.2, 0.9)
+		tw.tween_property(p, "scale", Vector3.ONE * 0.2, 0.9)
+		tw.chain().tween_callback(p.queue_free)
 
 
 ## Petites étincelles d'impact (orange et blanches) qui jaillissent du torse et retombent. Joué chez chaque joueur, quand le

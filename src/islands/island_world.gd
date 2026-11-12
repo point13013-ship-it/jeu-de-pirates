@@ -882,6 +882,28 @@ func swing(origin: Vector2, dir: Vector2) -> Array:
 	return out
 
 
+## Lot 5 (6.8) : un boulet de canon tombe en `at` (monde x/z) à la hauteur `y` : il touche les ennemis tout près (PV en moins,
+## sonnés un instant). Renvoie comme `swing`.
+func cannonball(at: Vector2, y: float) -> Array:
+	var out: Array = []
+	for en in enemies:
+		if en.is_dead():
+			continue
+		if en.pos.distance_to(at) > GameConfig.MOB_BALL_RADIUS * float(en.cfg["scale"]):
+			continue
+		if y < en.ground_y - 0.3 or y > en.ground_y + 2.2 * float(en.cfg["scale"]):
+			continue
+		var killed := en.hurt(GameConfig.MOB_BALL_DAMAGE, at, 1.5)
+		en.slow_t = GameConfig.MOB_SLOW_TIME
+		var gold := 0
+		if killed:
+			var g: Array = en.cfg["gold"]
+			gold = _rng.randi_range(int(g[0]), int(g[1]))
+			en.timer = respawn_secs
+		out.append({"gold": gold, "at": en.pos, "killed": killed, "enemy": en.id})
+	return out
+
+
 ## Un tir d'arme à feu depuis `origin` vers `dir` (définition `w` de data/weapons.json). Chaque projectile suit sa ligne : il touche
 ## le premier ennemi (ou tous, si la balle traverse) et le premier tonneau ou caisse de son chemin. Renvoie comme `swing`
 ## [{gold, at, killed, enemy}] et, pour les objets cassés, [{prop, kind, at}].

@@ -19,6 +19,7 @@ var discovered: Array = []
 var ship_pos := Vector2.ZERO
 var ship_dir := Vector2(1, 0)
 var destination := -1
+var enemies: Array = []   ## lot 5 (6.7) : navires ennemis révélés [{pos, rank, name}] (le jeu les renseigne)
 var _open := false
 var _hover := -1
 var _map_rect := Rect2()
@@ -178,6 +179,7 @@ func _draw() -> void:
 		else:
 			_draw_rumor(i, font)
 	_draw_route()
+	_draw_enemies(font)
 	_draw_ship()
 	_draw_compass(font)
 	draw_string(font, panel.position + Vector2(0, 38), "CARTE DES MERS", HORIZONTAL_ALIGNMENT_CENTER, panel.size.x, 28, INK)
@@ -267,6 +269,18 @@ func _draw_route() -> void:
 	while t < len:
 		draw_line(a + dir * t, a + dir * minf(t + 8.0, len), Color(0.75, 0.1, 0.08, 0.9), 3.0)
 		t += 16.0
+
+
+## Lot 5 (6.7) : les navires ennemis révélés (ils nous ont touchés) : un bateau rouge qui palpite, son rang et son nom.
+func _draw_enemies(font: Font) -> void:
+	for e: Dictionary in enemies:
+		var c := _to_screen(e["pos"])
+		if not _map_rect.has_point(c):
+			continue
+		var pulse := 0.5 + 0.5 * sin(_time * 5.0)
+		draw_circle(c, 13.0 + 5.0 * pulse, Color(0.8, 0.1, 0.08, 0.18 + 0.15 * pulse))
+		draw_colored_polygon(PackedVector2Array([c + Vector2(0, -10), c + Vector2(8, 6), c + Vector2(-8, 6)]), Color(0.7, 0.08, 0.06))
+		draw_string(font, c + Vector2(-90, 24), str(e["name"]), HORIZONTAL_ALIGNMENT_CENTER, 180, 13, Color(0.55, 0.06, 0.04))
 
 
 func _draw_ship() -> void:

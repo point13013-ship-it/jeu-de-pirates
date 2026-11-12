@@ -2027,7 +2027,7 @@ func apply_enemy_fire(id: int, idx: int, start: Vector3, vel: Vector3) -> void:
 	var ball := _make_ball(0.18, Color(0.10, 0.10, 0.14))
 	_world_fixed.add_child(ball)
 	ball.position = start
-	_projectiles.append({"node": ball, "vel": vel, "age": 0.0, "enemy": true})
+	_projectiles.append({"node": ball, "vel": vel, "age": 0.0, "enemy": true, "src": id})
 	var puff := _make_ball(0.35, Color(0.85, 0.85, 0.88))
 	var pm := puff.material_override as StandardMaterial3D
 	pm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
@@ -2332,6 +2332,7 @@ func _update_island_hud(delta: float) -> void:
 	if _chart.is_open():
 		_chart.ship_pos = _sim.position
 		_chart.ship_dir = Vector2(cos(_sim.yaw), -sin(_sim.yaw))
+		_chart.enemies = _fleet.revealed()   # lot 5 (6.7) : la même liste chez tout l'équipage (état de la flotte)
 	var has_goal := _destination >= 0 and _destination < _islands.islands.size()
 	h.dest_visible = has_goal and not _chart.is_open()
 	# la boussole que mon pirate tient en main montre le même cap (point bleu sur l'anneau)
@@ -5914,10 +5915,23 @@ func _update_projectiles(delta: float) -> void:
 		var prev_ball := node.position
 		node.position += vel * delta
 		if p.get("enemy", false) and _ball_hits_hull(node.global_position):
+			if _is_authority() and int(p.get("src", -1)) >= 0:
+				_fleet.reveal(int(p["src"]))   # lot 5 (6.7) : il nous a touchés : il apparaît sur la carte de tout l'équipage
 			_splash(Vector3(node.position.x, SEA_Y + 0.05, node.position.z))
 			node.queue_free()
 			_projectiles.remove_at(i)
 			continue
+		if p.get("player", false) and _is_authority() and node.position.y < 6.0:
+			# lot 5 (6.8) : un boulet qui frappe un ennemi d'île le blesse et le sonne
+			var mob_hits := _islands.cannonball(Vector2(node.position.x, node.position.z), node.position.y)
+			if not mob_hits.is_empty():
+				for hit: Dictionary in mob_hits:
+					if int(hit["gold"]) > 0:
+						_give_loot(_my_id(), int(hit["gold"]), hit["at"])
+				_splash(Vector3(node.position.x, node.position.y, node.position.z))
+				node.queue_free()
+				_projectiles.remove_at(i)
+				continue
 		if p.get("player", false) and _is_authority():
 			var eid := -1   # on teste tout le trajet de l'image (un boulet rapide ne « saute » pas par-dessus une coque)
 			var travel := prev_ball.distance_to(node.position)

@@ -102,6 +102,39 @@ const SWELL_STEER_PENALTY := 0.2      ## maniabilité perdue à houle maximale (
 const CAM_SWAY := 0.22                ## m : balancement de la caméra à houle maximale
 const CAM_HEAVE_FOLLOW := 0.35        ## part du soulèvement du pont que la caméra suit
 
+# ------------------------------------------------------------------ Lot 5 : ennemis
+
+const ENEMY_HP_MULT := 1.25           ## 6.1 : coques 25 % plus résistantes
+const ENEMY_SPEED_MULT := 0.9         ## 6.4 : 10 % plus lents (en plus de l'écart d'origine, 0,82)
+const ENEMY_SPAWN_FIRST := 90.0       ## 6.3 : s avant le premier ennemi
+const ENEMY_SPAWN_MIN := 150.0        ## s entre deux apparitions (tiré au hasard entre les deux)
+const ENEMY_SPAWN_MAX := 300.0
+const ENEMY_REVEAL_TIME := 60.0       ## 6.7 : s sans échange de tirs avant que l'ennemi disparaisse de la carte
+const ENEMY_REPAIR_EVERY := 6.0       ## 6.6 : s entre deux réparations (une planche bouche une voie d'eau)
+const ENEMY_REPAIR_HP := 12.0         ## points de coque rendus par planche
+const ENEMY_REPAIR_DELAY := 4.0       ## s sans coup reçu avant que l'équipage se mette à réparer
+## 6.2 Rangs : poids d'apparition (plus haut = plus rare), bateau, résistance, canonniers en plus, stock de planches, couleurs
+## (voiles, coque, pavillon : data/ship_skins.json) et table de butin : trésors (nombre, rareté), planches, boulets, or.
+const ENEMY_RANKS := [
+	{"weight": 52, "kind": "sloop", "hp": 1.0, "crew": 0, "planks": 2, "skin": {"sail": "black", "hull": "crimson", "flag": "black"},
+		"loot": {"treasures": [2, 3], "rarity": 1.4, "planks": [3, 5], "balls": [2, 4], "gold": [60, 160]}},   # (= l'ancien butin d'un sloop)
+	{"weight": 30, "kind": "sloop", "hp": 1.35, "crew": 1, "planks": 4, "skin": {"sail": "red", "hull": "ebony", "flag": "red"},
+		"loot": {"treasures": [3, 4], "rarity": 1.8, "planks": [4, 6], "balls": [3, 6], "gold": [110, 220]}},
+	{"weight": 14, "kind": "brigantin", "hp": 1.6, "crew": 1, "planks": 6, "skin": {"sail": "tempest", "hull": "navy", "flag": "white"},
+		"loot": {"treasures": [4, 5], "rarity": 2.4, "planks": [5, 8], "balls": [5, 9], "gold": [200, 340]}},
+	{"weight": 4, "kind": "galion", "hp": 2.2, "crew": 2, "planks": 10, "skin": {"sail": "purple", "hull": "royal", "flag": "gold"},
+		"loot": {"treasures": [6, 8], "rarity": 3.2, "planks": [8, 12], "balls": [8, 14], "gold": [350, 600]}},
+]
+const MOB_SLOW_TIME := 1.5            ## 6.8 : s de ralentissement d'un mob touché par un boulet
+const MOB_SLOW_FACTOR := 0.35         ## sa vitesse pendant ce temps (x la normale)
+const MOB_BALL_DAMAGE := 3            ## PV qu'un boulet direct enlève à un mob
+const MOB_BALL_RADIUS := 1.4          ## m : un boulet qui tombe à cette distance d'un mob le touche
+const MOB_FOOD := 2                   ## 6.9 : rations qu'un mob a sur lui (chacune le soigne une fois)
+const MOB_HEAL_TIME := 2.5            ## s pour manger
+const MOB_HEAL_FRAC := 0.5            ## part de ses PV qu'une ration lui rend
+const MOB_HEAL_BELOW := 0.45          ## il se soigne quand il lui reste moins de cette part de PV…
+const MOB_HEAL_SAFE := 4.0            ## … et que personne n'est à moins de ces mètres
+
 # ------------------------------------------------------------------ Lot 4 : mort, eau et réapparition (lot 3 plus bas)
 
 const DOWNED_TIME := 25.0             ## s « à terre » avant de mourir si personne ne relève (plage 20 à 30 s)

@@ -17,17 +17,19 @@ const MIN_DIST := 26.0         ## m : il ne s'approche pas plus près
 const SINK_TIME := 7.0         ## s : durée du naufrage
 const PORT_SAFE := 300.0       ## m : pas d'ennemi qui apparaît si près du port
 const VOLLEY_COOLDOWN := 5.0
-const KINDS: Array = ["sloop", "brigantin"]
+const KINDS: Array = ["sloop", "brigantin", "galion"]
 const STATS := {
 	"sloop": {"hp": 70.0, "name": "Sloop flibustier", "loot": 1.0},
 	"brigantin": {"hp": 130.0, "name": "Brigantin pirate", "loot": 1.7},
+	"galion": {"hp": 190.0, "name": "Galion de la Terreur", "loot": 2.5},
 }
+const RANK_NAMES := ["", "Matelots", "Forbans", "Écumeurs", "Terreur des mers"]
 const SKIN := {"sail": "black", "hull": "crimson", "flag": "black"}
 
 var ships: Array = []          ## {id, kind, sim: ShipSim, hp, hp_max, state, sink_t, model, cannons, label, queue, cd, home, wp, wp_t, target_pos, target_yaw, age}
 var _root: Node3D
 var _next_id := 1
-var _spawn_t := 25.0
+var _spawn_t := GameConfig.ENEMY_SPAWN_FIRST
 var _time := 0.0
 var _rng := RandomNumberGenerator.new()
 
@@ -66,25 +68,73 @@ func find(id: int) -> int:
 
 # ------------------------------------------------------------------ création
 
-func spawn(kind: String, pos: Vector2, yaw: float, id: int = -1) -> int:
+func spawn(kind: String, pos: Vector2, yaw: float, id: int = -1, rank: int = 0) -> int:
 	var sid := id if id >= 0 else _next_id
 	_next_id = maxi(_next_id, sid + 1)
+	if rank <= 0:   # (essais, ou ancien appel) : le premier rang qui utilise ce bateau
+		rank = 1
+		for r in GameConfig.ENEMY_RANKS.size():
+			if str(GameConfig.ENEMY_RANKS[r]["kind"]) == kind:
+				rank = r + 1
+				break
+	var rdef: Dictionary = rank_def(rank)
 	var stats: Dictionary = STATS[kind]
 	var sim := ShipSim.new()
 	var all_stats := IslandWorld.read_json("res://data/ship_stats.json")
 	sim.configure(all_stats.get(kind, {}))
-	sim.max_speed *= 0.82     # un peu moins vifs que les joueurs : on peut les semer
+	sim.max_speed *= 0.82 * GameConfig.ENEMY_SPEED_MULT   # moins vifs que les joueurs : on peut les semer (lot 5 : encore -10 %)
 	sim.position = pos
 	sim.yaw = yaw
 	sim.sail_level = 2
 	sim.sail_open = 0.66
 	sim.auto_trim_pending = false
-	var s := {"id": sid, "kind": kind, "sim": sim, "hp": float(stats["hp"]), "hp_max": float(stats["hp"]), "state": "patrol",
+	var hp := float(stats["hp"]) * GameConfig.ENEMY_HP_MULT * float(rdef["hp"])   # lot 5 : +25 %, et plus selon le rang
+	var s := {"id": sid, "kind": kind, "rank": rank, "sim": sim, "hp": hp, "hp_max": hp, "state": "patrol",
 			"sink_t": 0.0, "model": null, "cannons": [], "label": null, "queue": [], "cd": [0.0, 2.5], "home": pos,
-			"wp": pos, "wp_t": 0.0, "target_pos": pos, "target_yaw": yaw, "age": 0.0, "chips_hp": float(stats["hp"])}
+			"wp": pos, "wp_t": 0.0, "target_pos": pos, "target_yaw": yaw, "age": 0.0, "chips_hp": hp,
+			"planks": int(rdef["planks"]), "repair_t": GameConfig.ENEMY_REPAIR_EVERY, "calm_t": 0.0, "reveal_t": 0.0}
 	_make_visual(s)
 	ships.append(s)
 	return sid
+
+
+## La description d'un rang (1 à 4, voir GameConfig.ENEMY_RANKS).
+static func rank_def(rank: int) -> Dictionary:
+	return GameConfig.ENEMY_RANKS[clampi(rank, 1, GameConfig.ENEMY_RANKS.size()) - 1]
+
+
+## Tire un rang au hasard selon les poids (les rangs élevés sont rares).
+func _roll_rank() -> int:
+	var total := 0
+	for r: Dictionary in GameConfig.ENEMY_RANKS:
+		total += int(r["weight"])
+	var x := _rng.randi_range(1, total)
+	for i in GameConfig.ENEMY_RANKS.size():
+		x -= int(GameConfig.ENEMY_RANKS[i]["weight"])
+		if x <= 0:
+			return i + 1
+	return 1
+
+
+## 6.7 : l'ennemi `id` est révélé sur la carte de tout l'équipage (il vient de nous toucher, ou on échange des tirs).
+func reveal(id: int) -> void:
+	var i := find(id)
+	if i >= 0:
+		(ships[i] as Dictionary)["reveal_t"] = GameConfig.ENEMY_REVEAL_TIME
+
+
+## Les ennemis révélés : [{pos: Vector2, rank, name}] (pour la carte).
+func revealed() -> Array:
+	var out: Array = []
+	for s: Dictionary in ships:
+		if float(s.get("reveal_t", 0.0)) > 0.0 and s["state"] != "sinking":
+			out.append({"pos": (s["sim"] as ShipSim).position, "rank": int(s.get("rank", 1)), "name": label_name(s)})
+	return out
+
+
+static func label_name(s: Dictionary) -> String:
+	var r := int(s.get("rank", 1))
+	return "%s %s" % ["★".repeat(r), str((STATS[str(s["kind"])] as Dictionary)["name"])]
 
 
 func _make_visual(s: Dictionary) -> void:
@@ -93,11 +143,13 @@ func _make_visual(s: Dictionary) -> void:
 	var model := ShipModel.new()
 	if not model.load_ship(str(s["kind"])):
 		return
-	ShipSkin.apply(model, SKIN)
+	var rdef := rank_def(int(s.get("rank", 1)))
+	ShipSkin.apply(model, rdef.get("skin", SKIN))   # lot 5 (6.2) : les couleurs disent le rang (voiles, coque, pavillon)
 	_root.add_child(model)
 	s["model"] = model
 	s["cannons"] = ShipCannons.build(model)
 	var crew := EnemyCrew.new()   # l'équipage de squelettes : timonier et canonniers qui rechargent
+	crew.extra_gunners = int(rdef.get("crew", 0))   # lot 5 (6.2) : plus de canonniers aux rangs élevés
 	crew.build(model, s["cannons"], str(s["kind"]), _rng)
 	s["crew"] = crew
 	var label := Label3D.new()
@@ -149,7 +201,7 @@ func _host_step(delta: float, target: Dictionary) -> void:
 	if spawn_enabled and bool(target.get("alive", true)):
 		_spawn_t -= delta
 		if _spawn_t <= 0.0 and alive_count() < MAX_SHIPS:
-			_spawn_t = _rng.randf_range(55.0, 110.0)
+			_spawn_t = _rng.randf_range(GameConfig.ENEMY_SPAWN_MIN, GameConfig.ENEMY_SPAWN_MAX)   # lot 5 (6.3) : plus rares
 			_try_spawn(tpos)
 	for i in range(ships.size() - 1, -1, -1):
 		var s: Dictionary = ships[i]
@@ -162,6 +214,8 @@ func _host_step(delta: float, target: Dictionary) -> void:
 		sim.wind_dir = target.get("wind", sim.wind_dir)
 		sim.wind_angle = (sim.wind_dir as Vector2).angle()
 		_ai(s, delta, target)
+		_survive(s, delta)
+		s["reveal_t"] = maxf(float(s.get("reveal_t", 0.0)) - delta, 0.0)
 		sim.sail_trim_target = sim.optimal_trim()
 		var prev_pos := sim.position
 		var prev_yaw := sim.yaw
@@ -182,9 +236,24 @@ func _try_spawn(tpos: Vector2) -> void:
 			continue
 		if water_free_cb.is_valid() and not bool(water_free_cb.call(p)):
 			continue
-		var kind: String = KINDS[0] if _rng.randf() < 0.65 else KINDS[1]
-		spawn(kind, p, _rng.randf() * TAU)
+		var rank := _roll_rank()   # lot 5 (6.2) : un rang au hasard, les plus hauts sont rares ; il fixe le bateau
+		spawn(str(rank_def(rank)["kind"]), p, _rng.randf() * TAU, -1, rank)
 		return
+
+
+## Lot 5 (6.6) : l'équipage écope et répare. Un moment après le dernier coup reçu, une planche bouche une voie d'eau (des points
+## de coque reviennent), tant qu'il en reste dans la cale (stock selon le rang). Chez tout le monde : la coque remonte (état reçu).
+func _survive(s: Dictionary, delta: float) -> void:
+	s["calm_t"] = float(s.get("calm_t", 0.0)) + delta
+	if float(s["hp"]) >= float(s["hp_max"]) or int(s.get("planks", 0)) <= 0 or float(s["calm_t"]) < GameConfig.ENEMY_REPAIR_DELAY:
+		return
+	s["repair_t"] = float(s.get("repair_t", 0.0)) - delta
+	if float(s["repair_t"]) > 0.0:
+		return
+	s["repair_t"] = GameConfig.ENEMY_REPAIR_EVERY
+	s["planks"] = int(s["planks"]) - 1
+	s["hp"] = minf(float(s["hp"]) + GameConfig.ENEMY_REPAIR_HP, float(s["hp_max"]))
+	s["chips_hp"] = float(s["hp"])
 
 
 func _ai(s: Dictionary, dt: float, target: Dictionary) -> void:
@@ -330,6 +399,9 @@ func hurt(id: int, dmg: float) -> bool:
 	if s["state"] == "sinking":
 		return false
 	s["hp"] = float(s["hp"]) - dmg
+	s["calm_t"] = 0.0   # (l'équipage ne répare pas sous le feu)
+	if float(s.get("reveal_t", 0.0)) > 0.0:
+		s["reveal_t"] = GameConfig.ENEMY_REVEAL_TIME   # 6.7 : on échange des tirs, il reste sur la carte
 	if s["state"] == "patrol":
 		s["state"] = "chase"   # il se sait attaqué
 	if float(s["hp"]) > 0.0:
@@ -344,18 +416,19 @@ func _start_sink(s: Dictionary) -> void:
 	var sim: ShipSim = s["sim"]
 	sim.sail_level = 0
 	s["queue"] = []
-	# le butin s'échappe de la cale et flotte autour de l'épave
+	# le butin s'échappe de la cale et flotte autour de l'épave (lot 5 : table de butin du rang, GameConfig.ENEMY_RANKS)
 	if loot_cb.is_valid():
-		var mult := float((STATS[str(s["kind"])] as Dictionary)["loot"])
+		var loot: Dictionary = rank_def(int(s.get("rank", 1)))["loot"]
 		var drops: Array = []
-		for k in int(round(2.0 * mult)) + _rng.randi_range(0, 1):
-			drops.append("t:" + Treasure.roll(_rng, 1.4))
-		for k in _rng.randi_range(3, 5):
+		for k in _rng.randi_range(int(loot["treasures"][0]), int(loot["treasures"][1])):
+			drops.append("t:" + Treasure.roll(_rng, float(loot["rarity"])))
+		for k in _rng.randi_range(int(loot["planks"][0]), int(loot["planks"][1])):
 			drops.append("plank")
-		for k in _rng.randi_range(2, 4):
+		for k in _rng.randi_range(int(loot["balls"][0]), int(loot["balls"][1])):
 			drops.append("ball")
-		for k in _rng.randi_range(1, 2):
-			drops.append("g:%d" % int(_rng.randi_range(40, 110) * mult))
+		var gold := _rng.randi_range(int(loot["gold"][0]), int(loot["gold"][1]))
+		for k in 2:   # en deux bourses
+			drops.append("g:%d" % maxi(gold / 2, 1))
 		for kind: String in drops:
 			var a := _rng.randf() * TAU
 			var r := _rng.randf_range(2.0, 9.0)
@@ -402,7 +475,7 @@ func _place_visual(s: Dictionary, _delta: float) -> void:
 	if label != null:
 		var frac := clampf(float(s["hp"]) / float(s["hp_max"]), 0.0, 1.0)
 		var n := int(ceil(frac * 10.0))
-		label.text = "%s\n[%s%s]" % [str((STATS[str(s["kind"])] as Dictionary)["name"]), "#".repeat(n), "-".repeat(10 - n)]
+		label.text = "%s\n[%s%s]" % [label_name(s), "#".repeat(n), "-".repeat(10 - n)]   # (★ : le rang)
 		label.visible = s["state"] != "sinking"
 	# des éclats quand la coque encaisse (chez tout le monde : la vie baisse dans l'état reçu)
 	if float(s["hp"]) < float(s["chips_hp"]) - 0.5:
@@ -450,7 +523,8 @@ func net_state() -> Array:
 		var sim: ShipSim = s["sim"]
 		out.append([int(s["id"]), KINDS.find(str(s["kind"])), sim.position.x, sim.position.y, sim.yaw, float(s["hp"]),
 				{"patrol": 0, "chase": 1, "sinking": 2}[str(s["state"])], sim.speed, sim.sail_open, sim.sail_trim, sim.rudder,
-				(s["crew"] as EnemyCrew).mask() if s.get("crew") != null else 0])
+				(s["crew"] as EnemyCrew).mask() if s.get("crew") != null else 0, int(s.get("rank", 1)),
+				1 if float(s.get("reveal_t", 0.0)) > 0.0 else 0])
 	return out
 
 
@@ -462,9 +536,13 @@ func apply_net(state: Array) -> void:
 		var i := find(id)
 		var kind: String = KINDS[clampi(int(e[1]), 0, KINDS.size() - 1)]
 		if i < 0:
-			spawn(kind, Vector2(float(e[2]), float(e[3])), float(e[4]), id)
+			spawn(kind, Vector2(float(e[2]), float(e[3])), float(e[4]), id, int(e[12]) if e.size() > 12 else 0)
 			i = find(id)
 		var s: Dictionary = ships[i]
+		if e.size() > 13:
+			s["reveal_t"] = GameConfig.ENEMY_REVEAL_TIME if int(e[13]) == 1 else 0.0
+		if float(e[5]) > float(s["hp"]) + 0.5:
+			s["chips_hp"] = float(e[5])   # (réparé chez l'hôte : pas d'éclats)
 		var sim: ShipSim = s["sim"]
 		s["target_pos"] = Vector2(float(e[2]), float(e[3]))
 		s["target_yaw"] = float(e[4])
