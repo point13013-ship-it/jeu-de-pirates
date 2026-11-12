@@ -354,20 +354,22 @@ building("magasin", -18, -7, 6, 15, 2, "pl_ochre", "roof_terra", "shut_teal",
 building("maison_e1", 29, 38, 6, 15, 3, "pl_teal", "roof_terra", "shut_red", balcony=True)
 building("maison_w1", -41, -33, 6, 15, 3, "pl_cream", "roof_green", "shut_red")
 # --- rangée nord (sur la place)
-building("maison_n1", -31, -20, 24, 33, 3, "pl_cream", "roof_terra", "shut_teal", timber=True)
+# (12/11 : les maisons ordinaires de cette rangée sont moins profondes, 31,5 au lieu de 33 : la rue de derrière s'élargit)
+building("maison_n1", -31, -20, 24, 31.5, 3, "pl_cream", "roof_terra", "shut_teal", timber=True)
 building("taverne", -18, -4, 24, 34, 3, "pl_terra", "roof_slate", "shut_red", balcony=True,
          shop="tavern", icon="mug", awning_colors=("cloth_red", "cloth_yellow"))
 building("voilerie", -2, 9, 24, 33, 2, "pl_white", "roof_green", "shut_blue",
          shop="sails", icon="sail", awning_colors=("cloth_blue", "cloth_cream"))
-building("maison_n2", 11, 20, 24, 33, 3, "pl_ochre", "roof_slate", "shut_teal", balcony=True)
-building("maison_n3", 22, 31, 24, 32, 2, "pl_rose", "roof_terra", "shut_blue", timber=True)
-building("maison_n4", 33, 41, 24, 33, 3, "pl_cream", "roof_green", "shut_red")
+building("maison_n2", 11, 20, 24, 31.5, 3, "pl_ochre", "roof_slate", "shut_teal", balcony=True)
+building("maison_n3", 22, 31, 24, 31.0, 2, "pl_rose", "roof_terra", "shut_blue", timber=True)
+building("maison_n4", 33, 41, 24, 31.5, 3, "pl_cream", "roof_green", "shut_red")
 # --- rangée du fond (plus haute)
 for k, (x0, x1, f, wall, roof) in enumerate([(-41, -32, 4, "pl_ochre", "roof_terra"), (-30, -19, 3, "pl_teal", "roof_slate"),
                                              (-17, -6, 4, "pl_rose", "roof_terra"), (-4, 6, 3, "pl_cream", "roof_slate"),
                                              (8, 19, 4, "pl_terra", "roof_green"), (21, 31, 3, "pl_white", "roof_terra"),
                                              (33, 41, 4, "pl_teal", "roof_slate")]):
-    building(f"fond{k}", x0, x1, 37, 45, f, wall, roof, rnd.choice(["shut_teal", "shut_red", "shut_blue"]),
+    # (12/11 : deux étages au plus — à trois ou quatre, collées derrière la rangée nord, elles écrasaient la rue et cachaient tout)
+    building(f"fond{k}", x0, x1, 37, 45, min(f, 2), wall, roof, rnd.choice(["shut_teal", "shut_red", "shut_blue"]),
              timber=k % 2 == 0, balcony=k % 3 == 1)
 
 # --- chantier naval : grande halle ouverte sur le quai, avec une coque en construction
