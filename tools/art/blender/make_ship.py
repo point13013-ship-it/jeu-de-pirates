@@ -900,7 +900,7 @@ if CFG["jib"]:
              uvs=[(0.05, 1.0), (0.95, 0.35), (0.05, 0.0)])
     rope((fx, 0, fh - 0.2), (x_b + 3.0, 0, dz_b + 1.5))
     if V2:   # un second foc, plus petit, devant le premier
-        add_mesh("sail_z%d_jib2" % round((fh - 2.2) * 100), [(fx + 1.4, 0, fh - 2.2), (x_b + 3.9, 0, dz_b + 1.9), (fx + 1.6, 0, 2.3)],
+        add_mesh("sail_z%d_jibavant" % round((fh - 2.2) * 100), [(fx + 1.4, 0, fh - 2.2), (x_b + 3.9, 0, dz_b + 1.9), (fx + 1.6, 0, 2.3)],
                  [(0, 1, 2)], "sail", uvs=[(0.05, 1.0), (0.95, 0.35), (0.05, 0.0)])
         rope((fx + 0.1, 0, fh - 1.6), (x_b + 3.9, 0, dz_b + 1.9))
 if CFG["gaff"]:

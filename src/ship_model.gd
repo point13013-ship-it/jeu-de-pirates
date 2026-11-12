@@ -98,6 +98,7 @@ func _setup_pennant() -> void:
 	p.get_parent().add_child(pivot)
 	pivot.transform = p.transform * Transform3D(Basis.IDENTITY, Vector3(box.end.x, box.get_center().y, 0.0))
 	p.get_parent().remove_child(p)
+	p.owner = null   # (sinon Godot avertit : le propriétaire de la scène importée ne serait plus son ancêtre)
 	pivot.add_child(p)
 	p.transform = Transform3D(Basis.IDENTITY, -Vector3(box.end.x, box.get_center().y, 0.0))
 	_pennant_pivot = pivot
@@ -504,9 +505,7 @@ func _index_nodes(node: Node) -> void:
 			# le coffre de la cabine : le coffre du capitaine, où l'équipage dépose les trésors
 			stash_pos = Vector2(n3.position.x - shift, -n3.position.z)
 		if s.begins_with("sail_z"):
-			var digits := s.substr(6)
-			var top := float(digits.to_int()) / 100.0
-			_sails.append({"node": n3, "top": top, "base": n3.transform, "alpha": 1.0})
+			_sails.append({"node": n3, "top": sail_top(s), "base": n3.transform, "alpha": 1.0})
 		elif s.begins_with("cut_"):
 			var info := {"node": n3, "normal": Vector2.ZERO, "always": true}
 			if s.begins_with("cut_wall_") or s.begins_with("cut_win_"):
@@ -518,6 +517,16 @@ func _index_nodes(node: Node) -> void:
 			_cuts.append(info)
 	for child in node.get_children():
 		_index_nodes(child)
+
+
+## La hauteur du haut d'une voile (unités du modèle), écrite dans son nom : « sail_z743_jib » -> 7,43. On ne lit que les
+## chiffres qui suivent « sail_z » (13/11 : `to_int()` ramassait TOUS les chiffres du nom ; le second foc, « sail_z743_jib2 »,
+## était lu à 74,32 et s'envolait dès qu'on carguait).
+static func sail_top(node_name: String) -> float:
+	var i := 6
+	while i < node_name.length() and node_name[i] >= "0" and node_name[i] <= "9":
+		i += 1
+	return float(node_name.substr(6, i - 6).to_int()) / 100.0
 
 
 ## Position dans le repère local de la scène (mètres de jeu) d'un point du pont.
