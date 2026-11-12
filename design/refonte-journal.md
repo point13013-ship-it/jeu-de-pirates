@@ -210,3 +210,18 @@ Images pixel art : pirate au sol, gestes (cabestan, clouer, écoper, hisser). Mo
 - Cale : la brume (toujours allumée depuis sa refonte) la noyait dans un fond pâle : éteinte dans la cale. Le pont porte
   l'ombre, le soleil n'entre que par l'écoutille (rai de lumière, poussières), lumière à paliers, palette v1, deux hamacs.
 - Tests : tous passent sauf test_town (« 11 habitants au lieu de 10 », échec antérieur à la refonte).
+## Retours de la session à 3 joueurs (13/11/2026) : lot 1, voiles, échelles, pavillon
+
+Plan complet et réponses de Jimmy : design/plan-retours-session-3-joueurs.md.
+
+- Voile qui s'envole : la hauteur d'une voile est lue dans son nom. `to_int()` ramassait tous les chiffres : le second foc
+  (« sail_z743_jib2 ») était lu à 74 m. Lecture stricte (`ShipModel.sail_top`), foc renommé, test (tests/unit/test_sails.gd).
+- Voiles accrochées : les vergues s'appellent « yard_zNNN » et « yardlow_zNNN » et suivent leur voile (rotation autour du mât,
+  vergue du bas qui remonte quand on cargue) ; le haut de la toile part de la vergue.
+- Voiles qui se croisent : focs envergués sur leurs étais (ils longeaient le mât), butée des vergues 65° -> 55°
+  (`ShipSim.MAX_TRIM`), creux réduit de 30 % vergues à fond (`SAIL_BULGE_TRIMMED`), creux du modèle 1,3 -> 1,15.
+- Voile dans l'échelle : la brigantine passait entre les montants de l'échelle de mât ; elle est reculée derrière.
+- Échelles de coque : posées sur le vrai profil de la coque (`hull_side` dans make_ship.py).
+- Crâne du pavillon : une des deux têtes de mort était dans le plan du pavillon (clignotement au roulis) ; 7 cm de chaque côté.
+- Les trois bateaux ont été régénérés. Tests : tous passent sauf test_town (échec antérieur).
+- Reste ouvert : « finition de la coque » (à préciser avec Jimmy).
