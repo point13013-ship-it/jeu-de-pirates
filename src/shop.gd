@@ -172,9 +172,20 @@ func _activate_weapon(it: Dictionary) -> Dictionary:
 			return {"ok": false, "msg": "Pas assez d'or.", "look_changed": false}
 		profile.gold -= int(it["price"])
 		profile.weapons.append(id)
+	# (12/11) on ne porte que deux armes : la nouvelle passe en 1 ; l'ancienne passe en 2 si la place est libre, sinon elle
+	# reste à l'armurerie (on la reprend gratuitement quand on veut)
+	var old := profile.weapon
+	var left_behind := ""
+	if profile.weapon2 == "" or profile.weapon2 == id or not profile.weapons.has(profile.weapon2):
+		profile.weapon2 = old
+	elif old != id:
+		left_behind = old
 	profile.set_main_weapon(id)
 	profile.save()
-	return {"ok": true, "msg": "En main : %s" % wname, "look_changed": false}
+	var msg := "En main : %s" % wname
+	if left_behind != "":
+		msg += " (%s reste à l'armurerie)" % Weapons.weapon_name(left_behind)
+	return {"ok": true, "msg": msg, "look_changed": false}
 
 
 ## Chantier naval : on achète un bateau une fois, puis on le prend (ou le reprend) gratuitement. Le jeu change de

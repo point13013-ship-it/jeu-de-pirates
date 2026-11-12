@@ -70,6 +70,10 @@ func play_at(stream: AudioStream, at: Vector3, vol: float = 1.0, pitch: float = 
 	p.volume_db = linear_to_db(vol) + GameConfig.SFX_DB
 	p.pitch_scale = pitch
 	p.play()
+	if OS.has_environment("SFX_DEBUG"):
+		print("[sfx] %s à %.1f m de l'oreille (oreille active : %s, bus %s %.1f dB muet %s)" % [stream.resource_path.get_file() if stream.resource_path != "" else str(stream),
+				at.distance_to(_listener.global_position), _listener.is_current(), p.bus, AudioServer.get_bus_volume_db(AudioServer.get_bus_index(p.bus)),
+				AudioServer.is_bus_mute(AudioServer.get_bus_index(p.bus))])
 
 
 ## Un son qui dure tant qu'on ne l'arrête pas (`key` : par ex. l'action en cours d'un joueur). Relancé s'il tourne déjà.

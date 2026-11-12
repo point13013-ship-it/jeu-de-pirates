@@ -106,6 +106,8 @@ var _inventory: InventoryPanel      ## le sac du pirate (Tab)
 var _weapon_label: Label            ## l'arme en main et sa munition, en bas à droite
 var _carry_item := ""               ## le trésor que je porte (identifiant de data/treasures.json) quand _carry_kind == "treasure"
 var _treasure_icon: Node3D          ## sa maquette au-dessus de ma tête
+var _carry_step_t := 0.0            ## foulées depuis qu'on marche en portant (balancement du fardeau)
+var _carry_bob := 0.0               ## 0..1 : ampleur du balancement (0 à l'arrêt)
 var _stash: Array = []              ## les trésors du coffre du capitaine (cabine) : identifiants ; l'hôte fait autorité
 var _stash_glow: MeshInstance3D     ## l'éclat d'or au-dessus du coffre quand il contient quelque chose
 var _loot := WorldLoot.new()        ## butin posé dans le monde : trésors flottants, boulets, planches, bourses
@@ -270,8 +272,8 @@ var _pending: Dictionary = {}        ## pseudo -> or gardé pour un absent (hôt
 
 
 const SEA_PATH := "res://data/sea.json"
-const SEA_MESH_SIZE := 110.0      ## m : la surface suit la caméra (assez large pour le plus fort dézoom)
-const SEA_MESH_STEP := 0.25       ## m entre deux sommets de la surface (le maillage glisse par pas de 1 m : multiple entier)
+const SEA_MESH_SIZE := 200.0      ## m : la surface suit la caméra (12/11 : 110 ; en vue rasante on voyait son bord, du vide au loin)
+const SEA_MESH_STEP := 0.5        ## m entre deux sommets de la surface (le maillage glisse par pas de 1 m : diviseur entier)
 
 
 func _ready() -> void:
@@ -1424,6 +1426,8 @@ func _apply_test_args() -> void:
 		if _args.has("lh"):
 			_lh = float(_args["lh"])
 		_snap_camera()   # (essais : la caméra est déjà sur le pirate au départ)
+	if _args.has("carry"):   # essai : --carry=coffret met ce trésor dans les bras (1 s après le départ)
+		get_tree().create_timer(1.0).timeout.connect(func() -> void: _pick_up_treasure(str(_args["carry"])))
 	if _args.has("planks"):   # essai : --planks=8 donne ce nombre de planches
 		_profile.planks = int(_args["planks"])
 	if _args.has("craft"):   # essai : --craft=raft@3 fabrique cet objet à cet instant (le pirate doit être à terre, près de l'eau)
@@ -1453,13 +1457,14 @@ func _apply_test_args() -> void:
 		get_tree().create_timer(float(_args["raft-ride"])).timeout.connect(func() -> void: _board_raft())
 	if _args.has("press"):
 		# test : --press=E@2,SPACE@3.5 appuie sur ces touches aux secondes indiquées
-		var codes := {"E": KEY_E, "R": KEY_R, "SPACE": KEY_SPACE, "DOWN": KEY_DOWN, "UP": KEY_UP, "F": KEY_F, "ESC": KEY_ESCAPE, "1": KEY_1, "2": KEY_2, "3": KEY_3, "4": KEY_4, "T": KEY_T, "TAB": KEY_TAB, "X": KEY_X, "G": KEY_G, "C": KEY_C, "H": KEY_H, "V": KEY_V, "J": KEY_J}
+		var codes := {"M": KEY_M, "E": KEY_E, "R": KEY_R, "SPACE": KEY_SPACE, "DOWN": KEY_DOWN, "UP": KEY_UP, "F": KEY_F, "ESC": KEY_ESCAPE, "1": KEY_1, "2": KEY_2, "3": KEY_3, "4": KEY_4, "T": KEY_T, "TAB": KEY_TAB, "X": KEY_X, "G": KEY_G, "C": KEY_C, "H": KEY_H, "V": KEY_V, "J": KEY_J}
 		for item in str(_args["press"]).split(","):
 			var kv := item.split("@")
 			var code: Key = codes.get(kv[0], KEY_E)
 			get_tree().create_timer(float(kv[1])).timeout.connect(func() -> void:
 				var ev := InputEventKey.new()
 				ev.physical_keycode = code
+				ev.keycode = code
 				ev.pressed = true
 				_unhandled_input(ev))
 	if _args.has("send"):
@@ -2437,10 +2442,16 @@ func _try_attack(secondary: bool = false) -> void:
 		if not _scare_shark():
 			_splash_burst(_lpos)
 		return
+	if _carrying and secondary and (_loc == Loc.SHIP or _loc == Loc.HOLD) and _mode == Mode.WALK:   # sur le pont aussi
+		_drop_to_ground()
+		return
 	if _loc != Loc.LAND or _atk_cd > 0.0 or _hp <= 0 or _dialog.is_open() or _shop_menu.is_open() or _chart.is_open() or _jump_wind > 0.0:
 		return
-	if _carrying:   # lot 2 (2.4) : les deux mains sont prises
-		_say("Les mains prises : G pour poser ce que tu portes, puis défends-toi", 2.5)
+	if _carrying:   # lot 2 (2.4) : les deux mains sont prises ; (12/11) clic droit : on lâche ce qu'on porte
+		if secondary:
+			_drop_to_ground()
+		else:
+			_say("Les mains prises : clic droit (ou G) pour poser ce que tu portes", 2.5)
 		return
 	var wid: String = _profile.secondary_weapon() if secondary else _profile.weapon   # clic gauche : arme principale ; clic droit : secondaire
 	if wid != _profile.weapon:
@@ -2473,11 +2484,13 @@ func _try_shoot(wid: String) -> void:
 	var ammo := Weapons.ammo_of(wid)
 	if not _profile.take_ammo(ammo):
 		_say("Plus de %s : Magasin Général (Mère Pétronille)" % Weapons.ammo_label(ammo), 3.0)
+		_sfx.play_at(Synth.recorded("gun_dry"), _my_scene_pos() + Vector3.UP * 0.9, 0.7)   # clic à vide
 		_atk_cd = 0.4
 		return
 	_atk_cd = float(def.get("cooldown", 1.0))
 	var dir := _face.normalized()
 	_sprite.play_action("shoot_" + wid, _screen_of_face(dir))   # le pirate épaule, tire (recul) et reprend sa garde
+	_gun_sound(wid, _my_scene_pos() + Vector3.UP * 0.9)
 	_shot_fx(_lpos, dir, def, INF, WeaponSkins.def_of(wid, _profile.skin_of(wid)))
 	_send_action("shot", "%s|%s" % [wid, _profile.skin_of(wid)], _lpos, dir)
 	_shake_t = maxf(_shake_t, 0.1)
@@ -2542,6 +2555,7 @@ func apply_action(peer: int, kind: String, arg: String, pos: Vector2, dir: Vecto
 			if def.is_empty():
 				return
 			sprite.play_action("shoot_" + sp[0], screen)
+			_gun_sound(sp[0], sprite.global_position + Vector3.UP * 0.9)
 			_shot_fx(pos, dir, def, height, WeaponSkins.def_of(sp[0], sp[1] if sp.size() > 1 else WeaponSkins.CLASSIC))
 		"cast":
 			var parts := arg.split("|")
@@ -2576,35 +2590,27 @@ func _cycle_weapon() -> void:
 
 ## Les lignes du sac : armes, baies gardées, provisions.
 func _inventory_rows() -> Array:
-	# (12/11 : deux armes en main seulement, emplacement 1 = clic gauche, 2 = clic droit ; les autres attendent au râtelier.
-	# On glisse une vignette sur un emplacement pour l'équiper. L'or et les provisions passent dans la bourse de l'en-tête.)
-	var rows: Array = []
-	for line: Array in [["gold", "Or"], ["balls", "Boulets"], ["planks", "Planches"], ["bullets", "Balles"], ["shells", "Cartouches"]]:
-		rows.append({"kind": "purse", "id": line[0], "label": line[1], "count": int(_profile.get(str(line[0])))})
-	rows.append({"head": true, "label": "Armes en main"})
+	# (12/11, 2e version après l'essai de Jimmy) deux armes, pas une de plus : emplacement 1 = clic gauche, 2 = clic droit ; on
+	# glisse une vignette sur l'autre pour les échanger. Plus de « râtelier » ni de case « apparence » (elle passait pour une
+	# troisième arme) : cliquer une arme change son apparence quand on en a plusieurs. Seul l'or est à part, dans l'en-tête ;
+	# les provisions (boulets, planches, balles, cartouches) restent des cases du sac.
+	var rows: Array = [{"kind": "purse", "id": "gold", "label": "Or", "count": _profile.gold}]
+	rows.append({"head": true, "label": "Armes"})
 	var main_id: String = _profile.weapon
 	var sec_id: String = _profile.secondary_weapon() if _profile.weapons.size() > 1 else ""
-	var rack: Array = []
-	for id in Weapons.order():
-		if id in _profile.weapons and str(id) != main_id and str(id) != sec_id:
-			rack.append(str(id))
 	for pair: Array in [[main_id, 1], [sec_id, 2]]:
 		var id: String = pair[0]
 		if id == "":
-			rows.append({"kind": "weapon_empty", "slot": int(pair[1]), "label": "Emplacement 2 (clic droit) : glisse une arme ici"})
+			rows.append({"kind": "weapon_empty", "slot": int(pair[1]), "label": "Emplacement 2 (clic droit) : achète une deuxième arme au port"})
 			continue
 		rows.append(_weapon_row(id, int(pair[1])))
-	if not rack.is_empty():
-		rows.append({"head": true, "label": "Râtelier"})
-		for id: String in rack:
-			rows.append(_weapon_row(id, 0))
-	for id in _profile.weapons:
-		var owned_skins := _profile.skins_for(str(id))
-		if owned_skins.size() > 1:   # des skins gagnés ou achetés : une case pour changer l'apparence de cette arme
-			var worn := _profile.skin_of(str(id))
-			rows.append({"kind": "wskin", "id": str(id), "label": "Apparence : %s" % WeaponSkins.skin_name(str(id), worn),
-					"right": "%s   (E : changer)" % WeaponSkins.rarity_label(str(id), worn), "enabled": true,
-					"desc": str(WeaponSkins.def_of(str(id), worn).get("desc", "L'arme d'origine."))})
+	rows.append({"head": true, "label": "Provisions"})
+	for line: Array in [["balls", "Boulets", "Pour les canons. Ils sont rangés dans le coffre à boulets du pont."],
+			["planks", "Planches", "Pour boucher les voies d'eau (dans la cale) et fabriquer. Rangées dans la caisse à planches."],
+			["bullets", "Balles", "Munitions du pistolet et du fusil."],
+			["shells", "Cartouches", "Munitions du tromblon."]]:
+		var n := int(_profile.get(str(line[0])))
+		rows.append({"kind": "item", "id": line[0], "label": line[1], "count": n, "right": "%d" % n, "enabled": false, "desc": line[2]})
 	rows.append({"head": true, "label": "Baies des dieux"})
 	if _profile.berries.is_empty():
 		rows.append({"kind": "none", "id": "", "label": "(aucune baie dans le sac)", "right": "", "enabled": false,
@@ -2637,12 +2643,16 @@ func _inventory_rows() -> Array:
 ## Une case d'arme du sac. `slot` : 1 (clic gauche), 2 (clic droit) ou 0 (au râtelier).
 func _weapon_row(id: String, slot: int) -> Dictionary:
 	var def := Weapons.get_def(id)
-	var right: String = ["au râtelier : glisse-la sur 1 ou 2", "emplacement 1 (clic gauche)", "emplacement 2 (clic droit)"][slot]
+	var right: String = ["", "emplacement 1 (clic gauche)", "emplacement 2 (clic droit)"][slot]
 	var ammo := Weapons.ammo_of(id)
 	if ammo != "":
 		right += "   (%d %s)" % [_profile.ammo_count(ammo), Weapons.ammo_label(ammo)]
-	return {"kind": "weapon", "id": id, "slot": slot, "label": str(def.get("name", id)), "right": right, "enabled": slot != 1,
-			"desc": str(def.get("desc", ""))}
+	var desc := str(def.get("desc", ""))
+	var skins := _profile.skins_for(id)
+	if skins.size() > 1:
+		var worn := _profile.skin_of(id)
+		desc += "   Apparence : %s (%s) — clic : changer." % [WeaponSkins.skin_name(id, worn), WeaponSkins.rarity_label(id, worn)]
+	return {"kind": "weapon", "id": id, "slot": slot, "label": str(def.get("name", id)), "right": right, "enabled": true, "desc": desc}
 
 
 ## Une arme glissée sur l'emplacement 1 ou 2 du sac.
@@ -2686,11 +2696,17 @@ func _on_inventory_use(kind: String, id: String) -> void:
 		_on_chest_use(kind, id)
 		return
 	match kind:
-		"weapon":
-			_profile.set_main_weapon(id)
+		"weapon":   # (12/11) clic sur une arme : son apparence suivante s'il y en a plusieurs, sinon elle passe en 1
+			var owned := _profile.skins_for(id)
+			if owned.size() > 1:
+				var nxt := str(owned[(owned.find(_profile.skin_of(id)) + 1) % owned.size()])
+				_profile.skin_worn[id] = nxt
+				_say("%s : %s" % [Weapons.weapon_name(id), WeaponSkins.skin_name(id, nxt)], 2.5)
+			elif id != _profile.weapon:
+				_profile.set_main_weapon(id)
+				_say("1 (clic gauche) : %s     2 (clic droit) : %s" % [Weapons.weapon_name(_profile.weapon), Weapons.weapon_name(_profile.secondary_weapon())], 2.5)
 			_profile.save()
 			_hand_wid = ""
-			_say("Arme principale (clic gauche) : %s" % Weapons.weapon_name(id), 2.0)
 		"wskin":
 			var list := _profile.skins_for(id)
 			var nxt := str(list[(list.find(_profile.skin_of(id)) + 1) % list.size()])
@@ -6238,6 +6254,13 @@ func _cannon_boom(at: Vector3) -> void:
 
 
 ## Un boulet qui arrive : `what` = "hull_hit" (dans une coque, un mob, un récif) ou "ball_splash" (à l'eau).
+## Le coup de feu d'une arme (12/11 : il n'y en avait aucun) : un son par arme (pistolet, tromblon, fusil), tiré au hasard
+## parmi plusieurs prises sans répéter la précédente ; il porte loin (filtré au loin comme le canon).
+func _gun_sound(wid: String, at: Vector3) -> void:
+	var vol := {"pistolet": 0.85, "tromblon": 1.0, "fusil": 0.95}.get(wid, 0.85) as float
+	_sfx.play_at(Synth.recorded("shot_" + wid), at, vol, 1.0, true)
+
+
 func _sword_hit_sound(on_prop: bool, at: Vector3) -> void:
 	_sfx.play_at(Synth.recorded("sword_hit_wood" if on_prop else "sword_hit"), at, 0.9)
 
@@ -7445,9 +7468,16 @@ func _update_lot2_visuals(delta: float) -> void:
 	# ce que chacun porte, entre les mains (et non plus au-dessus de la tête), visible par tous
 	var to_cam := _cam.global_transform.basis.z
 	var mine: Node3D = _treasure_icon if _treasure_icon != null else (_ball_icon if _ball_icon.visible else (_plank_icon if _plank_icon.visible else null))
+	# (12/11 : « pas d'animation quand on porte un coffre ». Le fardeau suit maintenant le pas : il monte et descend à chaque
+	# foulée, penche un peu d'un côté puis de l'autre, et se pose au repos.)
+	var walking := _sprite.anim.ends_with("walk")
+	_carry_step_t = _carry_step_t + delta * 9.0 if walking else 0.0
+	_carry_bob = lerpf(_carry_bob, 1.0 if walking else 0.0, 1.0 - exp(-delta * 10.0))
+	var bob := Vector3(0.0, -absf(sin(_carry_step_t * PI * 0.5)) * 0.09 * _carry_bob, 0.0)
 	for n: Node3D in [_treasure_icon, _ball_icon, _plank_icon]:
 		if n != null and n == mine:
-			n.global_position = _sprite.global_position + Vector3(0.0, GameConfig.CARRY_HANDS_HEIGHT, 0.0) + to_cam * GameConfig.CARRY_TOWARD_CAMERA
+			n.global_position = _sprite.global_position + Vector3(0.0, GameConfig.CARRY_HANDS_HEIGHT, 0.0) + to_cam * GameConfig.CARRY_TOWARD_CAMERA + bob
+			n.rotation.z = sin(_carry_step_t * PI * 0.5) * 0.12 * _carry_bob
 	for id: int in _carry_nodes:
 		var cn := _carry_nodes[id] as Node3D
 		if is_instance_valid(cn) and _remotes.has(id):
@@ -7738,7 +7768,7 @@ func _update_water(delta: float) -> void:
 		_siren = _make_siren()
 		# (12/11 : elle apparaissait collée au nageur) loin, du côté du bateau si possible : on nage vers elle en suivant sa lumière
 		var toward := (_sim.position - _lpos).normalized() if _sim.position.distance_to(_lpos) > 1.0 else Vector2.from_angle(randf() * TAU)
-		_siren_pos = _lpos + toward.rotated(randf_range(-0.9, 0.9)) * GameConfig.SIREN_DISTANCE
+		_siren_pos = _open_water_spot(_lpos, toward, GameConfig.SIREN_DISTANCE)
 	if _siren != null:
 		_sfx.loop_at("siren", Synth.recorded("siren_hum", true), _world_fixed.to_global(Vector3(_siren_pos.x, SEA_Y + 0.8, _siren_pos.y)), 0.9)
 	if stage >= 2 and _sharks.is_empty():
@@ -7880,6 +7910,36 @@ func _place_water_threats(center: Vector2, siren: Node3D, siren_pos: Vector2, sh
 		n.position = Vector3(pos.x, SEA_Y + _wave_height(pos) + 0.05 - sink, pos.y)
 		n.rotation.y = PI / 2.0 - head   # l'aileron file dans le sens de sa course
 	return bit
+
+
+## Un point d'eau libre à environ `dist` m de `center`, de préférence vers `toward` (12/11 : la sirène apparaissait sous un
+## ponton, en ville ou dans un rocher). On essaie des angles de plus en plus écartés, puis des distances plus courtes.
+func _open_water_spot(center: Vector2, toward: Vector2, dist: float) -> Vector2:
+	var base := toward.angle()
+	for d: float in [dist, dist * 0.8, dist * 1.25, dist * 0.6, dist * 0.45]:
+		for k in 12:
+			var a := base + (float((k + 1) / 2) * 0.45) * (1.0 if k % 2 == 0 else -1.0)
+			var p := center + Vector2.from_angle(a) * d
+			if _is_open_water(p):
+				return p
+	return center + toward * dist
+
+
+## Vrai si `p` (monde) est de l'eau libre : ni quai, ni ponton, ni ville (avec une marge de 3 m), ni île, ni récif, ni sous la
+## coque du bateau.
+func _is_open_water(p: Vector2) -> bool:
+	for off: Vector2 in [Vector2.ZERO, Vector2(3, 0), Vector2(-3, 0), Vector2(0, 3), Vector2(0, -3)]:
+		if not _land.is_over_water(p + off):
+			return false
+	if _islands != null and _islands.island_at(p, 4.0) >= 0:
+		return false
+	if _rocks != null:
+		for r: Array in _rocks.rocks:
+			if p.distance_to(Vector2(float(r[0]), float(r[1]))) < float(r[2]) + 3.0:
+				return false
+	if _ship != null and _ship.over_hull(_world_to_ship(p)):
+		return false
+	return _sim.position.distance_to(p) > _ship.length * ShipModel.SCALE * 0.6
 
 
 ## Le prochain point de passage d'un requin qui rôde : de l'autre côté du nageur, en biais (il passe à côté sans foncer
@@ -8220,7 +8280,7 @@ func _set_remote_water(peer: int, stage: int) -> void:
 		w["sharks"] = []
 	if stage >= 1 and w["siren"] == null and _remotes.has(peer):
 		w["siren"] = _make_siren()
-		w["siren_pos"] = (_remotes[peer]["pos"] as Vector2) + Vector2(GameConfig.SIREN_DISTANCE, 0.0)
+		w["siren_pos"] = _open_water_spot(_remotes[peer]["pos"] as Vector2, Vector2.RIGHT, GameConfig.SIREN_DISTANCE)
 	if stage >= 2 and (w["sharks"] as Array).is_empty() and _remotes.has(peer):
 		var arr: Array = []
 		for k in GameConfig.SHARK_COUNT:

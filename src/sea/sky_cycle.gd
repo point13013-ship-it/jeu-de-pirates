@@ -275,6 +275,10 @@ func _apply(_delta: float) -> void:
 	_env.fog_height_density = 0.12 * fog_amount
 	_env.fog_sun_scatter = 0.0
 	_env.fog_aerial_perspective = 0.0
+	# tout au loin (au-delà de la mer dessinée, en vue rasante) : la couleur de la brume plutôt qu'un fond sombre
+	_env.background_color = _env.fog_light_color.darkened(0.15)
+	_env.fog_enabled = true
+	_env.fog_density = maxf(_env.fog_density, 0.35)
 	# lueur (bloom) : discrète le jour, nette la nuit pour les lanternes et les fenêtres
 	_env.glow_enabled = true
 	_env.glow_intensity = lerpf(0.95, 0.35, daylight)

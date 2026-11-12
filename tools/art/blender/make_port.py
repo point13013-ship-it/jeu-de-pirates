@@ -137,8 +137,18 @@ box("quay_algae", LAND[0], -0.48, -1.75, LAND[2], -0.40, -1.25, "algae")
 box("quay_cap", LAND[0], -0.55, -0.08, LAND[2], 0.35, 0.06, "stone_d")
 for x in range(-40, 42, 3):  # joints du mur
     box("quay_joint", x, -0.47, -1.2, x + 0.08, -0.44, -0.1, "stone_d")
-# plage de sable à l'ouest
-box("ground_sand", -62.0, -10.0, -3.2, LAND[0], LAND[3], -0.85, "ground_sand")
+# (12/11) la plage de l'ouest a été retirée au lot 1 (c'est la mer jusqu'au quai) : les deux flancs du quai reçoivent le même
+# mur que la façade (pierre, algues à la flottaison, couronnement clair, joints) ; avant, les pavés tombaient à pic dans l'eau.
+for sx, x_out in ((-1, LAND[0]), (1, LAND[2])):
+    xa, xb = (x_out - 0.45, x_out + 0.02) if sx < 0 else (x_out - 0.02, x_out + 0.45)
+    box("quay_wall", min(xa, xb), -0.45, -3.2, max(xa, xb), LAND[3], -0.05, "stone")
+    ax0, ax1 = (x_out - 0.48, x_out - 0.40) if sx < 0 else (x_out + 0.40, x_out + 0.48)
+    box("quay_algae", ax0, -0.45, -1.75, ax1, LAND[3], -1.25, "algae")
+    cx0, cx1 = (x_out - 0.55, x_out + 0.35) if sx < 0 else (x_out - 0.35, x_out + 0.55)
+    box("quay_cap", cx0, -0.55, -0.08, cx1, LAND[3], 0.06, "stone_d")
+    for y in range(2, int(LAND[3]), 3):
+        jx0, jx1 = (x_out - 0.47, x_out - 0.44) if sx < 0 else (x_out + 0.44, x_out + 0.47)
+        box("quay_joint", jx0, y, -1.2, jx1, y + 0.08, -0.1, "stone_d")
 # herbe au fond de la ville
 box("ground_grass", LAND[0], 47.0, -0.2, LAND[2], LAND[3], 0.02, "ground_grass")
 

@@ -64,6 +64,8 @@ func play(stream: AudioStream, vol: float = 1.0, pitch: float = 1.0, bus: String
 	p.pitch_scale = pitch
 	p.bus = bus
 	p.play()
+	if OS.has_environment("SFX_DEBUG"):
+		print("[amb] %s vol %.2f bus %s" % [str(stream), vol, bus])
 
 
 func play_chime() -> void:

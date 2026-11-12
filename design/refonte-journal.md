@@ -175,3 +175,20 @@ Sons : **faits le 12/11** avec le compte Epidemic Sound de Jimmy (19 fichiers da
 chacun, coupés et normalisés). `Synth.recorded()` charge le fichier s'il existe, sinon le son fabriqué reste. Plus tard :
 pluie, combat, musiques. ⚠ À vérifier : que la licence Epidemic Sound couvre un jeu distribué à d'autres joueurs.
 Images pixel art : pirate au sol, gestes (cabestan, clouer, écoper, hisser). Modèles : sirène, requin.
+
+
+## Quatrième essai (12/11/2026, soir)
+
+- Coups de feu : un son par arme (pistolet 10 prises, fusil 8, tromblon 7, Epidemic), clic à vide sans munitions.
+- Sac : seul l'or reste à part (en-tête) ; boulets, planches, balles, cartouches redeviennent des cases. Deux armes seulement
+  (plus de râtelier ni de case « apparence » qu'on prenait pour une 3e arme : cliquer une arme change son apparence). À
+  l'armurerie, une nouvelle arme passe en 1, l'ancienne en 2 si la place est libre, sinon elle reste à l'armurerie.
+- Porter : le fardeau balance au rythme des pas ; clic droit lâche ce qu'on porte (à terre et sur le pont).
+- Sirène : toujours en eau libre (ni quai, ni ponton, ni ville à 3 m près, ni île, ni récif, ni sous le bateau).
+- Horizon : mer dessinée sur 200 m (au lieu de 110) et fond couleur de brume : plus de vide noir en vue rasante.
+- Quai : les deux flancs (là où la plage a été retirée au lot 1) ont maintenant mur, algues et couronnement.
+- Sons muets après le vol : non reproduit (pas, sabre et tirs se jouent après un vol puis un atterrissage, en ville comme sur
+  une île). Traces activables avec la variable d'environnement SFX_DEBUG=1.
+- Essais : --carry=<trésor>, M dans --press.
+- Direction artistique : recherche en trois volets et proposition dans design/bible-direction-artistique.md (à valider avant
+  toute refonte graphique).
