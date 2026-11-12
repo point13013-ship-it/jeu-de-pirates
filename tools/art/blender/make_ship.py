@@ -428,8 +428,9 @@ def window(name, x, y, z, across_x, w=0.5, h=0.44):
 
 
 # fenêtres éclairées sur les murs extérieurs
-for k in range(2):
-    window("cut_win_w", wx - 0.02, (k - 0.5) * (wid0 * 0.5), fz + 1.0, True)
+_nw = 3 if V2 else 2   # v2 : trois fenêtres à l'arrière de la cabine (la poupe, vue de derrière, est la façade du bateau)
+for k in range(_nw):
+    window("cut_win_w", wx - 0.02, (k - (_nw - 1) / 2) * (wid0 * (0.3 if V2 else 0.5)), fz + 1.0, True, w=0.44 if V2 else 0.5)
 for sgn, tag in ((-1, "s"), (1, "n")):
     window("cut_win_" + tag, cabin_cx - 0.3, sgn * (ny + 0.02), fz + 1.0, False)
 # mobilier : couchette, coffre, table, tapis, lanterne suspendue
@@ -553,6 +554,7 @@ if V2:
             box("drip", x, side * hw * 1.02, dz - 0.5, 0.06, 0.02, 0.5, "hull_d")
 
 
+
 # tableau arrière (12/11) : la face plate de la poupe, sous la cabine, était un grand aplat sombre qui ressemblait à un vide
 # derrière la cabine. Elle est maintenant habillée comme sur les vrais navires : bordage clair, frise dorée et rouge, deux
 # fenêtres de galerie, et le gouvernail.
@@ -561,12 +563,54 @@ xt = x_t - 0.035
 box("stern_panel", xt, 0, dz_t - 0.42, 0.06, hw_t * 2 * 0.94, 0.84, "hull_l")
 box("stern_band_g", xt - 0.01, 0, dz_t - 0.1, 0.06, hw_t * 2 * 0.96, 0.12, "gold")
 box("stern_band_r", xt - 0.01, 0, dz_t - 0.92, 0.06, hw_t * 2 * 0.86, 0.14, "red")
-for sy in (-1, 1):
-    window("stern_win", xt - 0.03, sy * hw_t * 0.42, dz_t - 0.5, True, w=0.42, h=0.34)
-if V2:   # deux lanternes d'angle sur le tableau arrière (la poupe éclairée se voit de loin la nuit)
+if not V2:
     for sy in (-1, 1):
-        box("stern_lantern_frame", xt - 0.12, sy * hw_t * 0.82, dz_t + 0.25, 0.22, 0.22, 0.32, "iron")
-        box("stern_lantern", xt - 0.12, sy * hw_t * 0.82, dz_t + 0.25, 0.24, 0.15, 0.22, "glow")
+        window("stern_win", xt - 0.03, sy * hw_t * 0.42, dz_t - 0.5, True, w=0.42, h=0.34)
+if V2:
+    # passe 2 : la poupe, vue de derrière, devient la façade du bateau. Une rangée de quatre fenêtres sur le tableau, une galerie
+    # en balcon (plancher, balustres dorés, main courante) sous les fenêtres de la cabine, des galeries de flanc aux deux angles,
+    # et un couronnement doré qui dépasse du toit, avec les deux lanternes de poupe.
+    for k in range(4):
+        window("stern_win", xt - 0.03, (k - 1.5) * hw_t * 0.42, dz_t - 0.52, True, w=0.36, h=0.32)
+    gx = xt - 0.32                         # le balcon dépasse de 30 cm derrière le tableau
+    gz = fz + 0.12                         # son plancher : un peu au-dessus de celui de la cabine
+    gw = hw_t * 2 * 0.86
+    box("gallery_floor", gx + 0.02, 0, gz, 0.62, gw, 0.08, "hull_l")
+    box("gallery_sole", gx - 0.02, 0, gz - 0.1, 0.54, gw * 0.96, 0.12, "red")
+    for q in range(9):                     # consoles sous le balcon
+        box("gallery_bracket", gx + 0.05, (q - 4) * gw / 8.4, gz - 0.24, 0.42, 0.06, 0.2, "hull", rot=(0, math.radians(-28), 0))
+    nb = 13
+    for q in range(nb):                    # balustres
+        cyl("gallery_baluster", gx - 0.22, (q - (nb - 1) / 2) * gw / (nb - 0.5), gz + 0.25, 0.028, 0.42, "gold", verts=6)
+    box("gallery_rail", gx - 0.22, 0, gz + 0.48, 0.08, gw + 0.06, 0.06, "gold")
+    for sy in (-1, 1):
+        box("gallery_end", gx - 0.02, sy * (gw / 2 + 0.02), gz + 0.26, 0.5, 0.06, 0.5, "hull_l")
+        # galerie de flanc (« bouteille ») : une petite loge vitrée en encorbellement sur l'angle de la poupe
+        qx = x_t + 0.55
+        qy = sy * (station(0.05)[1] + 0.12)
+        box("quarter_gallery", qx, qy, fz + 0.75, 0.9, 0.26, 0.95, "hull_l")
+        box("quarter_gallery_cap", qx, qy, fz + 1.27, 1.0, 0.34, 0.1, "gold")
+        box("quarter_gallery_base", qx, qy * 0.99, fz + 0.24, 0.8, 0.22, 0.14, "red")
+        window("quarter_win", qx, qy + sy * 0.14, fz + 0.78, False, w=0.4, h=0.4)
+    # couronnement : un fronton doré en arc derrière le toit de la cabine, qui fait monter la poupe
+    # (posé sur l'arrière du toit ; nommé « cut_ » : masqué quand on est dans la cabine, comme le toit)
+    crown_z = top + 0.15
+    crx = cabin_cx - roof_len / 2 + 0.07
+    cw_ = roof_wid * 0.96
+    nseg = 9
+    for q in range(nseg):
+        t = (q + 0.5) / nseg
+        yy = (t - 0.5) * cw_
+        hh = 0.3 + 0.5 * math.sin(math.pi * t)
+        box("cut_crown", crx, yy, crown_z + hh / 2, 0.1, cw_ / nseg + 0.01, hh, "hull_l")
+        box("cut_crown_trim", crx - 0.02, yy, crown_z + hh + 0.03, 0.12, cw_ / nseg + 0.03, 0.07, "gold")
+    sphere("cut_crown_boss", crx - 0.08, 0, crown_z + 0.5, 0.16, "gold")
+    for sy in (-1, 1):   # deux lanternes d'angle sur le couronnement (la poupe éclairée se voit de loin la nuit)
+        lx, ly, lz = crx - 0.03, sy * cw_ * 0.5, crown_z + 0.62
+        cyl("stern_lantern_post", lx, ly, lz - 0.35, 0.04, 0.5, "iron", verts=6)
+        box("stern_lantern_frame", lx, ly, lz, 0.22, 0.22, 0.32, "iron")
+        box("stern_lantern", lx, ly, lz, 0.24, 0.15, 0.22, "glow")
+        box("stern_lantern_cap", lx, ly, lz + 0.2, 0.28, 0.28, 0.06, "iron")
 box("rudder", x_t - 0.12, 0, dz_t - 0.95 - dp_t * 0.35, 0.14, 0.12, dp_t * 0.7 + 0.5, "mast")
 box("rudder_blade", x_t - 0.32, 0, dz_t - 1.2 - dp_t * 0.4, 0.4, 0.1, dp_t * 0.6, "mast")
 
@@ -624,29 +668,108 @@ else:
         box("eye_crest", px, py, pz + rad[i] + 0.09, 0.16, 0.04, 0.24, "gold", rot=(0, math.radians(-20), 0))
 cyl("bowsprit", x_b + 1.7, 0, dz_b + 0.9, 0.14, 4.2 * (L / 13.0) ** 0.5, "mast", rot=(0, math.radians(75), 0))
 
+if V2:
+    def deck_z(x):
+        return station((x + L / 2) / L)[2]
+
+    # passe 2, la vie à bord. Le tonneau de grog, contre le plat-bord bâbord entre le canon et l'échelle : un fût renflé (tube),
+    # trois cercles de fer, un robinet, une chope posée dessus
+    gx_, gy_ = 0.25, station((0.25 + L / 2) / L)[1] - 0.52
+    gz_ = deck_z(gx_)
+    prof = [(0.0, 0.27), (0.12, 0.31), (0.38, 0.34), (0.64, 0.31), (0.76, 0.27)]
+    tube("barrel_grog", [(gx_, gy_, gz_ + z) for z, _r in prof], [r for _z, r in prof], "hull_l", 12)
+    cyl("barrel_grog_top", gx_, gy_, gz_ + 0.76, 0.27, 0.03, "deck", verts=12)
+    for z, r in ((0.1, 0.305), (0.38, 0.345), (0.66, 0.305)):
+        cyl("barrel_grog_hoop", gx_, gy_, gz_ + z, r + 0.012, 0.05, "iron", verts=12)
+    cyl("barrel_grog_tap", gx_ - 0.33, gy_, gz_ + 0.22, 0.03, 0.14, "gold", rot=(0, math.radians(90), 0), verts=6)
+    cyl("barrel_grog_mug", gx_ + 0.08, gy_ - 0.06, gz_ + 0.84, 0.07, 0.14, "deck_l", verts=8)
+    cyl("barrel_grog_stool", gx_ - 0.62, gy_ + 0.05, gz_ + 0.2, 0.17, 0.4, "hull", verts=8)
+    OBST_CIRCLES.append((gx_, gy_, 0.36))
+    # les caisses sous filet, côté tribord, au même niveau : deux caisses, une troisième par-dessus, un filet de cordage
+    cx_, cy_ = 0.35, -(station((0.35 + L / 2) / L)[1] - 0.5)
+    cz_ = deck_z(cx_)
+    box("cargo_crate", cx_ - 0.22, cy_, cz_ + 0.27, 0.55, 0.55, 0.54, "deck_l", rot=(0, 0, math.radians(4)))
+    box("cargo_crate", cx_ + 0.36, cy_ + 0.02, cz_ + 0.23, 0.5, 0.5, 0.46, "deck", rot=(0, 0, math.radians(-7)))
+    box("cargo_crate", cx_ + 0.05, cy_ - 0.02, cz_ + 0.75, 0.5, 0.46, 0.42, "deck_n", rot=(0, 0, math.radians(10)))
+    for q in range(4):   # le filet : des cordages croisés par-dessus, attachés au pont
+        f = -0.45 + q * 0.3
+        rope((cx_ + f, cy_ - 0.32, cz_ + 0.02), (cx_ + f + 0.2, cy_ + 0.32, cz_ + 0.02), r=0.018)
+        rope((cx_ + f, cy_ - 0.3, cz_ + 0.5), (cx_ + f + 0.1, cy_ + 0.3, cz_ + 0.98), r=0.018)
+        rope((cx_ + f + 0.1, cy_ + 0.3, cz_ + 0.98), (cx_ + f + 0.2, cy_ + 0.3, cz_ + 0.02), r=0.018)
+    rope((cx_ - 0.55, cy_ - 0.3, cz_ + 0.62), (cx_ + 0.65, cy_ - 0.3, cz_ + 0.62), r=0.02)
+    OBST_BOXES.append((cx_ - 0.55, cy_ - 0.34, cx_ + 0.66, cy_ + 0.34))
+    # une mouette posée sur le couronnement de la poupe (corps en ovale, ailes grises repliées, bec jaune)
+    if True:
+        mx_, my_, mz_ = crx + 0.02, roof_wid * 0.22, top + 0.15 + 0.3 + 0.5 * math.sin(math.pi * 0.72) + 0.12
+        bpy.ops.mesh.primitive_uv_sphere_add(radius=0.12, location=(mx_, my_, mz_ + 0.06), segments=10, ring_count=6)
+        ob = bpy.context.active_object
+        ob.name = "gull"
+        ob.scale = (1.0, 0.75, 0.75)
+        ob.data.materials.append(MAT["bone"])
+        parts.append(ob)
+        sphere("gull_head", mx_ + 0.12, my_, mz_ + 0.14, 0.065, "bone")
+        box("gull_beak", mx_ + 0.2, my_, mz_ + 0.13, 0.08, 0.025, 0.025, "gold")
+        for sy in (-1, 1):
+            box("gull_wing", mx_ - 0.04, my_ + sy * 0.08, mz_ + 0.09, 0.24, 0.03, 0.08, "sail_d", rot=(math.radians(sy * 12), 0, 0))
+        box("gull_tail", mx_ - 0.17, my_, mz_ + 0.08, 0.1, 0.06, 0.03, "dark")
+
+
+
 # ------------------------------------------------------------------ mâtures
 
 
-def square_sail(x, z0, z1, width, bulge, emblem):
+def square_sail(x, z0, z1, width, bulge, emblem, patch=None):
     # 12/11 : voile pleine (avant : des faces retirées au hasard en bas, « en lambeaux », qui faisaient croire à de la
     # transparence ; et un damier de deux teintes), une seule matière, et des coordonnées de texture : la toile du jeu (lés,
     # coutures, ralingue) suit la voile. L'emblème n'est plus un objet 3D blanc collé dessus : il est peint dans la toile
     # (matière « sail_e », voir ShipModel.emblem_texture).
     nu, nv = 16, 10
     verts, faces, uvs = [], [], []
+    # v2 (passe 2) : voiles plus gonflées (creux x1,3, ventre placé un peu bas), et la bordure (le bas) remonte en arc au milieu,
+    # comme une vraie voile carrée tenue aux deux coins : la silhouette n'est plus un trapèze
+    bulge_k = 1.3 if V2 else 1.0
+    roach = 0.32 * (z1 - z0) / 3.0 if V2 else 0.0
+
+    def surf(u, v, off=0.0):
+        wv = width * (1.0 - 0.18 * v)
+        if V2:
+            prof = math.sin(math.pi * u) ** 0.8 * math.sin(math.pi * (0.06 + 0.8 * v ** 0.85))
+        else:
+            prof = math.sin(math.pi * u) * math.sin(math.pi * (0.12 + 0.76 * v))
+        bx = bulge * bulge_k * prof
+        lift = roach * math.sin(math.pi * u) * (1.0 - v) ** 2
+        return (x + bx + off, (u - 0.5) * wv, z0 + lift + v * (z1 - z0 - lift))
+
     for j in range(nv + 1):
         v = j / nv
-        wv = width * (1.0 - 0.18 * v)
         for i in range(nu + 1):
             u = i / nu
-            bx = bulge * math.sin(math.pi * u) * math.sin(math.pi * (0.12 + 0.76 * v))
-            verts.append((x + bx, (u - 0.5) * wv, z0 + v * (z1 - z0)))
+            verts.append(surf(u, v))
             uvs.append((u, v))
     for j in range(nv):
         for i in range(nu):
             a = j * (nu + 1) + i
             faces.append((a, a + 1, a + nu + 2, a + nu + 1))
-    add_mesh("sail_z%d" % round(z1 * 100), verts, faces, "sail_e" if emblem else "sail", uvs=uvs)
+    tag = "sail_z%d" % round(z1 * 100)
+    add_mesh(tag, verts, faces, "sail_e" if emblem else "sail", uvs=uvs)
+    if V2 and patch is not None:
+        # une rustine : un carré de toile plus sombre cousu sur la voile, des deux côtés (le bateau a vécu). Elle porte le même
+        # nom de voile (« sail_zNNN_patch ») : le jeu la gonfle, la cargue et l'oriente avec sa voile.
+        pu0, pv0, pu1, pv1 = patch
+        for side, off in (("a", 0.025), ("b", -0.025)):
+            pvv, pff, puv = [], [], []
+            n = 4
+            for j in range(n + 1):
+                for i in range(n + 1):
+                    u = pu0 + (pu1 - pu0) * i / n + 0.012 * math.sin(j * 2.1)   # bords un peu irréguliers
+                    v = pv0 + (pv1 - pv0) * j / n + 0.01 * math.sin(i * 1.7)
+                    pvv.append(surf(u, v, off))
+                    puv.append((i / n * 0.3, j / n * 0.3))
+            for j in range(n):
+                for i in range(n):
+                    a = j * (n + 1) + i
+                    pff.append((a, a + 1, a + n + 2, a + n + 1))
+            add_mesh(tag + "_patch" + side, pvv, pff, "sail_d", uvs=puv)
     cyl("yard", x, 0, z1, 0.11, width * 0.82 + 0.6, "mast", rot=(math.radians(90), 0, 0))
     cyl("yard_low", x, 0, z0, 0.07, width + 0.2, "mast", rot=(math.radians(90), 0, 0), verts=6)
 
@@ -670,8 +793,14 @@ for mx, mh, sails in CFG["masts"]:
             rot=(0, 0, ang + math.pi / 2))
     NESTS.append((mx, 0.0, zn + 0.05, mh))
     max_top = max(max_top, mh)
-    for (z0, z1, w, b, e) in sails:
-        square_sail(mx, z0, z1, w, b, e)
+    for si, (z0, z1, w, b, e) in enumerate(sails):
+        # deux rustines sur le brigantin : basse voile de misaine (à droite) et hunier du grand mât (à gauche)
+        pt = None
+        if V2 and si == 0 and mx > 0:
+            pt = (0.64, 0.22, 0.80, 0.42)
+        elif V2 and si == 1 and mx < 0:
+            pt = (0.18, 0.40, 0.32, 0.66)
+        square_sail(mx, z0, z1, w, b, e, pt)
     for side in (-1, 1):
         for k in range(3):
             rope((mx, 0, mh * 0.78), (mx - 0.7 + k * 0.7, side * (hw_s * 0.95), 0.62))

@@ -686,6 +686,17 @@ func _build_view() -> void:
 		_post_mat.set_shader_parameter("use_palette", false)
 		_post_mat.set_shader_parameter("outline_threshold", 10.0)
 		_viewport.msaa_3d = Viewport.MSAA_DISABLED   # des pixels nets (l'anticrénelage mélangeait les bords)
+		# ombre de contact (12/11, passe 2) : l'occlusion ambiante assombrit les recoins (pied des caisses, des mâts, des murs,
+		# dessous des balcons) : les objets se posent sur le pont au lieu de flotter. Ne touche que la lumière ambiante.
+		if GameConfig.TOON_SSAO and not _args.has("no-ssao"):
+			env.ssao_enabled = true
+			env.ssao_radius = GameConfig.TOON_SSAO_RADIUS
+			env.ssao_intensity = GameConfig.TOON_SSAO_INTENSITY
+			env.ssao_power = 1.4
+			env.ssao_detail = 0.4
+			env.ssao_horizon = 0.06
+			env.ssao_sharpness = 0.98
+			env.ssao_light_affect = GameConfig.TOON_SSAO_LIGHT
 
 	# surface de la mer : un maillage fin (un sommet tous les 25 cm) que la houle soulève
 	_sea = MeshInstance3D.new()

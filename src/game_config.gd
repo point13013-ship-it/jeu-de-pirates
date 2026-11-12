@@ -37,6 +37,10 @@ const LOOK_V2 := true
 const TOON_ROUGHNESS := 0.3          ## plus bas : frontière ombre/lumière plus nette
 const TOON_SUN_SCALE := 0.62         ## soleil tempéré en lumière à paliers (sinon les couleurs claires « brûlent »)
 const TOON_AMBIENT_SCALE := 1.12     ## ambiance (froide) un peu plus présente : ombres colorées
+const TOON_SSAO := true               ## ombre de contact (occlusion ambiante) : les objets se posent au lieu de flotter
+const TOON_SSAO_RADIUS := 0.9         ## m : portée de l'ombre de contact
+const TOON_SSAO_INTENSITY := 3.0
+const TOON_SSAO_LIGHT := 0.25         ## 0…1 : part de l'ombre de contact qui mord aussi sur la lumière directe
 
 ## 1.6 Pluie : elle tombe partout dans la zone de météo, pas en colonne au-dessus du bateau.
 const RAIN_AREA := 70.0               ## m : côté du carré de pluie autour de la caméra (assez large pour le plus fort dézoom)
