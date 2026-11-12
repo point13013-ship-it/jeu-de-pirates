@@ -328,7 +328,22 @@ static func register_weapon(weapon: String, skin: String) -> void:
 		palette_version += 1
 
 
+static var _compose_busy := false
+
+## Compose une feuille. Une seule composition à la fois (bug 1.4) : quand une trentaine de feuilles se fabriquaient dans la même
+## image (les PNJ de la ville + un changement d'arme ou de skin), certaines sortaient avec leurs couches mal empilées (la peau du
+## visage et du torse par-dessus les yeux, la bouche, la barbe et la ceinture : un pirate « sans visage »).
 static func _compose(p_look: Dictionary, a: String, weapon_sheets: Dictionary = {}) -> Texture2D:
+	var tree0 := Engine.get_main_loop() as SceneTree
+	while _compose_busy:
+		await tree0.process_frame
+	_compose_busy = true
+	var tex := await _compose_now(p_look, a, weapon_sheets)
+	_compose_busy = false
+	return tex
+
+
+static func _compose_now(p_look: Dictionary, a: String, weapon_sheets: Dictionary = {}) -> Texture2D:
 	var cat := PirateLook.catalog()
 	var frame_size: Array = cat["frame"]
 	var frames: int = int(cat["anims"][a])
