@@ -200,6 +200,7 @@ func _build_right() -> Control:
 	name_label.text = "Ton pirate"
 	name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	name_label.add_theme_font_size_override("font_size", 22)
+	UiTheme.apply_font(name_label, 22)
 	name_label.add_theme_color_override("font_color", GOLD)
 	box.add_child(name_label)
 	_volume_panel = VolumePanel.new()   # (le bouton « Sons et musique » l'ouvre)
@@ -247,6 +248,7 @@ func _style_button(b: Button, solid: bool) -> void:
 	b.add_theme_color_override("font_color", CREAM)
 	b.add_theme_color_override("font_hover_color", Color.WHITE)
 	b.add_theme_color_override("font_pressed_color", Color.WHITE)
+	UiTheme.apply_font(b, int(b.get_theme_font_size("font_size")) if b.has_theme_font_size_override("font_size") else 16)
 
 
 ## Tous les bateaux du menu (identifiants) : ils sont tous proposés d'emblée, même au tout premier lancement.

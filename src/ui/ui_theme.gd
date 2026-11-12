@@ -24,6 +24,39 @@ const SEA := Color("2d6f7a")
 
 const ANIM := 0.15                    ## s : durée des petites animations d'interface
 
+## Polices libres (OFL, Google Fonts, licences dans assets/fonts) : Pirata One pour les titres (≥ TITLE_FROM px),
+## IM Fell English (caractères d'imprimerie du XVIIe) pour les boutons et le texte. Sans le fichier, police par défaut.
+const TITLE_FONT_PATH := "res://assets/fonts/PirataOne-Regular.ttf"
+const TEXT_FONT_PATH := "res://assets/fonts/IMFellEnglish-Regular.ttf"
+const TITLE_FROM := 26
+const TEXT_FROM := 16
+
+static var _fonts := {}
+
+
+static func _font(path: String) -> Font:
+	if not _fonts.has(path):
+		_fonts[path] = load(path) if ResourceLoader.exists(path) else null
+	return _fonts[path]
+
+
+static func title_font() -> Font:
+	return _font(TITLE_FONT_PATH)
+
+
+static func text_font() -> Font:
+	return _font(TEXT_FONT_PATH)
+
+
+## Pose la bonne police sur un contrôle selon la taille du texte (titre ou texte courant).
+## Sous TEXT_FROM px (touches, quantités, aides), on garde la police par défaut, plus lisible en petit.
+static func apply_font(c: Control, font_size: int) -> void:
+	if font_size < TEXT_FROM:
+		return
+	var f := title_font() if font_size >= TITLE_FROM else text_font()
+	if f != null:
+		c.add_theme_font_override("font", f)
+
 
 ## Panneau de bois à bordure de laiton (fenêtres : sac, menu pause, coffre).
 static func panel(alpha: float = 0.96) -> StyleBoxFlat:
@@ -77,6 +110,7 @@ static func style_button(b: Button, font_size: int = 18) -> void:
 		sb.content_margin_bottom = 6
 		b.add_theme_stylebox_override(state, sb)
 	b.add_theme_font_size_override("font_size", font_size)
+	apply_font(b, font_size)
 	b.add_theme_color_override("font_color", CREAM)
 	b.add_theme_color_override("font_hover_color", Color.WHITE)
 	b.add_theme_color_override("font_pressed_color", Color.WHITE)
@@ -102,6 +136,7 @@ static func label(text: String, font_size: int, color: Color = CREAM, outline: i
 	var l := Label.new()
 	l.text = text
 	l.add_theme_font_size_override("font_size", font_size)
+	apply_font(l, font_size)
 	l.add_theme_color_override("font_color", color)
 	if outline > 0:
 		l.add_theme_color_override("font_outline_color", Color(0.06, 0.03, 0.02, 0.9))
