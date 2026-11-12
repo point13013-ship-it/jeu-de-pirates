@@ -127,6 +127,7 @@ uniform float push = 0.6;
 uniform float roll = 0.0;          // à la nage : le corps roule d'un côté à l'autre à chaque brassée (rad)
 uniform float roll_pivot = 0.8;    // m au-dessus des pieds : l'axe du roulis (la surface de l'eau)
 uniform vec4 xray_color : source_color = vec4(0.85, 0.9, 1.0, 0.4);
+uniform float xray_tint = 0.15;    // part de la teinte claire mêlée aux vraies couleurs du pirate (1 : silhouette unie)
 uniform float clip_below = -10000.0;
 varying float world_y;
 void vertex() {
@@ -135,7 +136,7 @@ void vertex() {
 void fragment() {
 	vec4 t = texture(tex, UV);
 	if (t.a * COLOR.a < 0.5 || world_y < clip_below) { discard; }
-	ALBEDO = xray_color.rgb;
+	ALBEDO = mix(t.rgb * COLOR.rgb, xray_color.rgb, xray_tint);   // (13/11 : les vraies couleurs, plus une silhouette blanche)
 	ALPHA = xray_color.a;
 }
 """
@@ -165,6 +166,7 @@ func _setup_depth_and_xray() -> void:
 	_xray_mat.shader = _xray_shader
 	_xray_mat.set_shader_parameter("push", GameConfig.SPRITE_DEPTH_PUSH)
 	_xray_mat.set_shader_parameter("xray_color", GameConfig.SPRITE_XRAY_COLOR)
+	_xray_mat.set_shader_parameter("xray_tint", GameConfig.SPRITE_XRAY_TINT)
 	_xray_mat.render_priority = 8
 	_xray.material_override = _xray_mat
 	add_child(_xray)

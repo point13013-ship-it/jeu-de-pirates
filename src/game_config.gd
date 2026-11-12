@@ -316,7 +316,8 @@ const FLY_HEIGHT := 14.0               ## m au-dessus de l'eau
 ## Pirates (images plates) : dessinés un peu vers la caméra pour ne pas se couper sur les meubles, et silhouette visible à
 ## travers le décor qui les cache (alpha 0 : pas de silhouette).
 const SPRITE_DEPTH_PUSH := 0.6         ## m
-const SPRITE_XRAY_COLOR := Color(0.85, 0.9, 1.0, 0.38)
+const SPRITE_XRAY_COLOR := Color(0.85, 0.9, 1.0, 0.5)   ## teinte claire et opacité du pirate vu à travers un décor (13/11 : opacité 0,38)
+const SPRITE_XRAY_TINT := 0.15         ## part de cette teinte mêlée à ses vraies couleurs (13/11 : 1, une silhouette blanche unie)
 
 ## Dans la cabine, les murs côté caméra sont rabattus à cette hauteur (unités du modèle, x1,5 = m) au lieu de disparaître.
 const CABIN_STUB_WALL := 0.32
