@@ -78,6 +78,21 @@ def make_mat(name, color, rough=0.9, emit=0.0):
     return m
 
 
+def hx(h, rough=0.9, emit=0.0, name=None):
+    """Une couleur de la palette v1 (design/bible-v2.md), donnée en hexadécimal sRGB, convertie en linéaire pour Blender."""
+    def lin(c):
+        c = c / 255.0
+        return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
+    rgb = tuple(lin(int(h[i:i + 2], 16)) for i in (0, 2, 4))
+    return make_mat(name or h, rgb, rough, emit)
+
+
+# Refonte v2 (12/11/2026, design/bible-v2.md, section 3) : le brigantin passe le premier. Les autres bateaux gardent leur
+# construction d'origine, mais tous prennent la palette v1.
+V2 = SHIP == "brigantin"
+SHEER = 2.1 if V2 else 1.0   # tonture exagérée : le pont remonte nettement vers l'étrave et la poupe (lu dans le jeu via la méta)
+rnd2 = random.Random(77)
+
 MAT = {
     "hull": make_mat("hull", (0.085, 0.045, 0.045)),
     "hull_l": make_mat("hull_l", (0.20, 0.10, 0.07)),
@@ -98,6 +113,30 @@ MAT = {
     "iron": make_mat("iron", (0.07, 0.065, 0.09), 0.55),
     "rope": make_mat("rope", (0.06, 0.04, 0.045)),
 }
+
+
+def recolor(mat, h):
+    def lin(c):
+        c = c / 255.0
+        return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
+    rgb = tuple(lin(int(h[i:i + 2], 16)) for i in (0, 2, 4))
+    bsdf = mat.node_tree.nodes["Principled BSDF"]
+    bsdf.inputs["Base Color"].default_value = (*rgb, 1.0)
+    if bsdf.inputs["Emission Strength"].default_value > 0:
+        bsdf.inputs["Emission Color"].default_value = (*rgb, 1.0)
+
+
+# palette v1 (12/11/2026) : mêmes noms de matières (les skins du jeu s'y accrochent), nouvelles couleurs
+for _k, _h in {"hull": "3A2630", "hull_l": "6A4532", "hull_d": "2E2A44", "deck": "9C6A43", "deck_l": "CF9C62",
+               "gold": "DCAE5C", "mast": "6A4532", "sail": "EFE4CC", "sail_d": "B9AD9C", "sail_p": "F4E1AD",
+               "sail_e": "EFE4CC", "red": "B25A3E", "flag": "1C1726", "bone": "EFE4CC", "glow": "FFB35C",
+               "dark": "1C1726", "iron": "2E2A44", "rope": "6B4A3F"}.items():
+    recolor(MAT[_k], _h)
+MAT["deck_n"] = hx("D9B077", name="deck_n")      # planches neuves, plus claires (réparations)
+MAT["serpent"] = hx("2D6444", name="serpent")    # figure de proue : serpent de mer
+MAT["serpent_l"] = hx("5A9440", name="serpent_l")
+for _k in ("sail", "sail_d", "sail_p", "sail_e", "flag", "red"):
+    MAT[_k].use_backface_culling = False          # toiles et flammes vues des deux côtés
 
 
 def add_mesh(name, verts, faces, mats, mat_index=None, uvs=None):
@@ -130,6 +169,9 @@ def strip(name, ring_a, ring_b, mat):
     return add_mesh(name, verts, faces, mat)
 
 
+BEVEL: list = []   # v2 : objets qui reçoivent un biseau fin (boîtes et cylindres)
+
+
 def box(name, cx, cy, cz, sx, sy, sz, mat, rot=(0, 0, 0)):
     bpy.ops.mesh.primitive_cube_add(location=(cx, cy, cz), rotation=rot)
     ob = bpy.context.active_object
@@ -137,6 +179,9 @@ def box(name, cx, cy, cz, sx, sy, sz, mat, rot=(0, 0, 0)):
     ob.name = name
     ob.data.materials.append(MAT[mat])
     parts.append(ob)
+    if V2:   # échelle appliquée, pour que le biseau ait la même largeur sur toutes les arêtes
+        bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
+        BEVEL.append(ob)
     return ob
 
 
@@ -146,6 +191,7 @@ def cyl(name, x, y, z, r, depth, mat, rot=(0, 0, 0), verts=16):
     ob.name = name
     ob.data.materials.append(MAT[mat])
     parts.append(ob)
+    BEVEL.append(ob)
     return ob
 
 
@@ -175,7 +221,7 @@ RING = 17   # points par section, d'un bord du pont à l'autre en passant par la
 def station(u):
     x = -L / 2 + u * L
     half = WID / 2 * (0.90 + 0.10 * min(1.0, u * 3.0)) * (1.0 - 0.96 * u ** 2.4)
-    deck_z = (0.62 * u ** 2.2 + 0.34 * (1 - u) ** 2.5) * (L / 13.0)
+    deck_z = (0.62 * u ** 2.2 + 0.34 * (1 - u) ** 2.5) * (L / 13.0) * SHEER
     depth = DEP * (1.0 - 0.45 * u ** 2)
     return x, max(half, 0.04), deck_z, depth
 
@@ -191,7 +237,10 @@ for i in range(N):
     x, hw, dz, dp = station(i / (N - 1))
     for k in range(RING):
         phi = math.pi * k / (RING - 1)
-        hull_verts.append((x, -hw * math.cos(phi), dz - dp * hull_depth_frac(phi)))
+        f = hull_depth_frac(phi)
+        # v2 : « rentrée de la muraille » : la coque est plus large un peu sous le pont qu'au pont (ventre arrondi)
+        tumble = 1.0 + (0.08 * math.sin(math.pi * min(f * 2.4, 1.0)) if V2 else 0.0)
+        hull_verts.append((x, -hw * math.cos(phi) * tumble, dz - dp * f))
 hull_faces = []
 for i in range(N - 1):
     for j in range(RING - 1):
@@ -215,15 +264,48 @@ def hull_mat(p):
 
 add_mesh("hull", hull_verts, hull_faces, ["hull_l", "hull", "hull_d"], hull_mat)
 
-LANES = 9
-for m in range(LANES):
-    f0, f1 = m / LANES, (m + 1) / LANES
+if not V2:
+    LANES = 9
+    for m in range(LANES):
+        f0, f1 = m / LANES, (m + 1) / LANES
+        a, b = [], []
+        for i in range(N):
+            x, hw, dz, dp = station(i / (N - 1))
+            a.append((x, (-1 + 2 * f0) * hw * 0.98, dz))
+            b.append((x, (-1 + 2 * f1) * hw * 0.98, dz))
+        strip("deck", a, b, "deck" if m % 2 == 0 else "deck_l")
+else:
+    # v2 : un vrai bordé de pont. Des planches dans la longueur (elles donnent la direction du bateau même immobile), de
+    # longueurs inégales, en trois teintes (vieilles, claires, quelques neuves), avec un joint sombre entre elles : sous les
+    # planches, un fond sombre fait les joints.
+    LANES = 22
     a, b = [], []
     for i in range(N):
         x, hw, dz, dp = station(i / (N - 1))
-        a.append((x, (-1 + 2 * f0) * hw * 0.98, dz))
-        b.append((x, (-1 + 2 * f1) * hw * 0.98, dz))
-    strip("deck", a, b, "deck" if m % 2 == 0 else "deck_l")
+        a.append((x, -hw * 0.985, dz - 0.012))
+        b.append((x, hw * 0.985, dz - 0.012))
+    strip("deck_gaps", a, b, "hull_d")
+    pv, pf, pm = [], [], []   # toutes les planches dans un seul maillage (un seul appel de rendu)
+    for m in range(LANES):
+        f0, f1 = m / LANES + 0.0035, (m + 1) / LANES - 0.0035
+        u = rnd2.uniform(0.0, 0.12)
+        while u < 1.0:
+            u1 = min(1.0, u + rnd2.uniform(0.11, 0.2))
+            k = max(2, int((u1 - u) * N) + 1)
+            base = len(pv)
+            for q in range(k):
+                uu = u + (u1 - u) * q / (k - 1)
+                x, hw, dz, dp = station(uu)
+                x = x + (0.012 if q == 0 else (-0.012 if q == k - 1 else 0.0))   # joint en bout de planche
+                pv.append((x, (-1 + 2 * f0) * hw * 0.985, dz))
+                pv.append((x, (-1 + 2 * f1) * hw * 0.985, dz))
+            r = rnd2.random()
+            mi = 2 if r < 0.08 else (1 if r < 0.42 else 0)
+            for q in range(k - 1):
+                pf.append((base + 2 * q, base + 2 * q + 1, base + 2 * q + 3, base + 2 * q + 2))
+                pm.append(mi)
+            u = u1
+    add_mesh("deck", pv, pf, ["deck", "deck_l", "deck_n"], lambda p: pm[p])
 
 for side in (-1, 1):
     ob_, ot_, it_, ib_ = [], [], [], []
@@ -417,6 +499,11 @@ if SHIP != "sloop":
     _hdz = station((_hx + L / 2) / L)[2]
     box("hatch", _hx, 0, _hdz + 0.14, 1.2, 1.2, 0.28, "hull_l")
     box("hatch_grate", _hx, 0, _hdz + 0.30, 1.0, 1.0, 0.05, "dark")
+    if V2:   # le caillebotis : une grille de lattes croisées sur le trou sombre (le motif qui fait « navire »)
+        for q in range(5):
+            o = -0.4 + q * 0.2
+            box("hatch_slat", _hx + o, 0, _hdz + 0.33, 0.07, 1.0, 0.04, "deck_l")
+            box("hatch_slat", _hx, o, _hdz + 0.35, 1.0, 0.07, 0.04, "deck")
 # tonneau de boulets et pile de caisses : rangés contre le plat-bord, de part et d'autre de la barre, hors des couloirs
 _bx = HELM[0] + 0.2
 _bxs = station((_bx + L / 2) / L)
@@ -448,6 +535,24 @@ for k in range(3):
     box("crate_plank", _cx + 0.12, _cy - 0.2 + k * 0.2, _bdz + 0.7 + k * 0.05, 1.05, 0.16, 0.05, "deck" if k % 2 else "hull_l",
         rot=(0, math.radians(-8 + 6 * k), math.radians(4 * (k - 1))))
 
+if V2:
+    # vie à bord : cordages lovés au pied des mâts (bas, on marche dessus), seau, et coulures sombres sous les dalots
+    for (mx_, mh_, _sl) in CFG["masts"]:
+        _cz = station((mx_ + L / 2) / L)[2]
+        for sgn in (-1, 1):
+            bpy.ops.mesh.primitive_torus_add(location=(mx_ - 0.45, sgn * 0.5, _cz + 0.04), major_radius=0.2, minor_radius=0.05,
+                                             major_segments=12, minor_segments=5)
+            ob = bpy.context.active_object
+            ob.name = "coil"
+            ob.data.materials.append(MAT["rope"])
+            parts.append(ob)
+    for side in (-1, 1):
+        for k in range(CFG["ports"]):
+            u = 0.18 + k * (0.55 / max(1, CFG["ports"] - 1)) + 0.04
+            x, hw, dz, dp = station(u)
+            box("drip", x, side * hw * 1.02, dz - 0.5, 0.06, 0.02, 0.5, "hull_d")
+
+
 # tableau arrière (12/11) : la face plate de la poupe, sous la cabine, était un grand aplat sombre qui ressemblait à un vide
 # derrière la cabine. Elle est maintenant habillée comme sur les vrais navires : bordage clair, frise dorée et rouge, deux
 # fenêtres de galerie, et le gouvernail.
@@ -458,15 +563,65 @@ box("stern_band_g", xt - 0.01, 0, dz_t - 0.1, 0.06, hw_t * 2 * 0.96, 0.12, "gold
 box("stern_band_r", xt - 0.01, 0, dz_t - 0.92, 0.06, hw_t * 2 * 0.86, 0.14, "red")
 for sy in (-1, 1):
     window("stern_win", xt - 0.03, sy * hw_t * 0.42, dz_t - 0.5, True, w=0.42, h=0.34)
+if V2:   # deux lanternes d'angle sur le tableau arrière (la poupe éclairée se voit de loin la nuit)
+    for sy in (-1, 1):
+        box("stern_lantern_frame", xt - 0.12, sy * hw_t * 0.82, dz_t + 0.25, 0.22, 0.22, 0.32, "iron")
+        box("stern_lantern", xt - 0.12, sy * hw_t * 0.82, dz_t + 0.25, 0.24, 0.15, 0.22, "glow")
 box("rudder", x_t - 0.12, 0, dz_t - 0.95 - dp_t * 0.35, 0.14, 0.12, dp_t * 0.7 + 0.5, "mast")
 box("rudder_blade", x_t - 0.32, 0, dz_t - 1.2 - dp_t * 0.4, 0.4, 0.1, dp_t * 0.6, "mast")
 
 # figure de proue : tête de mort ; beaupré
 x_b, hw_b, dz_b, _ = station(1.0)
-sphere("skull", x_b + 0.45, 0, dz_b + 0.55, 0.30, "bone")
-box("jaw", x_b + 0.58, 0, dz_b + 0.30, 0.2, 0.28, 0.14, "bone")
-for sgn in (-1, 1):
-    box("eye", x_b + 0.7, sgn * 0.11, dz_b + 0.62, 0.06, 0.1, 0.1, "dark")
+
+
+def tube(name, pts, radii, mat, sides=8):
+    """Un tube qui suit une suite de points, d'épaisseur variable (cordage courbe, corps de serpent)."""
+    verts, faces = [], []
+    n = len(pts)
+    for i, (p, r) in enumerate(zip(pts, radii)):
+        pv = Vector(p)
+        t = (Vector(pts[min(i + 1, n - 1)]) - Vector(pts[max(i - 1, 0)])).normalized()
+        a = t.cross(Vector((0, 1, 0)))
+        if a.length < 1e-4:
+            a = t.cross(Vector((1, 0, 0)))
+        a.normalize()
+        b = t.cross(a).normalized()
+        for s in range(sides):
+            ang = 2 * math.pi * s / sides
+            verts.append(tuple(pv + (a * math.cos(ang) + b * math.sin(ang)) * r))
+    for i in range(n - 1):
+        for s in range(sides):
+            s2 = (s + 1) % sides
+            faces.append((i * sides + s, i * sides + s2, (i + 1) * sides + s2, (i + 1) * sides + s))
+    return add_mesh(name, verts, faces, mat)
+
+
+if not V2:
+    sphere("skull", x_b + 0.45, 0, dz_b + 0.55, 0.30, "bone")
+    box("jaw", x_b + 0.58, 0, dz_b + 0.30, 0.2, 0.28, 0.14, "bone")
+    for sgn in (-1, 1):
+        box("eye", x_b + 0.7, sgn * 0.11, dz_b + 0.62, 0.06, 0.1, 0.1, "dark")
+else:
+    # v2 : la figure de proue est un serpent de mer (choix de Jimmy) : un corps en S qui sort de l'étrave, s'élance au-dessus
+    # de l'eau et dresse la tête vers l'avant ; crête dorée, ventre clair. Nommé « skull » (et « jaw », « eye ») pour que les
+    # proues du chantier naval le remplacent comme avant.
+    sp = []
+    rad = []
+    # (taille : il doit dépasser nettement de la silhouette, c'est l'identité du bateau ; sous le beaupré)
+    for i in range(18):
+        t = i / 17
+        sp.append((x_b - 0.5 + 2.5 * t, 0.16 * math.sin(t * math.pi * 2), dz_b - 1.15 + 1.5 * t + 0.45 * math.sin(t * math.pi * 1.7)))
+        rad.append(0.32 - 0.16 * t)
+    tube("skull", sp, rad, "serpent", 10)
+    hx_, hy_, hz_ = sp[-1]
+    sphere("jaw", hx_ + 0.3, hy_, hz_ + 0.03, 0.27, "serpent")          # la tête
+    box("eye_snout", hx_ + 0.62, hy_, hz_ - 0.04, 0.46, 0.3, 0.2, "serpent_l")   # le museau
+    for sgn in (-1, 1):
+        box("eye", hx_ + 0.42, hy_ + sgn * 0.19, hz_ + 0.14, 0.1, 0.07, 0.1, "glow")
+        box("eye_fin", hx_ + 0.08, hy_ + sgn * 0.24, hz_ + 0.22, 0.34, 0.04, 0.2, "gold", rot=(math.radians(sgn * 25), 0, 0))
+    for i in range(3, 16, 2):   # crête dorée le long du dos
+        px, py, pz = sp[i]
+        box("eye_crest", px, py, pz + rad[i] + 0.09, 0.16, 0.04, 0.24, "gold", rot=(0, math.radians(-20), 0))
 cyl("bowsprit", x_b + 1.7, 0, dz_b + 0.9, 0.14, 4.2 * (L / 13.0) ** 0.5, "mast", rot=(0, math.radians(75), 0))
 
 # ------------------------------------------------------------------ mâtures
@@ -520,6 +675,25 @@ for mx, mh, sails in CFG["masts"]:
     for side in (-1, 1):
         for k in range(3):
             rope((mx, 0, mh * 0.78), (mx - 0.7 + k * 0.7, side * (hw_s * 0.95), 0.62))
+    if V2:
+        # mâts cerclés de fer (Sea of Thieves) ; enfléchures : des échelons de corde entre les haubans avant et arrière
+        for zb in (2.4, mh * 0.45, mh * 0.62):
+            cyl("mast_iron", mx, 0, zb, 0.235 + (0.04 if L > 14 else 0), 0.12, "iron")
+        for side in (-1, 1):
+            mtop = Vector((mx, 0, mh * 0.78))
+            fa = Vector((mx - 0.7, side * (hw_s * 0.95), 0.62))
+            fb = Vector((mx + 0.7, side * (hw_s * 0.95), 0.62))
+            t = 0.1
+            while t < 0.8:
+                pa = fa.lerp(mtop, t)
+                pb = fb.lerp(mtop, t)
+                rope(tuple(pa), tuple(pb), r=0.035, mat="rope")
+                t += 0.075
+        # une lanterne accrochée au mât, côté avant, à hauteur d'homme
+        lz = 2.15
+        box("lantern_frame", mx + 0.3, 0, lz, 0.2, 0.2, 0.3, "iron")
+        box("lantern", mx + 0.3, 0, lz, 0.13, 0.22, 0.2, "glow")
+        box("lantern_cap", mx + 0.3, 0, lz + 0.19, 0.26, 0.26, 0.06, "iron")
 
 # échelle de mât : sur la face arrière du mât le plus haut, du pont jusqu'au nid de pie
 _tall = max(NESTS, key=lambda n: n[3])
@@ -539,6 +713,10 @@ if CFG["jib"]:
     add_mesh("sail_z%d_jib" % round((fh - 0.9) * 100), [(fx + 0.3, 0, fh - 0.9), (x_b + 3.0, 0, dz_b + 1.5), (fx + 0.5, 0, 1.7)], [(0, 1, 2)], "sail",
              uvs=[(0.05, 1.0), (0.95, 0.35), (0.05, 0.0)])
     rope((fx, 0, fh - 0.2), (x_b + 3.0, 0, dz_b + 1.5))
+    if V2:   # un second foc, plus petit, devant le premier
+        add_mesh("sail_z%d_jib2" % round((fh - 2.2) * 100), [(fx + 1.4, 0, fh - 2.2), (x_b + 3.9, 0, dz_b + 1.9), (fx + 1.6, 0, 2.3)],
+                 [(0, 1, 2)], "sail", uvs=[(0.05, 1.0), (0.95, 0.35), (0.05, 0.0)])
+        rope((fx + 0.1, 0, fh - 1.6), (x_b + 3.9, 0, dz_b + 1.9))
 if CFG["gaff"]:
     gx, gh, gend = CFG["gaff"]
     sz = max(2.6, top + 0.4)
@@ -553,6 +731,24 @@ add_mesh("flag", [(fmx, 0, fmh + 0.15), (fmx - 2.4, 0.0, fmh - 0.1), (fmx - 2.4,
 cyl("flag_skull", fmx - 1.1, 0.03, fmh - 0.6, 0.26, 0.05, "bone", rot=(math.radians(90), 0, 0))
 if len(CFG["masts"]) > 1:
     rope((CFG["masts"][0][0], 0, CFG["masts"][0][1] - 0.2), (CFG["masts"][-1][0], 0, CFG["masts"][-1][1] - 0.2))
+if V2:
+    # la flamme : une longue banderole rouge en tête du plus haut mât, qui ondule (le signe « pirate » le plus visible de loin ;
+    # le jeu l'oriente selon le vent, voir ShipModel)
+    tmx, tmh = max(((m[0], m[1]) for m in CFG["masts"]), key=lambda m: m[1])
+    pv_, pf_ = [], []
+    n_ = 12
+    for i in range(n_ + 1):
+        t = i / n_
+        w = 0.42 * (1.0 - t) + 0.04
+        px = tmx - 4.2 * t
+        py = 0.22 * math.sin(t * math.pi * 2.5)
+        pz = tmh + 0.35 - 0.5 * t * t
+        pv_.append((px, py, pz + w / 2))
+        pv_.append((px, py, pz - w / 2))
+    for i in range(n_):
+        pf_.append((2 * i, 2 * i + 1, 2 * i + 3, 2 * i + 2))
+    add_mesh("pennant", pv_, pf_, "red")
+    cyl("pennant_pole", tmx, 0, tmh + 0.2, 0.05, 0.5, "mast", verts=6)
 
 # ------------------------------------------------------------------ recentrage et pivot
 bpy.context.view_layer.update()
@@ -578,19 +774,32 @@ for ob in parts:
         for poly in ob.data.polygons:
             poly.use_smooth = smooth
 
+# v2 : un biseau fin sur les arêtes de toutes les pièces (boîtes, cylindres). Rien n'est plus à angle vif : la lumière accroche
+# les arêtes, et le jeu y pose son reflet d'un pixel (design/bible-v2.md, § 4.1). Appliqué à l'export.
+if V2:
+    for ob in BEVEL:
+        dims = sorted(ob.dimensions)
+        if dims[0] < 0.07:   # pièce trop fine (latte, cordage) : pas de biseau
+            continue
+        mod = ob.modifiers.new("biseau", "BEVEL")
+        mod.width = min(0.035, dims[0] * 0.18)
+        mod.segments = 1
+        mod.limit_method = "ANGLE"
+        mod.harden_normals = False
+
 # ------------------------------------------------------------------ export 3D (si nb de caps = 0)
 if HEADINGS == 0:
     import json
     OUT.mkdir(parents=True, exist_ok=True)
     bpy.ops.object.select_all(action="SELECT")
-    bpy.ops.export_scene.gltf(filepath=str(OUT / f"{SHIP}.glb"), export_format="GLB", use_selection=True)
+    bpy.ops.export_scene.gltf(filepath=str(OUT / f"{SHIP}.glb"), export_format="GLB", use_selection=True, export_apply=True)
     (OUT / f"{SHIP}_meta.json").write_text(json.dumps(
         {"shift": shift, "length": L, "beam": WID, "max_height": max(zs),
          "boxes": OBST_BOXES, "circles": OBST_CIRCLES, "cabin": CABIN, "cannons": CANNONS,
          "helm": list(HELM), "ammo": [_bx, _by], "anchor": list(ANCHOR),
          "masts": [[m[0], m[1]] for m in CFG["masts"]],
          "ladders": [list(l) for l in LADDERS], "nests": [list(n) for n in NESTS],
-         "mast_ladder": list(MAST_LADDER), "bow_x": L / 2 - 0.4}))
+         "mast_ladder": list(MAST_LADDER), "bow_x": L / 2 - 0.4, "sheer": SHEER}))
     print("export termine", SHIP)
     sys.exit(0)
 

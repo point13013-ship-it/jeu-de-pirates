@@ -22,6 +22,7 @@ var ladders: Array = []        ## [x, y du pirate, côté, y de la coque] : éch
 var nests: Array = []          ## [x, y, z du plancher, hauteur du mât]
 var mast_ladder: Array = []    ## [x, y, z bas, z haut] : échelle du mât le plus haut, vers son nid
 var bow_x := 0.0               ## abscisse la plus avancée où l'on peut se tenir (la pointe)
+var sheer := 1.0               ## tonture : facteur sur la remontée du pont vers l'étrave et la poupe (méta du modèle)
 var low_boxes: Array = []      ## indices des boîtes qu'on peut enjamber d'un saut (caisses), les autres sont des murs
 var low_circles: Array = []    ## indices des cercles qu'on peut enjamber (barre, tonneau) ; les mâts sont trop hauts
 var cannon_stubs: Array = []   ## les petits canons du modèle d'origine, masqués : le jeu pose des canons plus gros (ShipCannons)
@@ -63,6 +64,7 @@ func load_ship(p_name: String) -> bool:
 	nests = meta.get("nests", [])
 	mast_ladder = meta.get("mast_ladder", [])
 	bow_x = float(meta.get("bow_x", length * 0.5 - 0.4))
+	sheer = float(meta.get("sheer", 1.0))
 	masts = meta.get("masts", [])
 	_model = scene.instantiate() as Node3D
 	_model.scale = Vector3.ONE * SCALE
@@ -502,7 +504,8 @@ func half_width(bx: float) -> float:
 ## Hauteur du pont (mètres de jeu) à l'abscisse bx.
 func deck_height(bx: float) -> float:
 	var u := clampf((bx + length * 0.5) / length, 0.0, 1.0)
-	return (0.62 * pow(u, 2.2) + 0.34 * pow(1.0 - u, 2.5)) * (length / 13.0) * SCALE
+	# (12/11 : `sheer` vient de la méta du modèle ; le brigantin v2 a une tonture exagérée, 1,7)
+	return (0.62 * pow(u, 2.2) + 0.34 * pow(1.0 - u, 2.5)) * (length / 13.0) * SCALE * sheer
 
 
 ## Vrai si le point est dans la cabine (porte comprise).
