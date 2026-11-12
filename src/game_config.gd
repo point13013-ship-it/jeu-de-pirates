@@ -243,6 +243,7 @@ const HOLD_LENGTH_MULT := 1.3         ## la cale est 30 % plus longue
 const HOLD_END_STORAGE := 1.3         ## m : à chaque bout, une réserve (tonneaux, caisses, sacs) où l'on ne marche pas
 const HOLD_LANTERN_EVERY := 3.2       ## m entre deux lanternes
 const HOLD_FLICKER := 0.18            ## vacillement des flammes (part de l'intensité)
+const HOLD_AMBIENT := 0.42            ## lumière ambiante de la cale (part de celle du dehors) : les lanternes et l'écoutille éclairent
 
 ## 3.5 Toile des voiles : nombre de répétitions de la texture par unité du modèle (un lé = un quart de texture).
 const SAIL_CANVAS_SCALE := 0.45

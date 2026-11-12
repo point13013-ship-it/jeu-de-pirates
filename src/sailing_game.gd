@@ -1608,6 +1608,7 @@ func _setup_hull() -> void:
 	_hold.position = Vector3(0.0, HOLD_Y, 0.0)
 	_world.add_child(_hold)
 	_hold.build(_hold_layout)
+	ToonLook.apply_tree(_hold)   # (refonte v2 : la cale aussi, en lumière à paliers)
 	_hold.visible = false
 	_hold_items = _hold_layout.items()
 	if not _land.walk_rects.is_empty():
@@ -1989,14 +1990,21 @@ func _set_hold_view(in_hold: bool) -> void:
 		_blob.reparent(holder, false)
 	if in_hold:
 		if _env_saved.is_empty():
-			_env_saved = {"bg": _env.background_color, "amb": _env.ambient_light_energy, "sun": _sun.light_energy}
+			_env_saved = {"bg": _env.background_color, "amb": _env.ambient_light_energy, "sun": _sun.light_energy,
+					"fog": _env.fog_enabled}
 		_env.background_color = Color(0.03, 0.025, 0.04)
-		_env.ambient_light_energy = float(_env_saved["amb"]) * 0.62
-		_sun.light_energy = float(_env_saved["sun"]) * 0.5
+		# (12/11 : la brume du ciel, toujours allumée depuis sa refonte, noyait la cale dans un fond pâle : éteinte ici ; le
+		# soleil n'entre plus que par l'écoutille, voir HoldRoom._deck_shadow)
+		_env.fog_enabled = false
+		_hold.aim_sun(-_sun.global_transform.basis.z)
+		_env.ambient_light_energy = float(_env_saved["amb"]) * GameConfig.HOLD_AMBIENT
+		_sun.light_energy = float(_env_saved["sun"]) * 0.9
 	elif not _env_saved.is_empty():
 		_env.background_color = _env_saved["bg"]
 		_env.ambient_light_energy = _env_saved["amb"]
 		_sun.light_energy = _env_saved["sun"]
+		_env.fog_enabled = _env_saved.get("fog", true)
+		_env_saved = {}
 
 
 ## Ce qu'on porte est reposé en changeant d'étage.

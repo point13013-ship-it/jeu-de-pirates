@@ -5,12 +5,15 @@ extends Node3D
 ## bordés les voies d'eau (trou noir, éclats de bois, jet d'eau) ou, une fois bouchées, une planche clouée.
 ## L'eau monte sur le fond selon l'état de la coque. Le plan (distances, obstacles) est dans HoldLayout.
 
-const WOOD_FLOOR := Color(0.56, 0.39, 0.23)
-const WOOD_SLOPE := Color(0.44, 0.30, 0.18)
-const WOOD_RIB := Color(0.30, 0.20, 0.12)
-const WOOD_WALL := Color(0.38, 0.26, 0.15)
-const WOOD_LIGHT := Color(0.80, 0.62, 0.38)
-const IRON := Color(0.22, 0.22, 0.27)
+# palette v1 (12/11/2026, design/bible-v2.md) : les quatre bois, l'ombre commune
+const WOOD_FLOOR := Color("9C6A43")
+const WOOD_SLOPE := Color("6A4532")
+const WOOD_RIB := Color("3A2630")
+const WOOD_WALL := Color("5A3A2C")
+const WOOD_LIGHT := Color("CF9C62")
+const IRON := Color("2E2A44")
+const CLOTH := Color("D9CBB0")
+const CEIL_Y := 3.3          ## hauteur du pont au-dessus de la cale (plafond invisible qui porte l'ombre)
 
 var layout: HoldLayout
 var _slope_angle := atan2(HoldLayout.RISE, HoldLayout.RUN)
@@ -48,14 +51,9 @@ func build(p_layout: HoldLayout) -> void:
 	_ladder()
 	_rack()
 	_bucket()
-	# tache de lumière sous l'écoutille
-	var beam := _box(Vector3(1.3, 0.02, 1.3), Vector3(layout.hatch_x, 0.03, 0.0), null)
-	var bm := StandardMaterial3D.new()
-	bm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	bm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	bm.albedo_color = Color(1.0, 0.95, 0.75, 0.28)
-	beam.material_override = bm
-	beam.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	# (12/11, refonte v2) le pont au-dessus : invisible, il porte l'ombre ; le soleil n'entre que par l'écoutille (aim_sun)
+	_deck_shadow()
+	_hammocks()
 	# lanternes (lot 3 : une tous les ~3 m, flammes qui vacillent) ; réserves aux deux bouts, cloisons, poutres
 	var n_lamps := maxi(3, int(hold_len / GameConfig.HOLD_LANTERN_EVERY))
 	for i in n_lamps:
@@ -125,6 +123,121 @@ func _refresh_water() -> void:
 	_water.visible = true
 	_water.scale = Vector3(layout.half_len * 2.0 - 0.1, 1.0, half_w * 2.0)
 	_water.position = Vector3(0.0, lvl, 0.0)
+
+
+## Le soleil par l'écoutille (12/11, refonte v2). La cale était éclairée à plat, comme en plein air ; maintenant un plafond
+## invisible (le pont) lui fait de l'ombre, percé d'un trou, l'écoutille, placé pour que la tache de soleil tombe au pied de
+## l'échelle quelle que soit l'heure. Dans le rai : un voile de lumière et des poussières qui flottent. `light_dir` : direction
+## dans laquelle va la lumière (repère du monde).
+func aim_sun(light_dir: Vector3) -> void:
+	if _ceil == null:
+		return
+	var d := (global_transform.basis.inverse() * light_dir).normalized()
+	if d.y > -0.15:
+		d = Vector3(d.x, -0.15, d.z).normalized()   # soleil couchant : on garde un rai visible
+	var target := Vector3(layout.hatch_x, 0.0, -0.4)
+	var t := CEIL_Y / -d.y
+	var hole := target - d * t
+	_ceil.position = Vector3(hole.x, 0.0, hole.z)
+	# le voile de lumière : une boîte fine et allongée du trou à la tache, additive et très transparente
+	var mid := (hole + target) * 0.5
+	_shaft.position = mid
+	_shaft.basis = Basis.looking_at(-d, Vector3.UP if absf(d.y) < 0.99 else Vector3.RIGHT)
+	_shaft.scale = Vector3(1.0, 1.0, t)
+	_dust.position = mid
+	_dust.basis = _shaft.basis
+
+
+var _ceil: Node3D
+var _shaft: MeshInstance3D
+var _dust: CPUParticles3D
+
+
+func _deck_shadow() -> void:
+	_ceil = Node3D.new()
+	add_child(_ceil)
+	var big := 60.0
+	var h := 0.65   # demi-côté du trou de l'écoutille
+	for r: Array in [[0.0, -(big + h) * 0.5 - h * 0.5, big * 2.0, big], [0.0, (big + h) * 0.5 + h * 0.5, big * 2.0, big],
+			[-(big + h) * 0.5 - h * 0.5, 0.0, big, h * 2.0], [(big + h) * 0.5 + h * 0.5, 0.0, big, h * 2.0]]:
+		var b := _box(Vector3(float(r[2]), 0.2, float(r[3])), Vector3(float(r[0]), CEIL_Y, float(r[1])), null, Vector3.ZERO, _ceil)
+		b.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
+	# le rai de lumière
+	_shaft = MeshInstance3D.new()
+	var sm := BoxMesh.new()
+	sm.size = Vector3(1.15, 1.15, 1.0)
+	_shaft.mesh = sm
+	var m := StandardMaterial3D.new()
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	m.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	m.albedo_color = Color(1.0, 0.86, 0.58, 0.07)
+	m.cull_mode = BaseMaterial3D.CULL_DISABLED
+	m.no_depth_test = false
+	_shaft.material_override = m
+	_shaft.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(_shaft)
+	# les poussières dans le rai
+	_dust = CPUParticles3D.new()
+	_dust.amount = 40
+	_dust.lifetime = 6.0
+	_dust.preprocess = 6.0
+	_dust.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
+	_dust.emission_box_extents = Vector3(0.5, 0.5, 1.6)
+	_dust.direction = Vector3(0, 1, 0)
+	_dust.spread = 180.0
+	_dust.gravity = Vector3(0, -0.02, 0)
+	_dust.initial_velocity_min = 0.02
+	_dust.initial_velocity_max = 0.08
+	_dust.local_coords = true
+	var dm := QuadMesh.new()
+	dm.size = Vector2(0.035, 0.035)
+	var dmat := StandardMaterial3D.new()
+	dmat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	dmat.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+	dmat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	dmat.albedo_color = Color(1.0, 0.92, 0.7, 0.75)
+	dm.material = dmat
+	_dust.mesh = dm
+	add_child(_dust)
+
+
+## Deux hamacs tendus devant le mur du fond, entre les côtes, loin de l'échelle et de l'étagère.
+func _hammocks() -> void:
+	var wall_z := -(HoldLayout.FLOOR_HALF + HoldLayout.RUN) + 0.05
+	var rack_x := layout.rack_pos().x
+	var placed := 0
+	for x: float in [layout.half_len * 0.45, -layout.half_len * 0.12, layout.half_len * 0.1, -layout.half_len * 0.4]:
+		if placed >= 2 or absf(x - layout.hatch_x) < 1.8 or absf(x - rack_x) < 1.9:
+			continue
+		placed += 1
+		var st := SurfaceTool.new()
+		st.begin(Mesh.PRIMITIVE_TRIANGLES)
+		var n := 10
+		var y0 := HoldLayout.RISE + 1.35
+		for i in n:
+			var u0 := float(i) / n
+			var u1 := float(i + 1) / n
+			var pts: Array[Vector3] = []
+			for u: float in [u0, u1]:
+				var px := x - 0.95 + 1.9 * u
+				var py := y0 - 0.38 * sin(PI * u)
+				pts.append(Vector3(px, py, wall_z + 0.18))
+				pts.append(Vector3(px, py - 0.06 * sin(PI * u), wall_z + 0.18 + 0.55 * (0.6 + 0.4 * sin(PI * u))))
+			st.add_vertex(pts[0]); st.add_vertex(pts[2]); st.add_vertex(pts[1])
+			st.add_vertex(pts[1]); st.add_vertex(pts[2]); st.add_vertex(pts[3])
+		st.generate_normals()
+		var mi := MeshInstance3D.new()
+		mi.mesh = st.commit()
+		var cm := _flat(CLOTH.darkened(0.08 * placed))
+		cm.cull_mode = BaseMaterial3D.CULL_DISABLED
+		mi.material_override = cm
+		add_child(mi)
+		for sx in [-1.0, 1.0]:   # cordes jusqu'aux côtes
+			_box(Vector3(0.32, 0.03, 0.03), Vector3(x + sx * 1.1, y0 + 0.05, wall_z + 0.3), _flat(Color("A87A52")), Vector3(0, 0, sx * 0.4))
+		# une couverture roulée dans le premier, un sac dans le second
+		var bun := _sphere(0.16, Vector3(x + 0.2, y0 - 0.26, wall_z + 0.45), _flat(Color("B25A3E") if placed == 1 else Color("A87A52")))
+		bun.scale = Vector3(1.8, 0.8, 1.0)
 
 
 # ------------------------------------------------------------------ construction
