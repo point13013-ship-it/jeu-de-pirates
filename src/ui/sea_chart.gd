@@ -183,28 +183,62 @@ func _draw() -> void:
 	_draw_ship()
 	_draw_compass(font)
 	draw_string(font, panel.position + Vector2(0, 38), "CARTE DES MERS", HORIZONTAL_ALIGNMENT_CENTER, panel.size.x, 28, INK)
+	draw_string(font, panel.position + Vector2(18, 38), "Ton bateau : %s" % cell_name(ship_pos), HORIZONTAL_ALIGNMENT_LEFT, -1, 16, INK)
 	var hint := "Clic : fixer le cap sur une île      R / clic droit : effacer le cap      E ou Échap : replier la carte"
 	draw_string(font, Vector2(panel.position.x, panel.end.y - 16), hint, HORIZONTAL_ALIGNMENT_CENTER, panel.size.x, 15, INK)
 	if _hover >= 0:
 		_draw_tooltip(_hover, font)
 
 
+## Lot 8 (10.2) : la grille de coordonnées, lettres en colonnes et chiffres en lignes, calée sur le monde (pas sur la carte) :
+## « G7 » désigne la même case pour tout l'équipage, où qu'il regarde.
 func _draw_grid() -> void:
 	var font := get_theme_default_font()
-	var step := 100.0
-	var x := ceilf(_origin.x / step) * step
+	var step := GameConfig.CHART_CELL
+	var ink := Color(0.3, 0.2, 0.1, 0.22)
+	var label := Color(0.3, 0.2, 0.1, 0.75)
+	var x := floorf(_origin.x / step) * step
 	while _to_screen(Vector2(x, 0)).x < _map_rect.end.x:
 		var sx := _to_screen(Vector2(x, 0)).x
+		var sx2 := _to_screen(Vector2(x + step, 0)).x
 		if sx > _map_rect.position.x:
-			draw_line(Vector2(sx, _map_rect.position.y), Vector2(sx, _map_rect.end.y), Color(0.3, 0.2, 0.1, 0.16), 1.0)
+			draw_line(Vector2(sx, _map_rect.position.y), Vector2(sx, _map_rect.end.y), ink, 1.0)
+		var mid := (maxf(sx, _map_rect.position.x) + minf(sx2, _map_rect.end.x)) * 0.5
+		if sx2 > _map_rect.position.x + 8.0 and sx < _map_rect.end.x - 8.0:
+			draw_string(font, Vector2(mid - 14, _map_rect.position.y + 15), col_name(x), HORIZONTAL_ALIGNMENT_CENTER, 28, 13, label)
 		x += step
-	var z := ceilf(_origin.y / step) * step
+	var z := floorf(_origin.y / step) * step
 	while _to_screen(Vector2(0, z)).y < _map_rect.end.y:
 		var sy := _to_screen(Vector2(0, z)).y
+		var sy2 := _to_screen(Vector2(0, z + step)).y
 		if sy > _map_rect.position.y:
-			draw_line(Vector2(_map_rect.position.x, sy), Vector2(_map_rect.end.x, sy), Color(0.3, 0.2, 0.1, 0.16), 1.0)
-			draw_string(font, Vector2(_map_rect.position.x + 6, sy - 3), "%d m" % int(z), HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color(0.3, 0.2, 0.1, 0.5))
+			draw_line(Vector2(_map_rect.position.x, sy), Vector2(_map_rect.end.x, sy), ink, 1.0)
+		var midy := (maxf(sy, _map_rect.position.y) + minf(sy2, _map_rect.end.y)) * 0.5
+		if sy2 > _map_rect.position.y + 20.0 and sy < _map_rect.end.y - 4.0:
+			draw_string(font, Vector2(_map_rect.position.x + 5, midy + 5), row_name(z), HORIZONTAL_ALIGNMENT_LEFT, -1, 13, label)
 		z += step
+
+
+## La lettre de la colonne qui contient l'abscisse monde `x` (A, B… Z, AA…) ; le port est vers le milieu de l'alphabet.
+static func col_name(x: float) -> String:
+	var i := maxi(int(floor(x / GameConfig.CHART_CELL)) + GameConfig.CHART_COL_OFFSET, 0)
+	var s := ""
+	while true:
+		s = char(65 + i % 26) + s
+		i = i / 26 - 1
+		if i < 0:
+			break
+	return s
+
+
+## Le numéro de la ligne qui contient la profondeur monde `z` (1, 2…).
+static func row_name(z: float) -> String:
+	return str(maxi(int(floor(z / GameConfig.CHART_CELL)) + GameConfig.CHART_ROW_OFFSET, 1))
+
+
+## La case d'un point du monde : « G7 ».
+static func cell_name(p: Vector2) -> String:
+	return col_name(p.x) + row_name(p.y)
 
 
 func _draw_island(i: int, font: Font) -> void:

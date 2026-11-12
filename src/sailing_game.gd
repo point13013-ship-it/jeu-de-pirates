@@ -259,6 +259,9 @@ var _remote_downed: Dictionary = {}  ## id -> {t (s restantes), reviving}
 var _remote_dead: Dictionary = {}    ## id -> true
 var _remote_water: Dictionary = {}   ## id -> {stage, siren, siren_pos, sharks, t}
 var _center_label: Label             ## grand texte au centre (à terre, mort, noyade)
+# ------------------------------------------------------------------ lot 8
+var _roster: Dictionary = {}         ## pseudos de l'équipage de cette partie (hôte) : présents et partis
+var _pending: Dictionary = {}        ## pseudo -> or gardé pour un absent (hôte), versé à son retour
 
 
 const SEA_PATH := "res://data/sea.json"
@@ -4250,6 +4253,9 @@ func apply_remote_look(id: int, json: String) -> void:
 	_remote_looks[id] = look
 	_remote_held[id] = str((parsed as Dictionary).get("held", ""))
 	_remote_names[id] = PlayerName.clean(str((parsed as Dictionary).get("name", "")))   # (nettoyé : ce qui vient du réseau n'est pas sûr)
+	if _is_authority():
+		_crew_roster()      # lot 8 (11.1) : il fait partie de l'équipage (même quand il sera absent)
+		_pay_pending(id)    # … et touche les parts gagnées pendant son absence
 	if _remotes.has(id):
 		_set_name_tag(_remotes[id]["sprite"].get_node_or_null("NameTag") as Label3D, str(_remote_names[id]))
 		var rs := _remotes[id]["sprite"] as PirateSprite
@@ -5133,14 +5139,89 @@ func _talk_fence(npc: TownNpc) -> void:
 ## J'ai accepté l'offre du receleur.
 func _sell_to_fence() -> void:
 	if _carry_kind == "treasure":
+		# lot 8 (11.1) : même un trésor vendu depuis les bras se partage entre tout l'équipage (l'hôte fait le partage)
 		var v := Treasure.value_of(_carry_item)
-		_profile.gold += v
-		_profile.save()
-		_popup("+%d or" % v, _lpos, Color(1.0, 0.85, 0.3))
-		_say("Vendu : %s, %d pièces d'or" % [Treasure.name_of(_carry_item), v], 4.0)
+		_say("Vendu : %s, %d pièces d'or (partagées avec l'équipage)" % [Treasure.name_of(_carry_item), v], 4.0)
+		_request("sell_hand", Treasure.index_of(_carry_item))
 		_drop_carried()
 	else:
 		_request("sell_stash", 0)
+
+
+## Hôte (lot 8, 11.1) : partage `total` pièces entre tout l'équipage : les présents reçoivent leur part tout de suite ; celle des
+## absents (connus par leur pseudo : ils ont déjà navigué avec cet hôte) est mise de côté et versée à leur retour.
+func _share_gold(total: int, seller: int, at: Vector2, why: String) -> void:
+	var present := _crew_ids()
+	var names := _crew_roster().keys()
+	var absent: Array = []
+	for n: String in names:
+		var here := false
+		for id in present:
+			if _peer_name(int(id)) == n:
+				here = true
+		if not here:
+			absent.append(n)
+	var count := maxi(present.size() + absent.size(), 1)
+	var share := int(total / count)
+	var left := total - share * count
+	for id in present:
+		var amount := share + (left if int(id) == seller else 0)
+		_give_loot(int(id), amount, at)
+		_tell(int(id), "%s : ta part, %d pièces d'or" % [why, amount])
+	if not absent.is_empty():
+		var pending := _pending_shares()
+		for n: String in absent:
+			pending[n] = int(pending.get(n, 0)) + share
+		_save_pending(pending)
+
+
+## Le pseudo d'un joueur (moi compris).
+func _peer_name(id: int) -> String:
+	return PlayerName.value if id == _my_id() else str(_remote_names.get(id, ""))
+
+
+## Hôte : les pseudos de tous ceux qui ont navigué dans cette partie (même partis depuis). En solo : moi seul.
+func _crew_roster() -> Dictionary:
+	if PlayerName.value != "":
+		_roster[PlayerName.value] = true
+	if _net == null or not _net.active:
+		return {PlayerName.value: true}
+	for id in _remotes:
+		var n := _peer_name(int(id))
+		if n != "":
+			_roster[n] = true
+	return _roster
+
+
+func _pending_shares() -> Dictionary:
+	return _pending
+
+
+func _save_pending(d: Dictionary) -> void:
+	_pending = d
+
+
+## Hôte : un joueur (re)vient, son pseudo est connu : on lui verse les parts gagnées pendant son absence, et on le lui dit.
+func _pay_pending(id: int) -> void:
+	if not _is_authority():
+		return
+	var n := _peer_name(id)
+	var pending := _pending_shares()
+	var amount := int(pending.get(n, 0))
+	if n == "" or amount <= 0:
+		return
+	pending.erase(n)
+	_save_pending(pending)
+	_give_loot(id, amount, _sim.position)
+	_tell(id, "Pendant ton absence, l'équipage a vendu des trésors : ta part, %d pièces d'or" % amount)
+
+
+## Un message à un seul joueur (moi : directement).
+func _tell(id: int, text: String) -> void:
+	if id == _my_id():
+		_say(text, 5.0)
+	elif _net != null and _net.active:
+		_net.send_tell(id, text)
 
 
 ## Hôte : vend tout le coffre du capitaine si le bateau est à quai près du receleur ; l'or se partage entre l'équipage.
@@ -5153,13 +5234,11 @@ func _sell_stash(seller: int) -> void:
 		return
 	var total := Treasure.total_value(_stash)
 	var crew := _crew_ids()
-	var share := int(total / maxi(crew.size(), 1))
-	var left := total - share * crew.size()
+	_share_gold(total, seller, fence.pos, "Coffre vendu")   # lot 8 (11.1) : absents compris
 	for id in crew:
-		_give_loot(int(id), share + (left if int(id) == seller else 0), fence.pos)
 		_give_rep(int(id), int(float(total) * Reputation.gain("treasure_per_gold")), "trésors vendus")   # chacun gagne autant que ce que le coffre valait
 	_stash.clear()
-	_notify_all("Coffre vendu : %d pièces d'or partagées entre %d pirate(s)" % [total, crew.size()])
+	_notify_all("Coffre vendu : %d pièces d'or partagées avec tout l'équipage" % total)
 
 
 ## Envoie une action d'équipage : appliquée directement en solo ou chez l'hôte, demandée à
@@ -5226,6 +5305,10 @@ func apply_request(peer: int, kind: String, value: int) -> void:
 				_give_item(peer, "t:" + str(_stash.pop_back()))
 		"sell_stash":
 			_sell_stash(peer)
+		"sell_hand":   # lot 8 (11.1) : un trésor vendu depuis les bras, partagé comme le coffre
+			var tid2 := Treasure.id_at(value)
+			if tid2 != "":
+				_share_gold(Treasure.value_of(tid2), peer, _sim.position, "Trésor vendu")
 		"unstick":
 			if _unstick_ship():
 				_notify_all("Le bateau a été remis à l'eau libre")

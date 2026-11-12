@@ -105,6 +105,9 @@ const CAM_HEAVE_FOLLOW := 0.35        ## part du soulèvement du pont que la cam
 # ------------------------------------------------------------------ Lot 8 (en avance) : interface
 
 const NPC_NAME_RANGE := 9.0           ## m : le nom d'un habitant s'affiche à cette distance
+const CHART_CELL := 100.0             ## 10.2 : m, côté d'une case de la grille de la carte
+const CHART_COL_OFFSET := 13          ## la colonne du port (x = 0) est la 14e lettre (N)
+const CHART_ROW_OFFSET := 20          ## la ligne du port (z = 0) est la ligne 20
 
 # ------------------------------------------------------------------ Lot 6 : météo et jour/nuit
 

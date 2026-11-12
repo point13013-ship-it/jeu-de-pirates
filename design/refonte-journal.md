@@ -69,6 +69,11 @@ Version réseau : **12** (tout l'équipage doit avoir la même version).
 ## Lot 8 (en avance)
 
 - Noms des habitants au-dessus de leur tête, de près, dans un style distinct des joueurs ; plus de boussole dans leurs mains.
+- 11.1 Toute vente (coffre du capitaine ou trésor dans les bras) se partage entre tout l'équipage de la partie ; la part
+  d'un absent est gardée par l'hôte et versée à son retour (reconnu par son pseudo), avec un message. En solo : tout au vendeur.
+  Limite : les parts en attente sont perdues si l'hôte quitte la partie.
+- 10.2 Carte : grille lettres/chiffres calée sur le monde (même case pour tous), case du bateau affichée. Les marqueurs
+  partagés (carte + horizon) restent à faire.
 
 ## Pas encore commencés
 

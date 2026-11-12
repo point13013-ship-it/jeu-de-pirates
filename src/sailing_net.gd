@@ -22,7 +22,7 @@ const ISLAND_RATE := 12.0   ## fois par seconde : état des ennemis et des coffr
 const LOOT_RATE := 6.0      ## fois par seconde : butin du monde
 const FLEET_RATE := 10.0    ## fois par seconde : bateaux ennemis
 const META_RATE := 2.0      ## fois par seconde : coffres, baies, tonneaux, îles générées
-const PROTOCOL := 12   # 12 : à terre / relever / mort et réapparition, sirène et requins ; 11 : objet porté envoyé avec la position (trésor compris), hisser un camarade, échelle de coque (lieu 8), actions longues ; 10 : réputation (points envoyés par l'hôte), tir de canon visé (angle dans l'événement de tir) ; 9 : îles capturées et cabanes (coffre partagé) ; 8 : grappin visé, radeaux des joueurs
+const PROTOCOL := 13   # 13 : ventes partagées (message à un seul joueur), rangs des ennemis ; 12 : à terre / relever / mort et réapparition, sirène et requins ; 11 : objet porté envoyé avec la position (trésor compris), hisser un camarade, échelle de coque (lieu 8), actions longues ; 10 : réputation (points envoyés par l'hôte), tir de canon visé (angle dans l'événement de tir) ; 9 : îles capturées et cabanes (coffre partagé) ; 8 : grappin visé, radeaux des joueurs
 
 var game: Node
 var active := false
@@ -440,6 +440,17 @@ func send_hoist(peer: int) -> void:
 @rpc("authority", "call_remote", "reliable")
 func _hoisted() -> void:
 	game.apply_hoisted()
+
+
+## Hôte -> un joueur (lot 8) : un message pour lui seul (sa part d'une vente…).
+func send_tell(peer: int, text: String) -> void:
+	if active and is_host:
+		_tell.rpc_id(peer, text)
+
+
+@rpc("authority", "call_remote", "reliable")
+func _tell(text: String) -> void:
+	game.show_notice(text)
 
 
 ## Hôte -> un joueur à terre (lot 4) : un camarade l'a relevé.
