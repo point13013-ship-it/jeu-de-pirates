@@ -31,6 +31,13 @@ const PIRATE_PALETTE_MAX := 512
 ## palmiers). Le sol de la ville s'arrête à -41,5.
 const TOWN_SAND_CUT_X := -41.8
 
+## Prototype de refonte graphique (12/11/2026, design/bible-direction-artistique.md) : lumière en paliers, contours de
+## silhouette et reflets d'arête, couleurs vraies. --look=1 au lancement : l'ancien rendu, pour comparer.
+const LOOK_V2 := true
+const TOON_ROUGHNESS := 0.3          ## plus bas : frontière ombre/lumière plus nette
+const TOON_SUN_SCALE := 0.62         ## soleil tempéré en lumière à paliers (sinon les couleurs claires « brûlent »)
+const TOON_AMBIENT_SCALE := 1.12     ## ambiance (froide) un peu plus présente : ombres colorées
+
 ## 1.6 Pluie : elle tombe partout dans la zone de météo, pas en colonne au-dessus du bateau.
 const RAIN_AREA := 70.0               ## m : côté du carré de pluie autour de la caméra (assez large pour le plus fort dézoom)
 const RAIN_DROPS := 2600              ## gouttes à pleine intensité

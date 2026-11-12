@@ -253,6 +253,11 @@ func _apply(_delta: float) -> void:
 	_env.ambient_light_energy = amb_e + 1.8 * flash
 	_env.background_color = Color(0.04, 0.05, 0.12).lerp(Color(0.10, 0.10, 0.22), daylight)
 	_sun.light_color = sun_c
+	# (prototype de refonte : en lumière à paliers, la face éclairée prend tout le soleil d'un coup ; on le tempère pour ne pas
+	# « brûler » les couleurs claires, et on renforce l'ambiance froide qui colore les ombres)
+	if ToonLook.enabled:
+		sun_e *= GameConfig.TOON_SUN_SCALE
+		_env.ambient_light_energy *= GameConfig.TOON_AMBIENT_SCALE
 	_sun.light_energy = sun_e + 1.6 * flash
 	# soleil haut à midi, bas le matin et le soir ; la lune garde une hauteur moyenne
 	var elev := lerpf(14.0, 52.0, clampf(sun_h, 0.0, 1.0)) if sun_h > 0.0 else 48.0

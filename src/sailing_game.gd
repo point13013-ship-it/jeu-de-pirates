@@ -280,6 +280,8 @@ func _ready() -> void:
 	_args = _parse_args()
 	if _args.has("nofocus"):   # essais automatiques : la fenêtre ne prend pas le clavier de celui qui travaille sur le PC
 		DisplayServer.window_set_flag(DisplayServer.WINDOW_FLAG_NO_FOCUS, true)
+	if str(_args.get("look", "")) == "1":   # l'ancien rendu (comparaison avec le prototype de refonte)
+		ToonLook.enabled = false
 	# Synchronisation verticale : une image par rafraîchissement de l'écran. Sans elle, le jeu tournait
 	# à ~1 450 images/s et l'écran affichait des morceaux de plusieurs images à la fois (déchirures
 	# horizontales qui font « vibrer » tout ce qui défile).
@@ -348,6 +350,7 @@ func _setup_ship(ship_name: String) -> void:
 		_ship = null
 		return
 	_world.add_child(_ship)
+	ToonLook.apply_tree(_ship)   # prototype de refonte : lumière en paliers
 	if _args.has("skin"):   # essai : --skin=sail:red,hull:navy,flag:gold
 		for item in str(_args["skin"]).split(","):
 			var kv := item.split(":")
@@ -668,6 +671,16 @@ func _build_view() -> void:
 	_cam.far = 250.0
 	_cam.rotation_degrees = Vector3(-ELEVATION_DEG, 0, 0)
 	_world.add_child(_cam)
+	if ToonLook.enabled:
+		# prototype de refonte : contours de silhouette et reflets d'arête dans la 3D ; le filtre d'image ne trace plus ses
+		# contours noirs et garde les couleurs vraies (la palette fixe aplatissait les ombres colorées)
+		var edges := PixelEdges.new()
+		edges.position = Vector3(0, 0, -1)
+		_cam.add_child(edges)
+		edges.set_sea_y.call_deferred(SEA_Y)
+		_post_mat.set_shader_parameter("use_palette", false)
+		_post_mat.set_shader_parameter("outline_threshold", 10.0)
+		_viewport.msaa_3d = Viewport.MSAA_DISABLED   # des pixels nets (l'anticrénelage mélangeait les bords)
 
 	# surface de la mer : un maillage fin (un sommet tous les 25 cm) que la houle soulève
 	_sea = MeshInstance3D.new()
@@ -873,6 +886,7 @@ func _build_port() -> void:
 				(record["ghost"] as Dictionary)[s] = ghost
 		if is_building and not (record["normal"] as Dictionary).is_empty():
 			_buildings.append(record)
+	ToonLook.apply_tree(_port)   # prototype de refonte : lumière en paliers
 	# amarrage : coque contre le flanc est du ponton, étrave au sud (+z dans le jeu)
 	if not _args.has("player") and not _args.has("yaw"):
 		var dock: Dictionary = _port_meta.get("dock", {})
@@ -4955,6 +4969,8 @@ func _update_target(delta: float) -> void:
 
 func _unhandled_input(event: InputEvent) -> void:
 	if _ship == null:
+		return
+	if _args.has("nofocus") and event is InputEventMouse:   # essais : la souris de celui qui travaille ne touche pas à la partie
 		return
 	# molette enfoncée + souris : gauche/droite fait tourner la caméra autour du pirate, haut/bas l'incline (vue plus plongeante ou
 	# plus rasante, entre CAM_ELEV_MIN et CAM_ELEV_MAX). TROIS clics rapides sur la molette remettent la vue de base (12/11 : un
