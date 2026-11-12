@@ -70,6 +70,7 @@ func load_ship(p_name: String) -> bool:
 	_index_nodes(_model)
 	_build_helm_wheel()
 	_dress_sails(_model)
+	_dress_flag()
 	_compute_low_obstacles()   # (après _index_nodes : il faut savoir où est la pile de caisses)
 	# les canons sont solides (12/11) : leur emprise au sol est un obstacle bas, qu'un saut enjambe
 	for c: Array in cannons:
@@ -173,7 +174,7 @@ func _build_helm_wheel() -> void:
 
 
 static var _canvas_tex: ImageTexture
-const SAIL_MATS := ["sail", "sail_d", "sail_p"]
+const SAIL_MATS := ["sail", "sail_d", "sail_p", "sail_e"]
 
 
 ## Lot 3 (3.5) : une toile crédible sur les voiles (elles étaient unies, en panneaux de deux teintes). Les voiles du modèle n'ont
@@ -187,14 +188,49 @@ func _dress_sails(node: Node) -> void:
 		var m: StandardMaterial3D = mats[key]
 		if m.albedo_texture != null:
 			continue   # (matière partagée : déjà habillée par un autre bateau)
-		m.albedo_texture = canvas_texture()
-		m.uv1_triplanar = true
-		m.uv1_scale = Vector3.ONE * GameConfig.SAIL_CANVAS_SCALE
+		# 12/11 : les voiles du modèle ont des coordonnées de texture : une toile entière par voile (lés, ralingue, garcettes),
+		# et l'emblème peint sur la grand-voile ; plus de projection « triplanaire » ni de damier
+		m.albedo_texture = emblem_sail_texture() if key == "sail_e" else canvas_texture()
+		m.uv1_triplanar = false
+		m.uv1_scale = Vector3.ONE
 		m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
-		# le modèle découpe la voile en losanges de deux teintes très différentes (un damier) : on les rapproche, il reste des
-		# panneaux discrets (data/ship_skins.json fait de même pour les skins de voilerie)
-		if base != null and key != "sail":
+		m.cull_mode = BaseMaterial3D.CULL_DISABLED   # (toile vue des deux côtés)
+		m.transparency = BaseMaterial3D.TRANSPARENCY_DISABLED
+		if base != null and key != "sail" and key != "sail_e":
 			m.albedo_color = base.albedo_color * (GameConfig.SAIL_PANEL_DARK if key == "sail_d" else GameConfig.SAIL_PANEL_LIGHT)
+
+
+## Le crâne du pavillon (un disque blanc dans le modèle) remplacé par une tête de mort dessinée, des deux côtés du pavillon.
+func _dress_flag() -> void:
+	var disc := _find(_model, "flag_skull") as Node3D
+	if disc == null:
+		return
+	disc.visible = false
+	for side in [-1.0, 1.0]:
+		var q := MeshInstance3D.new()
+		var qm := QuadMesh.new()
+		qm.size = Vector2(0.8, 0.8)
+		q.mesh = qm
+		var m := StandardMaterial3D.new()
+		m.albedo_texture = emblem_texture(true)
+		m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
+		m.alpha_scissor_threshold = 0.5
+		m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+		q.material_override = m
+		disc.get_parent().add_child(q)
+		q.position = disc.position + Vector3(0.0, 0.0, side * 0.03)
+		q.rotation.y = 0.0 if side > 0 else PI
+
+
+func _find(node: Node, node_name: String) -> Node:
+	if String(node.name) == node_name:
+		return node
+	for c in node.get_children():
+		var f := _find(c, node_name)
+		if f != null:
+			return f
+	return null
 
 
 func _collect_sail_mats(node: Node, out: Dictionary) -> void:
@@ -208,40 +244,139 @@ func _collect_sail_mats(node: Node, out: Dictionary) -> void:
 		_collect_sail_mats(c, out)
 
 
-## La toile (fabriquée une fois) : tissage fin, lés cousus (deux lignes de couture et leurs points), quelques taches et zones
-## usées, un ourlet en bas. Valeurs proches du blanc (multipliées par la couleur de la voile).
-static func canvas_texture() -> ImageTexture:
-	if _canvas_tex != null:
-		return _canvas_tex
-	var n := 256
-	var img := Image.create(n, n, true, Image.FORMAT_RGB8)
+## Une voile entière (12/11, la voile porte ses coordonnées de texture : u en largeur, v de la bordure basse (0) à la vergue (1)) :
+## huit lés verticaux cousus, ralingue plus sombre sur le pourtour, une rangée de garcettes de ris, des renforts aux coins, la
+## toile qui s'use et se salit vers le bas, un tissage fin. Valeurs proches du blanc : la couleur de la voile (ou du skin) la teinte.
+static func canvas_image() -> Image:
+	var w := 512
+	var h := 512
+	var img := Image.create(w, h, false, Image.FORMAT_RGBA8)
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 13013
 	var noise := FastNoiseLite.new()
 	noise.seed = 7
-	noise.frequency = 0.012
-	noise.fractal_octaves = 3
-	var seam := 64   # largeur d'un lé (px)
-	for y in n:
-		for x in n:
-			var v := 0.96
-			v += 0.025 * (1.0 if (x + y) % 2 == 0 else -1.0)            # tissage
-			v += 0.015 * (1.0 if (y / 2) % 2 == 0 else 0.0)
-			var stain := noise.get_noise_2d(float(x), float(y))        # usure et taches, à grande échelle
-			v -= maxf(stain, 0.0) * 0.12
-			var sx := x % seam
-			if sx == 1 or sx == 5:
-				v -= 0.13                                               # les deux lignes de couture
-			if (sx == 3) and (y % 6 < 3):
-				v -= 0.18                                               # les points
-			if sx == 2 or sx == 4:
-				v -= 0.04
-			v += rng.randf_range(-0.012, 0.012)
-			var c := Color(v, v * 0.985, v * 0.955)                     # un brin écru
-			img.set_pixel(x, y, c)
+	noise.frequency = 0.008
+	noise.fractal_octaves = 4
+	var panels := 8
+	for y in h:
+		var v := 1.0 - float(y) / float(h - 1)     # (l'image a y vers le bas ; la voile, v vers le haut)
+		for x in w:
+			var u := float(x) / float(w - 1)
+			var c := 0.95
+			c += 0.018 * (1.0 if (x + y) % 2 == 0 else -1.0)                 # tissage
+			var stain := noise.get_noise_2d(float(x), float(y))
+			c -= maxf(stain, 0.0) * 0.14 + (1.0 - v) * 0.07                 # usure, et la toile plus sale en bas
+			var pu := u * panels
+			var dseam := absf(pu - roundf(pu)) * float(w) / panels            # px jusqu'à la couture la plus proche
+			if dseam < 1.6:
+				c -= 0.16                                                     # couture
+			elif dseam < 3.2:
+				c -= 0.05                                                     # recouvrement des lés
+			if dseam < 5.0 and dseam > 3.6 and y % 7 < 3:
+				c -= 0.08                                                     # les points de couture
+			var edge := minf(minf(u, 1.0 - u), minf(v, 1.0 - v)) * float(w)
+			if edge < 7.0:
+				c -= 0.22 * (1.0 - edge / 7.0)                                # ralingue (la corde cousue au bord)
+			if absf(v - 0.78) < 0.006:
+				c -= 0.08                                                     # bande de ris
+			if absf(v - 0.78) < 0.018 and fmod(u * 26.0, 1.0) < 0.12:
+				c -= 0.3                                                      # les garcettes
+			if (u < 0.08 or u > 0.92) and (v < 0.08 or v > 0.92):
+				c -= 0.05                                                     # renforts aux coins
+			c += rng.randf_range(-0.01, 0.01)
+			img.set_pixel(x, y, Color(c, c * 0.985, c * 0.955))
+	return img
+
+
+static func canvas_texture() -> ImageTexture:
+	if _canvas_tex != null:
+		return _canvas_tex
+	var img := canvas_image()
 	img.generate_mipmaps()
 	_canvas_tex = ImageTexture.create_from_image(img)
 	return _canvas_tex
+
+
+static var _emblem_sail_tex: ImageTexture
+static var _emblem_tex: Dictionary = {}
+
+
+## La grand-voile : la toile, et une tête de mort aux tibias croisés peinte dessus (couleur sombre : elle reste lisible sur toutes
+## les teintes de voile, comme une peinture sur toile).
+static func emblem_sail_texture() -> ImageTexture:
+	if _emblem_sail_tex != null:
+		return _emblem_sail_tex
+	var img := canvas_image()
+	_paint_emblem(img, Vector2(256, 236), 150.0, Color(0.13, 0.1, 0.1), false)
+	img.generate_mipmaps()
+	_emblem_sail_tex = ImageTexture.create_from_image(img)
+	return _emblem_sail_tex
+
+
+## Le pavillon : une tête de mort claire sur fond transparent (posée sur le tissu du pavillon).
+static func emblem_texture(_on_flag: bool = true) -> ImageTexture:
+	if _emblem_tex.has("flag"):
+		return _emblem_tex["flag"]
+	var img := Image.create(256, 256, false, Image.FORMAT_RGBA8)
+	img.fill(Color(0, 0, 0, 0))
+	_paint_emblem(img, Vector2(128, 120), 92.0, Color(0.93, 0.9, 0.82), true)
+	img.generate_mipmaps()
+	var t := ImageTexture.create_from_image(img)
+	_emblem_tex["flag"] = t
+	return t
+
+
+## Peint une tête de mort aux tibias croisés centrée en `c` (px), de taille `s` (largeur du crâne ≈ s). Orbites, nez et dents
+## sont creusés (laissent voir la toile, ou transparents sur le pavillon). Bords adoucis.
+static func _paint_emblem(img: Image, c: Vector2, s: float, col: Color, transparent_holes: bool) -> void:
+	var w := img.get_width()
+	var h := img.get_height()
+	var x0 := maxi(int(c.x - s * 1.3), 0)
+	var x1 := mini(int(c.x + s * 1.3), w - 1)
+	var y0 := maxi(int(c.y - s * 0.8), 0)
+	var y1 := mini(int(c.y + s * 1.4), h - 1)
+	for y in range(y0, y1 + 1):
+		for x in range(x0, x1 + 1):
+			var p := (Vector2(x, y) - c) / s   # repère du dessin : crâne de rayon ~0,5, y vers le bas
+			var ink := 0.0
+			# les tibias croisés, derrière le crâne : deux os en X avec leurs extrémités bosselées
+			for sgn: float in [-1.0, 1.0]:
+				var dir := Vector2(1.0, sgn * 0.62).normalized()
+				var q := p - Vector2(0.0, 0.62)
+				var along := q.dot(dir)
+				var across := absf(q.dot(Vector2(-dir.y, dir.x)))
+				if absf(along) < 1.0:
+					ink = maxf(ink, 1.0 - smoothstep(0.06, 0.09, across))
+				for e in [-1.0, 1.0]:
+					var knob: Vector2 = dir * float(e) * 1.02
+					for o in [-1.0, 1.0]:
+						var kp: Vector2 = knob + Vector2(-dir.y, dir.x) * float(o) * 0.07
+						ink = maxf(ink, 1.0 - smoothstep(0.09, 0.12, q.distance_to(kp)))
+			# le crâne : une calotte ronde et une mâchoire plus étroite
+			var head := Vector2(p.x / 0.5, (p.y + 0.05) / 0.46).length()
+			var jaw := absf(p.x) < 0.27 and p.y > 0.25 and p.y < 0.52
+			var skull := 1.0 - smoothstep(0.96, 1.04, head)
+			if jaw:
+				skull = 1.0
+			# orbites, nez, dents : creusés
+			var hole := 0.0
+			for e in [-1.0, 1.0]:
+				hole = maxf(hole, 1.0 - smoothstep(0.11, 0.14, Vector2((p.x - e * 0.19) / 1.1, p.y - 0.02).length()))
+			if p.y > 0.13 and p.y < 0.27 and absf(p.x) < (p.y - 0.13) * 0.55:
+				hole = 1.0
+			if p.y > 0.36 and p.y < 0.47 and fmod(absf(p.x) + 0.03, 0.09) < 0.025:
+				hole = maxf(hole, 0.8)
+			skull = maxf(0.0, skull - hole)
+			var a := maxf(ink * (1.0 - skull * 0.0), skull)
+			if skull > 0.0 and hole > 0.0 and transparent_holes:
+				a = skull
+			if a <= 0.0:
+				continue
+			var base := img.get_pixel(x, y)
+			if transparent_holes:
+				img.set_pixel(x, y, Color(col.r, col.g, col.b, maxf(base.a, a)))
+			else:
+				img.set_pixel(x, y, base.lerp(Color(col.r * base.r, col.g * base.g, col.b * base.b), a * 0.92))
 
 
 ## Une base dont l'axe Y pointe vers `dir` (pour coucher un cylindre ou une capsule le long d'un rayon).

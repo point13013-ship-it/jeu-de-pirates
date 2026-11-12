@@ -275,7 +275,15 @@ const TOWN_SOUND_NEAR := 30.0
 const TOWN_SOUND_FAR := 85.0
 const TOWN_CROWD_VOL := 0.14
 const TOWN_KIDS_VOL := 0.07
-const SWIM_STROKE_EVERY := 0.8        ## s entre deux brassées entendues quand on nage
+## Récifs (12/11) : autour des îles, à l'écart du port, espacés et variés (voir SeaRocks.generate).
+const REEFS_AROUND_ISLANDS := true
+const REEF_PER_ISLAND_MIN := 1
+const REEF_PER_ISLAND_MAX := 3
+const REEF_FROM_SHORE_MIN := 10.0      ## m au large du rivage
+const REEF_FROM_SHORE_MAX := 30.0
+const REEF_SPACING := 26.0             ## m entre deux récifs au moins
+const REEF_PORT_CLEAR := 120.0         ## m autour du port sans aucun récif
+const SWIM_STROKE_EVERY := 0.8       ## s entre deux brassées entendues quand on nage
 const SAND_BAND := 3.4               ## m du rivage d'une île où l'on marche dans le sable (au-delà : l'herbe)
 
 ## Caméra (12/11) : molette enfoncée + haut/bas pour l'incliner entre ces angles (°, 40 = vue de base) ; trois clics de molette

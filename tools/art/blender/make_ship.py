@@ -89,6 +89,7 @@ MAT = {
     "sail": make_mat("sail", (0.78, 0.64, 0.48)),
     "sail_d": make_mat("sail_d", (0.60, 0.48, 0.38)),
     "sail_p": make_mat("sail_p", (0.86, 0.72, 0.52)),
+    "sail_e": make_mat("sail_e", (0.78, 0.64, 0.48)),   # la grand-voile, avec l'emblème peint (même teinte que « sail »)
     "red": make_mat("red", (0.42, 0.09, 0.11)),
     "flag": make_mat("flag", (0.022, 0.018, 0.045)),
     "bone": make_mat("bone", (0.90, 0.86, 0.76)),
@@ -99,9 +100,13 @@ MAT = {
 }
 
 
-def add_mesh(name, verts, faces, mats, mat_index=None):
+def add_mesh(name, verts, faces, mats, mat_index=None, uvs=None):
     me = bpy.data.meshes.new(name)
     me.from_pydata(verts, [], faces)
+    if uvs is not None:   # coordonnées de texture par sommet (voiles : la toile suit la voile, au lieu d'être projetée)
+        layer = me.uv_layers.new(name="UVMap")
+        for loop in me.loops:
+            layer.data[loop.index].uv = uvs[loop.vertex_index]
     me.update()
     ob = bpy.data.objects.new(name, me)
     scene.collection.objects.link(ob)
@@ -263,7 +268,7 @@ _ul = (CFG["ladder_x"] * KL + L / 2) / L
 for side in (-1, 1):
     xl, hwl, dzl, _dp = station(_ul)
     LADDERS.append((xl, side * (hwl - 0.65), side, side * hwl))
-    z_top, z_bot = dzl + 0.62, dzl - 2.3
+    z_top, z_bot = dzl + 0.62, dzl - 3.3   # (12/11 : elle descend jusque dans l'eau : on s'y accroche en nageant)
     for dxr in (-0.27, 0.27):
         # les montants suivent la coque (légèrement vers l'intérieur en bas) et dépassent le plat-bord
         rope((xl + dxr, side * (hwl + 0.06), z_top), (xl + dxr, side * (hwl * 0.88 + 0.04), z_bot), r=0.035, mat="mast")
@@ -285,9 +290,9 @@ x_s, hw_s, dz_s, _ = station(0.10)
 cw = hw_s * 2
 c = CFG["castle"]
 # la cabine est collée à l'arrière du bateau (sa face arrière à ~0,4 de la poupe) : tout le pont devant elle est libre
-CABIN_BACK = 0.35 + 0.25 * c
-cx0 = -L / 2 + 2.0 + 0.5 * c - CABIN_BACK
 ln0 = 2.2 + c * 0.5
+# 12/11 : la cabine est collée à la poupe (sa face arrière contre le plat-bord) ; il restait un bout de pont vide derrière elle
+cx0 = -L / 2 + 0.2 + ln0 / 2 + 0.15
 wid0 = cw * 0.86
 H0 = 1.75
 T = 0.16
@@ -449,8 +454,12 @@ cyl("bowsprit", x_b + 1.7, 0, dz_b + 0.9, 0.14, 4.2 * (L / 13.0) ** 0.5, "mast",
 
 
 def square_sail(x, z0, z1, width, bulge, emblem):
+    # 12/11 : voile pleine (avant : des faces retirées au hasard en bas, « en lambeaux », qui faisaient croire à de la
+    # transparence ; et un damier de deux teintes), une seule matière, et des coordonnées de texture : la toile du jeu (lés,
+    # coutures, ralingue) suit la voile. L'emblème n'est plus un objet 3D blanc collé dessus : il est peint dans la toile
+    # (matière « sail_e », voir ShipModel.emblem_texture).
     nu, nv = 16, 10
-    verts, faces, mats = [], [], []
+    verts, faces, uvs = [], [], []
     for j in range(nv + 1):
         v = j / nv
         wv = width * (1.0 - 0.18 * v)
@@ -458,25 +467,14 @@ def square_sail(x, z0, z1, width, bulge, emblem):
             u = i / nu
             bx = bulge * math.sin(math.pi * u) * math.sin(math.pi * (0.12 + 0.76 * v))
             verts.append((x + bx, (u - 0.5) * wv, z0 + v * (z1 - z0)))
+            uvs.append((u, v))
     for j in range(nv):
         for i in range(nu):
-            if j < 2 and rnd.random() < 0.16:
-                continue  # déchirure : le bas de la voile est en lambeaux
             a = j * (nu + 1) + i
             faces.append((a, a + 1, a + nu + 2, a + nu + 1))
-            r = rnd.random()
-            mats.append(2 if r < 0.12 else (1 if (i + j) % 2 else 0))
-    add_mesh("sail_z%d" % round(z1 * 100), verts, faces, ["sail", "sail_d", "sail_p"], lambda p: mats[p])
+    add_mesh("sail_z%d" % round(z1 * 100), verts, faces, "sail_e" if emblem else "sail", uvs=uvs)
     cyl("yard", x, 0, z1, 0.11, width * 0.82 + 0.6, "mast", rot=(math.radians(90), 0, 0))
     cyl("yard_low", x, 0, z0, 0.07, width + 0.2, "mast", rot=(math.radians(90), 0, 0), verts=6)
-    if emblem:
-        zc = (z0 + z1) / 2 + 0.2
-        xe = x + bulge * 0.95
-        r = min(width, z1 - z0) * 0.2
-        cyl("sail_z%d_skull" % round(z1 * 100), xe, 0, zc, r, 0.14, "bone", rot=(0, math.radians(90), 0), verts=12)
-        for sgn in (-1, 1):
-            cyl("sail_z%d_eye" % round(z1 * 100), xe, sgn * r * 0.38, zc + r * 0.12, r * 0.26, 0.2, "dark", rot=(0, math.radians(90), 0), verts=8)
-            box("sail_z%d_bone" % round(z1 * 100), xe, 0, zc - r * 1.2, 0.1, r * 3.4, 0.2, "bone", rot=(sgn * math.radians(32), 0, 0))
 
 
 max_top = 0.0
@@ -519,12 +517,14 @@ for _dz in (0.9, 1.7):   # accroches du mât, pour que l'échelle ne flotte pas
 
 if CFG["jib"]:
     fx, fh = CFG["masts"][0][0], CFG["masts"][0][1]
-    add_mesh("sail_z%d_jib" % round((fh - 0.9) * 100), [(fx + 0.3, 0, fh - 0.9), (x_b + 3.0, 0, dz_b + 1.5), (fx + 0.5, 0, 1.7)], [(0, 1, 2)], "sail_d")
+    add_mesh("sail_z%d_jib" % round((fh - 0.9) * 100), [(fx + 0.3, 0, fh - 0.9), (x_b + 3.0, 0, dz_b + 1.5), (fx + 0.5, 0, 1.7)], [(0, 1, 2)], "sail",
+             uvs=[(0.05, 1.0), (0.95, 0.35), (0.05, 0.0)])
     rope((fx, 0, fh - 0.2), (x_b + 3.0, 0, dz_b + 1.5))
 if CFG["gaff"]:
     gx, gh, gend = CFG["gaff"]
     sz = max(2.6, top + 0.4)
-    add_mesh("sail_z%d_spanker" % round(gh * 100), [(gx - 0.3, 0, gh), (gend, 0, sz), (gx - 0.3, 0, sz)], [(0, 1, 2)], "sail")
+    add_mesh("sail_z%d_spanker" % round(gh * 100), [(gx - 0.3, 0, gh), (gend, 0, sz), (gx - 0.3, 0, sz)], [(0, 1, 2)], "sail",
+             uvs=[(0.05, 1.0), (0.95, 0.0), (0.05, 0.0)])
     rope((gx, 0, gh), (gend, 0, sz))
 
 # pavillon noir avec tête de mort, sur le mât choisi

@@ -4,7 +4,7 @@
   "categories": {
     "sail": {
       "label": "Voiles",
-      "mats": { "sail": 1.0, "sail_d": 0.95, "sail_p": 1.02 },
+      "mats": { "sail": 1.0, "sail_d": 0.95, "sail_p": 1.02, "sail_e": 1.0 },
       "variants": [
         { "id": "natural", "label": "Toile naturelle", "price": 0 },
         { "id": "white", "label": "Toile blanche", "price": 30, "color": "#ece8dc" },

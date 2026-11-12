@@ -1556,6 +1556,9 @@ func _setup_hull() -> void:
 	var cfg := HullDamage.load_config()
 	_hull.configure(cfg, _ship.length)
 	_rocks.load_from(cfg)
+	if GameConfig.REEFS_AROUND_ISLANDS and _islands != null:
+		var dock: Dictionary = _port_meta.get("dock", {})
+		_rocks.generate(_islands.islands, Vector2(float(dock.get("pier_x1", 18.0)), -float(dock.get("y", -14.0))))
 	if not _args.has("no-rocks"):
 		_rocks.build(_world_fixed, SEA_Y)
 	_spawn_pos = _sim.position
