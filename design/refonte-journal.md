@@ -109,8 +109,25 @@ GDC « horizontal resequencing », interviews de Rare sur Sea of Thieves). Appli
 - Nouveaux sons : tir de canon (ennemi aussi : il n'y en avait pas), choc de boulet sur une coque/un mob/un récif, boulet à
   l'eau, pas sur bois/sable/herbe/eau (enregistrés). 70 prises de bruitages (`assets/audio/sfx`), 12 morceaux
   (`assets/audio/music`, Epidemic Sound, série « Scandinavian Folk » pour la mer, l'escale et le combat ; ~19 Mo).
-- Limites : le choc d'un boulet de joueur sur un ennemi n'est entendu que par l'hôte ; pas encore de « ducking » (baisser
-  la musique pendant un tir) ; pas d'intensité de combat par couches (il faudrait des pistes séparées).
+- Le choc d'un boulet de joueur sur un ennemi est relayé à tous (action réseau `ball_hit`).
+- « Ducking » : un coup de canon proche creuse la musique de 4 dB, qui remonte en 0,6 s.
+- Combat en couches (musique « verticale ») : les morceaux de combat livrés en pistes séparées (Epidemic « stems » :
+  `music/stems/combat_N_instruments.ogg` + `_melody.ogg`) jouent l'accompagnement seul, et la mélodie entre quand le
+  combat chauffe (intensité = navires engagés pondérés par leur rang, mobs proches, coups reçus récents).
+
+## Canon (12/11)
+
+- Bug : en visant au canon on pouvait partir se promener (on ne lâchait le canon qu'à 4,8 m) et continuer à tirer. Au canon,
+  on est maintenant placé derrière la culasse et on ne bouge plus ; R pour lâcher.
+
+## Vent visible (12/11)
+
+- Traînées blanches très fines qui filent dans le sens du vent à hauteur des voiles (`src/sea/wind_streaks.gd`), plus vives
+  quand les voiles prennent bien le vent.
+- Voiles : creusées quand elles prennent le vent (rendement vent x réglage), flasques et qui battent quand il les prend mal ;
+  pareil sur les navires ennemis (on voit s'ils sont bien réglés).
+- Sons : « vlouf » de toile quand le rendement franchit 60 % en montant, battement de toile en boucle quand les voiles
+  hissées sont mal réglées. Réglages `WIND_STREAK_*` et `SAIL_*` dans `game_config.gd`.
 
 ## Assets à fournir
 

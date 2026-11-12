@@ -471,6 +471,10 @@ func _place_visual(s: Dictionary, _delta: float) -> void:
 	else:
 		model.set_sail_open(sim.sail_open)
 	model.set_sail_trim(sim.sail_trim)
+	# leurs voiles aussi se gonflent ou battent selon le vent (on voit s'ils sont bien réglés, donc s'ils vont vite)
+	var pull := clampf(sim.wind_factor() * sim.trim_efficiency(), 0.0, 1.0)
+	model.set_sail_wind(pull * smoothstep(0.05, 0.4, sim.sail_open),
+			sim.sail_open * clampf((GameConfig.SAIL_LUFF_AT - pull) / GameConfig.SAIL_LUFF_AT, 0.0, 1.0), 1.0 / 60.0)
 	model.position = Vector3(sim.position.x, y, sim.position.y)
 	model.rotation = Vector3(roll, sim.yaw, pitch)
 	var label := s["label"] as Label3D

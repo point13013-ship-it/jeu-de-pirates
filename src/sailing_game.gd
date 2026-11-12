@@ -2948,6 +2948,7 @@ func _process(delta_raw: float) -> void:
 	_ship.set_sail_open(_sim.sail_open)
 	_ship.set_sail_trim(_sim.sail_trim)
 	_update_helm_wheel(delta)
+	_update_wind_feel(delta)
 	_place_pirate()
 	_update_target(delta)
 	_update_aim_line()
@@ -5966,6 +5967,38 @@ func _leave_helm() -> void:
 
 
 ## Fait partir le boulet du canon `i` (éclair, boulet, éclaboussure). Appelé chez tout le monde.
+var _wind_streaks: WindStreaks
+var _sail_fill_prev := 0.0
+
+
+## Le vent qu'on voit et qu'on entend (12/11/2026, à la manière de Sea of Thieves) : traînées dans le sens du vent, voiles qui se
+## gonflent (et un « vlouf » de toile quand elles prennent le vent) ou qui battent en claquant quand il les prend mal.
+## Tout se déduit de l'état du bateau que l'hôte envoie (vent, cap, vergues, voiles) : chacun voit et entend la même chose.
+func _update_wind_feel(delta: float) -> void:
+	if _ship == null:
+		return
+	if _wind_streaks == null:
+		_wind_streaks = WindStreaks.new()
+		_world.add_child(_wind_streaks)
+	var hoisted := _sim.sail_open
+	var pull := clampf(_sim.wind_factor() * _sim.trim_efficiency(), 0.0, 1.0)   # le vent pris par la toile, 0…1
+	var fill := pull * smoothstep(0.05, 0.4, hoisted)
+	var luff := hoisted * clampf((GameConfig.SAIL_LUFF_AT - pull) / GameConfig.SAIL_LUFF_AT, 0.0, 1.0)
+	_ship.set_sail_wind(fill, luff, delta)
+	var center := _ship.global_position
+	_wind_streaks.update(center, _sim.wind_dir, fill, _loc != Loc.LAND and _loc != Loc.HOLD and _atmo.sky.enabled)
+	var mast_at := center + Vector3(0.0, 5.0, 0.0)
+	if not _ship.masts.is_empty():
+		mast_at = _ship.to_global(_ship.to_local3(Vector2(float((_ship.masts[0] as Array)[0]), 0.0), 5.0))
+	if _sail_fill_prev < GameConfig.SAIL_FILL_SOUND_AT and fill >= GameConfig.SAIL_FILL_SOUND_AT:
+		_sfx.play_at(Synth.recorded("sail_fill"), mast_at, 0.9)   # la toile se tend d'un coup
+	_sail_fill_prev = fill
+	if luff > 0.08:
+		_sfx.loop_at("sail_luff", Synth.recorded("sail_luff", true), mast_at, luff * 0.85)
+	else:
+		_sfx.stop_loop("sail_luff")
+
+
 ## Coup de canon (nous ou un ennemi) en `at` (coordonnées de la scène) : détonation + grondement, entendus de loin.
 func _cannon_boom(at: Vector3) -> void:
 	_sfx.play_at(Synth.recorded("cannon_fire"), at, GameConfig.CANNON_BLAST_VOL, 1.0, true)

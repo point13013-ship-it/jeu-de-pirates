@@ -588,6 +588,20 @@ func set_sail_trim(angle: float) -> void:
 	_apply_sails()
 
 
+var _fill := 1.0                ## 0…1 : les voiles prennent-elles le vent ? (lissé) — leur creux en dépend
+var _luff := 0.0                ## 0…1 : force du battement (voiles hissées que le vent prend mal)
+var _wind_t := 0.0
+
+
+## Le vent dans les voiles (chaque image) : `fill` 0…1 (rendement du vent et du réglage), `luff` 0…1 (battement). Les voiles
+## carrées se creusent quand elles prennent le vent et s'aplatissent en battant quand il les prend mal.
+func set_sail_wind(fill: float, luff: float, delta: float) -> void:
+	_fill = move_toward(_fill, fill, delta / GameConfig.SAIL_FILL_SMOOTH)
+	_luff = move_toward(_luff, luff, delta * 2.0)
+	_wind_t += delta
+	_apply_sails()
+
+
 func _apply_sails() -> void:
 	var s := maxf(0.1, _sail_open_v)
 	var m_scale := Basis.from_scale(Vector3(1.0, s, 1.0))
@@ -596,6 +610,12 @@ func _apply_sails() -> void:
 		var top: float = entry["top"]
 		var m := Transform3D(m_scale, Vector3(0.0, top * (1.0 - s), 0.0))
 		var pivot: float = _sail_pivot[k]
+		if not is_nan(pivot):
+			# le creux de la voile (son bombement, vers l'étrave) autour de l'axe du mât : gonflée ou flasque, et qui bat
+			var bulge := lerpf(GameConfig.SAIL_BULGE_SLACK, GameConfig.SAIL_BULGE_FULL, _fill)
+			bulge += _luff * GameConfig.SAIL_LUFF_FLAP * sin(_wind_t * 17.0 + float(k) * 1.7) * (1.0 + 0.5 * sin(_wind_t * 5.3))
+			m = Transform3D(Basis(), Vector3(pivot, 0.0, 0.0)) * Transform3D(Basis.from_scale(Vector3(maxf(bulge, 0.05), 1.0, 1.0)), Vector3.ZERO) \
+					* Transform3D(Basis(), Vector3(-pivot, 0.0, 0.0)) * m
 		var t := m * (entry["base"] as Transform3D)
 		if not is_nan(pivot) and absf(_sail_trim_v) > 0.0001:
 			# autour de l'axe vertical du mât (repère du modèle) ; Vector2.rotated(a) = rotation d'axe Y de -a

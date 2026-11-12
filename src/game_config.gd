@@ -237,6 +237,23 @@ const HULL_LENGTH_GROWTH := 1.35
 ## Leur position vers le plat-bord se règle dans make_ship.py (CANNON_INSET : distance du bord, unités du modèle).
 const CANNON_SIZE := 1.2
 
+## Vent visible (12/11/2026, comme Sea of Thieves) : traînées qui filent dans le sens du vent autour du bateau, voiles qui se
+## gonflent quand elles prennent bien le vent et qui battent quand il les prend mal, avec leurs sons.
+const WIND_STREAKS := 46               ## traînées en même temps
+const WIND_STREAK_LIFE := 2.4          ## s de vie d'une traînée
+const WIND_STREAK_SPEED := 11.0        ## m/s
+const WIND_STREAK_LENGTH := 2.6        ## m
+const WIND_STREAK_WIDTH := 0.07        ## m (très fines)
+const WIND_STREAK_ALPHA := 0.32        ## opacité (très légères)
+const WIND_STREAK_BOX := Vector3(26.0, 4.5, 20.0)   ## m : demi-taille de la zone où elles naissent (au vent du bateau)
+const WIND_STREAK_HEIGHT := 5.5        ## m au-dessus de l'eau : à hauteur des voiles
+const SAIL_BULGE_SLACK := 0.35         ## creux des voiles qui ne prennent pas le vent (x le creux du modèle)
+const SAIL_BULGE_FULL := 1.3           ## creux des voiles gonflées (vent bien pris)
+const SAIL_LUFF_AT := 0.5              ## en dessous de ce rendement, des voiles hissées battent (faseyent)
+const SAIL_LUFF_FLAP := 0.22           ## amplitude du battement
+const SAIL_FILL_SOUND_AT := 0.6        ## rendement qu'on franchit en montant : « vlouf » des voiles qui se gonflent
+const SAIL_FILL_SMOOTH := 1.2          ## s pour que le gonflement suive le rendement (pas de saut)
+
 ## 3.8 Son de coque : renfort par la houle et gerbes au hasard.
 const HULL_SWELL_VOL := 0.25
 const HULL_SPLASH_MIN := 1.2          ## s (à pleine vitesse, ces écarts sont raccourcis)
