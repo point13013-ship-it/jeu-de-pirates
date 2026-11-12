@@ -455,6 +455,40 @@ static func rope() -> AudioStreamWAV:
 		return _to_stream(_normalize(out, 0.5), false))
 
 
+## PROVISOIRE (lot 4) — l'alerte des requins : deux notes graves qui reviennent, et un frisson d'eau.
+static func shark_alert() -> AudioStreamWAV:
+	return _cached("shark_alert", func() -> AudioStreamWAV:
+		var len := int(2.0 * RATE)
+		var hp := _highpass(_lowpass(_noise(len, 681), 1800.0), 200.0)
+		var out := PackedFloat32Array()
+		out.resize(len)
+		for i in len:
+			var t := float(i) / RATE
+			var f := 82.0 if fmod(t, 0.5) < 0.25 else 87.0
+			var env := exp(-fmod(t, 0.25) * 6.0)
+			out[i] = (sin(TAU * f * t) + 0.4 * sin(TAU * 2.0 * f * t)) * env * 0.8 + hp[i] * 0.15 * sin(PI * t / 2.0)
+		return _to_stream(_normalize(out, 0.7), false))
+
+
+## PROVISOIRE (lot 4) — la mort : un accord grave qui descend.
+static func death_sting() -> AudioStreamWAV:
+	return _cached("death_sting", func() -> AudioStreamWAV:
+		var len := int(1.8 * RATE)
+		var out := PackedFloat32Array()
+		out.resize(len)
+		var ph := PackedFloat32Array([0.0, 0.0, 0.0])
+		var notes := PackedFloat32Array([196.0, 233.0, 294.0])
+		for i in len:
+			var u := float(i) / len
+			var v := 0.0
+			for k in 3:
+				var f: float = notes[k] * (1.0 - 0.25 * u)
+				ph[k] = ph[k] + TAU * f / RATE
+				v += sin(ph[k])
+			out[i] = v * pow(1.0 - u, 1.5) * minf(u * 40.0, 1.0)
+		return _to_stream(_normalize(out, 0.55), false))
+
+
 ## PROVISOIRE (lot 3) — la roue du gouvernail qui tourne : bois et mécanisme qui grincent (boucle ; volume et hauteur réglés
 ## par le jeu selon la vitesse de rotation).
 static func wheel_creak() -> AudioStreamWAV:

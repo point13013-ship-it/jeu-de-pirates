@@ -244,6 +244,21 @@ var _wave_amp_sent := -1.0           ## dernière valeur envoyée au shader de l
 var _cam_sway := Vector3.ZERO        ## balancement de la caméra par mer formée
 var _prev_rudder := 0.0
 var _helm_creak := 0.0               ## 0..1 : vitesse de rotation de la roue (grincement)
+# ------------------------------------------------------------------ lot 4
+var _downed_t := -1.0                ## s avant de mourir, à terre (-1 : debout)
+var _dead_t := -1.0                  ## s avant de réapparaître (-1 : vivant)
+var _dead_why := ""
+var _revivers: Dictionary = {}       ## id des camarades en train de me relever -> true (mon compte à rebours est en pause)
+var _water_t := 0.0                  ## s passées dans l'eau d'affilée
+var _water_stage := 0                ## 0 rien, 1 sirène, 2 requins qui rôdent, 3 requins qui mordent
+var _siren: Node3D
+var _siren_pos := Vector2.ZERO
+var _sharks: Array = []              ## {node, a (angle autour de moi), scared (s)}
+var _shark_bite_t := 0.0
+var _remote_downed: Dictionary = {}  ## id -> {t (s restantes), reviving}
+var _remote_dead: Dictionary = {}    ## id -> true
+var _remote_water: Dictionary = {}   ## id -> {stage, siren, siren_pos, sharks, t}
+var _center_label: Label             ## grand texte au centre (à terre, mort, noyade)
 
 
 const SEA_PATH := "res://data/sea.json"
@@ -1273,6 +1288,18 @@ func _build_hud() -> void:
 	_hud_root.add_child(_island_hud)
 	_act_gauge = ActionGauge.new()   # la jauge circulaire des actions longues (lot 2)
 	_hud_root.add_child(_act_gauge)
+	# lot 4 (10.3) : le grand texte du centre (à terre, réapparition, noyade qui approche)
+	_center_label = Label.new()
+	_center_label.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
+	_center_label.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_center_label.offset_top = 150.0
+	_center_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_center_label.add_theme_font_size_override("font_size", 26)
+	_center_label.add_theme_color_override("font_color", Color(1.0, 0.86, 0.8))
+	_center_label.add_theme_color_override("font_outline_color", Color(0.12, 0.02, 0.02))
+	_center_label.add_theme_constant_override("outline_size", 8)
+	_center_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_hud_root.add_child(_center_label)
 	_rep_hud = ReputationHud.new()   # la réputation : rang, barre de progression et bannière de rang
 	_rep_hud.set_points(_profile.reputation)
 	_hud_root.add_child(_rep_hud)
@@ -1451,6 +1478,10 @@ func _apply_test_args() -> void:
 				apply_action(990001, "act", "%s|%.2f" % [str(_args["fake-act"]), TimedAction.duration_of(str(_args["fake-act"]))], Vector2.ZERO, Vector2(0, 1)))
 		get_tree().create_timer(1.3).timeout.connect(func() -> void:
 			apply_remote_look(990001, local_look_json()))
+	if _args.has("down"):   # essai : --down=2 je tombe à terre à cet instant (lot 4)
+		get_tree().create_timer(float(_args["down"])).timeout.connect(_go_down)
+	if _args.has("water-time"):   # essai : --water-time=85 (avec --swim) : déjà ce temps passé dans l'eau
+		get_tree().create_timer(0.4).timeout.connect(func() -> void: _water_t = float(_args["water-time"]))
 	if _args.has("gold"):   # essai : --gold=150 donne de l'or
 		_profile.gold = int(_args["gold"])
 	if _args.has("quest"):   # essai : --quest=tonnelet met cette quête en cours
@@ -2358,6 +2389,13 @@ func _try_attack(secondary: bool = false) -> void:
 	if _act != null:
 		_cancel_action()   # frapper coupe l'action en cours
 		return
+	if _is_down() or _is_dead():
+		return
+	if _loc == Loc.SWIM and _atk_cd <= 0.0 and not _sharks.is_empty():   # lot 4 (5.7) : à la nage, un coup de sabre chasse un requin
+		_atk_cd = 0.6
+		if not _scare_shark():
+			_splash_burst(_lpos)
+		return
 	if _loc != Loc.LAND or _atk_cd > 0.0 or _hp <= 0 or _dialog.is_open() or _shop_menu.is_open() or _chart.is_open() or _jump_wind > 0.0:
 		return
 	if _carrying:   # lot 2 (2.4) : les deux mains sont prises
@@ -2442,6 +2480,8 @@ func apply_action(peer: int, kind: String, arg: String, pos: Vector2, dir: Vecto
 	match kind:
 		"act", "act_end":   # lot 2 : une action longue commence ou finit
 			_remote_act(peer, kind, arg)
+		"down", "up", "dead", "water":   # lot 4 : son état (à terre, relevé, mort, temps dans l'eau)
+			_remote_state_event(peer, kind, arg)
 		"slash":
 			var sl := arg.split("|")
 			var ssk := WeaponSkins.def_of("sabre", sl[1] if sl.size() > 1 else WeaponSkins.CLASSIC)
@@ -2763,7 +2803,7 @@ func _popup(text: String, at: Vector2, color: Color) -> void:
 
 ## Un ennemi m'a touché (venu de `from`).
 func apply_hurt(damage: int, from: Vector2) -> void:
-	if _inv_t > 0.0 or _hp <= 0 or _loc != Loc.LAND:
+	if _inv_t > 0.0 or _hp <= 0 or _loc != Loc.LAND or _is_down() or _is_dead():
 		return
 	_act_hurt = true   # lot 2 : un coup reçu interrompt l'action en cours
 	_hp = maxi(_hp - damage, 0)
@@ -2776,7 +2816,7 @@ func apply_hurt(damage: int, from: Vector2) -> void:
 		_lpos = Vector2(r.x, r.y)
 		_lh = r.z
 	if _hp <= 0:
-		_transition(_wake_on_ship, false)
+		_go_down()   # lot 4 (5.1) : à terre, et non plus évanoui puis réveillé sur le bateau
 
 
 ## Évanoui : on se réveille sur le pont, soigné.
@@ -2871,6 +2911,12 @@ func _process(delta_raw: float) -> void:
 		_stuck_t = 0.0
 	_update_player(delta)
 	_update_timed_action(delta)
+	_update_lot4(delta)
+	_update_remote_lot4(delta)
+	if _center_label != null:
+		_center_label.text = _lot4_center_text()
+		var urgent := _is_dead() or (_is_down() and _downed_t < 8.0) or (_loc == Loc.SWIM and _water_t >= GameConfig.DROWN_AFTER - GameConfig.DROWN_WARNING)
+		_center_label.modulate.a = (0.65 + 0.35 * sin(_time * 7.0)) if urgent and not _is_dead() else 1.0
 	_update_rafts(delta)
 	var prev_sim_pos := _sim.position
 	var prev_sim_yaw := _sim.yaw
@@ -2954,6 +3000,8 @@ func _axis(neg: Array, pos: Array) -> float:
 
 func _update_player(delta: float) -> void:
 	_update_jump(delta)
+	if _is_down() or _is_dead():
+		return   # lot 4 : à terre on ne bouge plus ; mort, on attend de réapparaître
 	var move := Vector2(_axis([KEY_A, KEY_LEFT], [KEY_D, KEY_RIGHT]), _axis([KEY_W, KEY_UP], [KEY_S, KEY_DOWN]))
 	if _test_move != Vector2.ZERO:
 		move = _test_move
@@ -3315,6 +3363,8 @@ func _splash_burst(w: Vector2) -> void:
 
 
 func _try_jump() -> void:
+	if _is_down() or _is_dead():
+		return
 	if _loc == Loc.SWIM:
 		if not _try_board_raft_from_water():
 			_try_board_from_water()
@@ -4273,6 +4323,10 @@ func _animate_pirates(delta: float) -> void:
 
 ## Un joueur est parti : son pirate disparaît, et la barre se libère s'il la tenait.
 func on_peer_left(id: int) -> void:
+	_set_remote_water(id, 0)
+	_remote_water.erase(id)
+	_remote_downed.erase(id)
+	_remote_dead.erase(id)
 	_end_remote_act(id)
 	_set_remote_carry(id, "")
 	_remote_carry.erase(id)
@@ -4816,8 +4870,15 @@ func _splash_bucket() -> void:
 
 
 func _interact(secondary: bool) -> void:
-	if _loc == Loc.CLIMB or _loc == Loc.FLIGHT:
+	if _loc == Loc.CLIMB or _loc == Loc.FLIGHT or _is_down() or _is_dead():
 		return
+	if not secondary and _loc == Loc.SWIM and _try_siren():
+		return   # lot 4 (5.6) : la sirène me ramène à bord
+	if not secondary and (_loc == Loc.LAND or (_loc == Loc.SHIP and _mode == Mode.WALK)):
+		var downed := _revive_candidate()
+		if downed != 0:   # lot 4 (5.2) : relever un camarade à terre
+			_start_action("revive", "Relever %s" % _remote_label(downed), downed)
+			return
 	if _hook_interact(secondary):
 		return   # le grappin en main (ou accroché) a la priorité : E lance ou s'attire, R range ou décroche
 	if _gun_i >= 0:   # on vise au canon : E tire, R lâche
@@ -5185,6 +5246,11 @@ func apply_request(peer: int, kind: String, value: int) -> void:
 				dpos = _remotes[peer]["target"]
 			if dpos != Vector2.INF and dkind != "t:":
 				_loot.spawn(dkind, dpos, GameConfig.DROPPED_TTL)
+		"revive":   # lot 4 (5.2) : `peer` relève le camarade `value`
+			if value == _my_id() and _is_down():
+				_do_revive(value)
+			elif value != _my_id() and _remotes.has(value):
+				_do_revive(value)
 		"hoist":   # lot 2 (4.5) : `peer` hisse le camarade `value` hors de l'eau
 			var swimming := false
 			if value == _my_id():
@@ -6692,7 +6758,7 @@ func _start_action(kind: String, label: String, arg: int = 0) -> void:
 	_act_hurt = false
 	_act_prev_t = -0.001
 	_make_act_prop(_sprite, kind)
-	_send_action("act", "%s|%.2f" % [kind, _act.duration], _my_world_pos(), _face)
+	_send_action("act", "%s|%.2f|%d" % [kind, _act.duration, arg], _my_world_pos(), _face)
 	_dbg("action %s commencée (%.1f s)" % [kind, _act.duration])
 
 
@@ -6754,6 +6820,8 @@ func _apply_action_effect(a: TimedAction) -> void:
 			_request("bail", 0)
 		"hoist":
 			_request("hoist", a.arg)
+		"revive":
+			_request("revive", a.arg)
 
 
 ## Les sons et effets d'une action à l'instant t (de t0 à t1 pendant cette image), à l'endroit `at` (scène). `key` : de qui c'est
@@ -6902,6 +6970,18 @@ func _update_lot2_visuals(delta: float) -> void:
 	var poses: Dictionary = {}   # id d'instance -> écrasement de geste
 	if _act != null:
 		poses[_sprite.get_instance_id()] = _work_pose(_sprite, _act.kind, _act.t, _act.duration)
+	# lot 4 : à terre, le pirate est affalé (PROVISOIRE : très tassé, faute d'image « au sol » dans le pixel art) ; mort, il disparaît
+	var hidden: Dictionary = {}
+	if _is_down():
+		poses[_sprite.get_instance_id()] = GameConfig.DOWNED_SQUASH
+	if _is_dead():
+		hidden[_sprite.get_instance_id()] = true
+	for id: int in _remote_downed:
+		if _remotes.has(id):
+			poses[(_remotes[id]["sprite"] as Node).get_instance_id()] = GameConfig.DOWNED_SQUASH
+	for id: int in _remote_dead:
+		if _remotes.has(id):
+			hidden[(_remotes[id]["sprite"] as Node).get_instance_id()] = true
 	for id: int in _remote_acts.keys():
 		if not _remotes.has(id):
 			_remote_acts.erase(id)
@@ -6934,6 +7014,9 @@ func _update_lot2_visuals(delta: float) -> void:
 		# sq > 0 : écrasé (plus large, moins haut) ; sq < 0 : étiré. (Glissé dans un canon, mon pirate est caché en étant réduit
 		# à rien : on n'y touche pas.)
 		if sprite == _sprite and _mode == Mode.CANNON:
+			continue
+		if hidden.has(key):
+			sprite.scale = Vector3.ONE * 0.001
 			continue
 		sprite.scale = Vector3(1.0 + sq * 0.6, 1.0 - sq, 1.0)
 	# ce que chacun porte, entre les mains (et non plus au-dessus de la tête), visible par tous
@@ -6970,14 +7053,18 @@ func _remote_act(peer: int, kind: String, arg: String) -> void:
 	var rs := _remotes[peer]["sprite"] as PirateSprite
 	if kind == "act":
 		var p := arg.split("|")
-		_remote_acts[peer] = {"kind": p[0], "t": 0.0, "dur": float(p[1]) if p.size() > 1 else 1.0}
+		var target := int(p[2]) if p.size() > 2 else 0
+		_remote_acts[peer] = {"kind": p[0], "t": 0.0, "dur": float(p[1]) if p.size() > 1 else 1.0, "target": target}
 		_make_act_prop(rs, p[0])
+		if p[0] == "revive" and target == _my_id():
+			_revivers[peer] = true   # lot 4 (5.2) : on me relève, mon compte à rebours s'arrête
 	else:
 		_end_remote_act(peer)
 
 
 func _end_remote_act(peer: int) -> void:
 	_remote_acts.erase(peer)
+	_revivers.erase(peer)   # (s'il me relevait : interrompu, mon compte à rebours reprend)
 	_sfx.stop_loop("p%d" % peer)
 	if _remotes.has(peer):
 		_clear_act_prop(_remotes[peer]["sprite"] as PirateSprite)
@@ -7104,6 +7191,369 @@ func apply_hoisted() -> void:
 	_splash_burst(_lpos)
 	_sfx.play_at(Synth.rope(), _my_scene_pos(), 0.8)
 	_say("Un camarade t'a hissé à bord !", 2.5)
+
+
+# ================================================================== lot 4 : à terre, mort, réapparition, eau
+
+func _is_down() -> bool:
+	return _downed_t >= 0.0
+
+
+func _is_dead() -> bool:
+	return _dead_t >= 0.0
+
+
+## 5.1 À 0 PV on ne meurt pas : on tombe à terre, immobile, avec un compte à rebours (visible par l'équipage).
+func _go_down() -> void:
+	if _is_down() or _is_dead():
+		return
+	_cancel_action()
+	_downed_t = GameConfig.DOWNED_TIME
+	_revivers.clear()
+	_vz = 0.0
+	_pz = 0.0
+	_jump_wind = 0.0
+	_sfx.play_at(Synth.thump(), _my_scene_pos(), 1.0, 0.7)
+	_send_action("down", "%.1f" % _downed_t, _my_world_pos(), _face)
+	_dbg("à terre (%.0f s)" % _downed_t)
+
+
+## 5.2 Relevé par un camarade : quelques cœurs, un instant d'invulnérabilité.
+func apply_revived() -> void:
+	if not _is_down():
+		return
+	_downed_t = -1.0
+	_hp = mini(GameConfig.REVIVED_HP, _hp_max)
+	_inv_t = 2.0
+	_revivers.clear()
+	_send_action("up", "", _my_world_pos(), _face)
+	_say("Un camarade t'a relevé !", 3.0)
+	_atmo.audio.play_chime()
+	_dbg("relevé")
+
+
+## 5.3, 5.4, 5.8 : la mort. On perd ce qu'on a dans les mains (planche, boulet, trésor : il disparaît) et le pouvoir de sa baie ;
+## on réapparaît sur le bateau après GameConfig.RESPAWN_TIME secondes (5.5).
+func _die(why: String) -> void:
+	if _is_dead():
+		return
+	_cancel_action()
+	_downed_t = -1.0
+	_drop_carried()
+	var lost_berry := _profile.berry
+	if lost_berry != "":
+		_profile.berry = ""
+		_profile.save()
+	_dead_t = GameConfig.RESPAWN_TIME
+	_dead_why = why
+	_clear_water_threats()
+	_sfx.play_at(Synth.death_sting(), _my_scene_pos(), 1.0)
+	_send_action("dead", why, _my_world_pos(), _face)
+	_dbg("mort (%s)%s" % [why, (", baie perdue : " + lost_berry) if lost_berry != "" else ""])
+
+
+## 5.5 Réapparition sur son bateau.
+func _respawn() -> void:
+	_dead_t = -1.0
+	_wake_on_ship()
+	_inv_t = GameConfig.RESPAWN_INVULNERABLE
+	_water_t = 0.0
+	_send_action("up", "", _my_world_pos(), _face)
+	_say("De retour à bord. Tu as perdu ce que tu portais%s." % (" et le pouvoir de ta baie" if _dead_why != "" else ""), 5.0)
+
+
+## Chaque image : comptes à rebours (à terre, mort), temps passé dans l'eau (sirène, requins, noyade).
+func _update_lot4(delta: float) -> void:
+	if _is_dead():
+		_dead_t -= delta
+		if _dead_t <= 0.0:
+			_respawn()
+		return
+	if _is_down():
+		if _revivers.is_empty():   # 5.2 : pendant qu'un camarade me relève, le compte à rebours s'arrête
+			_downed_t -= delta
+		if _downed_t <= 0.0:
+			_die("à terre")
+		return
+	_update_water(delta)
+
+
+## 5.6 à 5.9 : le temps passé dans l'eau. Sirène, puis requins qui rôdent et mordent, puis noyade ; tout s'efface dès qu'on
+## remonte à bord (échelle, hissé par un camarade, radeau) ou qu'on prend pied.
+func _update_water(delta: float) -> void:
+	if _loc != Loc.SWIM:
+		if _water_t > 0.0:
+			_water_t = 0.0
+			_clear_water_threats()
+		return
+	_water_t += delta
+	var stage := 0
+	if _water_t >= GameConfig.SIREN_AFTER:
+		stage = 1
+	if _water_t >= GameConfig.SHARKS_AFTER:
+		stage = 2
+	if _water_t >= GameConfig.SHARK_ATTACK_AFTER:
+		stage = 3
+	if stage != _water_stage:
+		_water_stage = stage
+		_send_action("water", str(stage), _lpos, _face)
+		if stage == 1:
+			_say("Une sirène s'approche : nage jusqu'à elle et appuie sur E, elle te ramènera à ton bateau", 5.0)
+		elif stage == 2:
+			_say("Des ailerons tournent autour de toi… remonte vite à bord !", 4.0)
+			_sfx.play_at(Synth.shark_alert(), _my_scene_pos(), 1.0)
+	if stage >= 1 and _siren == null:
+		_siren = _make_siren()
+		_siren_pos = _lpos + Vector2.from_angle(randf() * TAU) * GameConfig.SIREN_DISTANCE
+	if stage >= 2 and _sharks.is_empty():
+		for k in GameConfig.SHARK_COUNT:
+			_sharks.append({"node": _make_fin(), "a": TAU * float(k) / float(GameConfig.SHARK_COUNT), "scared": 0.0})
+	if stage >= 3:
+		_shark_bite_t -= delta
+		if _shark_bite_t <= 0.0:
+			_shark_bite_t = GameConfig.SHARK_BITE_EVERY
+			_shark_bite()
+	if _water_t >= GameConfig.DROWN_AFTER:
+		_die("noyade")
+	_place_water_threats(_lpos, _siren, _siren_pos, _sharks, delta, _water_t)
+
+
+## Un requin mord (sauf s'ils ont tous fui) : un cœur en moins ; à 0, mort directe (dans l'eau, pas d'état à terre).
+func _shark_bite() -> void:
+	var any_hunting := false
+	for s: Dictionary in _sharks:
+		if float(s["scared"]) <= 0.0:
+			any_hunting = true
+	if not any_hunting:
+		return
+	_hp = maxi(_hp - GameConfig.SHARK_BITE_DAMAGE, 0)
+	_island_hud.flash = 1.0
+	_shake_t = 0.3
+	_splash_burst(_lpos)
+	_sfx.play_at(Synth.splash(), _my_scene_pos(), 1.0, 0.7)
+	_say("Un requin t'a mordu !", 2.0)
+	if _hp <= 0:
+		_die("requins")
+
+
+## Un coup de sabre à la nage : le requin le plus proche devant moi prend peur et s'éloigne un moment.
+func _scare_shark() -> bool:
+	for s: Dictionary in _sharks:
+		var n := s["node"] as Node3D
+		if n == null:
+			continue
+		var p := Vector2(n.position.x, n.position.z)   # (les ailerons sont dans le monde fixe : coordonnées du monde)
+		if p.distance_to(_lpos) < 3.2:
+			s["scared"] = GameConfig.SHARK_SCARED
+			_shark_bite_t = maxf(_shark_bite_t, 2.0)
+			_splash_burst(p)
+			_say("Le requin s'éloigne !", 1.5)
+			return true
+	return false
+
+
+func _clear_water_threats() -> void:
+	if _siren != null:
+		_siren.queue_free()
+		_siren = null
+	for s: Dictionary in _sharks:
+		if is_instance_valid(s["node"]):
+			(s["node"] as Node).queue_free()
+	_sharks.clear()
+	_water_stage = 0
+	_shark_bite_t = 0.0
+
+
+## Place la sirène (qui ondule, et s'approche un peu) et les ailerons (qui tournent autour du nageur, se resserrent quand ils
+## chassent, s'écartent quand ils ont peur). Sert pour moi et, chez moi, pour un camarade qui nage (mêmes règles, d'après son étape).
+func _place_water_threats(center: Vector2, siren: Node3D, siren_pos: Vector2, sharks: Array, delta: float, t: float) -> void:
+	if siren != null:
+		var sy := SEA_Y + _wave_height(siren_pos) - 0.25 + sin(t * 2.2) * 0.12
+		siren.position = Vector3(siren_pos.x, sy, siren_pos.y)
+		siren.rotation.y = atan2(center.x - siren_pos.x, center.y - siren_pos.y)
+	for s: Dictionary in sharks:
+		var n := s["node"] as Node3D
+		if not is_instance_valid(n):
+			continue
+		s["scared"] = maxf(float(s["scared"]) - delta, 0.0)
+		var hunting := float(s["scared"]) <= 0.0
+		var r := (2.6 if hunting else 6.5) + 0.6 * sin(t * 0.7 + float(s["a"]))
+		s["a"] = float(s["a"]) + delta * (0.9 if hunting else 0.4)
+		var a := float(s["a"])
+		var p := center + Vector2(cos(a), sin(a)) * r
+		n.position = Vector3(p.x, SEA_Y + _wave_height(p) + 0.05, p.y)
+		n.rotation.y = -a   # l'aileron file dans le sens du cercle
+
+
+## La sirène (PROVISOIRE : maquette simple, à remplacer par un vrai modèle) : buste, chevelure, queue turquoise, halo.
+func _make_siren() -> Node3D:
+	var root := Node3D.new()
+	var body := _make_ball(0.28, Color(0.95, 0.78, 0.66))
+	body.position = Vector3(0, 0.55, 0)
+	body.scale = Vector3(0.9, 1.3, 0.8)
+	root.add_child(body)
+	var head := _make_ball(0.2, Color(0.95, 0.78, 0.66))
+	head.position = Vector3(0, 1.05, 0)
+	root.add_child(head)
+	var hair := _make_ball(0.25, Color(0.85, 0.25, 0.3))
+	hair.position = Vector3(0, 1.1, -0.06)
+	hair.scale = Vector3(1.0, 1.15, 1.0)
+	root.add_child(hair)
+	var tail := _make_ball(0.3, Color(0.15, 0.75, 0.7))
+	tail.position = Vector3(0, 0.05, 0.2)
+	tail.scale = Vector3(0.8, 0.6, 1.6)
+	root.add_child(tail)
+	var halo := _make_ball(0.6, Color(0.6, 1.0, 0.95))
+	var hm := halo.material_override as StandardMaterial3D
+	hm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	hm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	hm.albedo_color = Color(0.6, 1.0, 0.95, 0.18)
+	halo.position = Vector3(0, 0.6, 0)
+	halo.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	root.add_child(halo)
+	_world_fixed.add_child(root)
+	_sfx.play_at(Synth.chime(), root.global_position, 0.8, 0.8)
+	return root
+
+
+## Un aileron de requin (PROVISOIRE) : un triangle gris sombre qui fend l'eau, et son sillage d'écume.
+func _make_fin() -> Node3D:
+	var root := Node3D.new()
+	var fin := MeshInstance3D.new()
+	var pm := PrismMesh.new()
+	pm.size = Vector3(0.5, 0.55, 0.08)
+	pm.left_to_right = 0.15
+	fin.mesh = pm
+	var m := StandardMaterial3D.new()
+	m.albedo_color = Color(0.28, 0.31, 0.36)
+	fin.material_override = m
+	fin.position = Vector3(0, 0.25, 0)
+	root.add_child(fin)
+	var foam := _make_ball(0.18, Color(0.9, 0.97, 1.0))
+	(foam.material_override as StandardMaterial3D).shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	foam.scale = Vector3(2.2, 0.2, 0.8)
+	root.add_child(foam)
+	_world_fixed.add_child(root)
+	return root
+
+
+## 5.6 E près de la sirène : elle me ramène sur mon bateau.
+func _try_siren() -> bool:
+	if _siren == null or _lpos.distance_to(_siren_pos) > GameConfig.SIREN_REACH:
+		return false
+	_sfx.play_at(Synth.chime(), _my_scene_pos(), 1.0, 1.2)
+	_transition(func() -> void:
+		_wake_on_ship()
+		_hp = maxi(_hp, 1)
+		_say("La sirène t'a ramené à ton bateau", 3.5), false)
+	return true
+
+
+## Un camarade à terre, à portée pour le relever : son id, ou 0.
+func _revive_candidate() -> int:
+	if _carrying or _is_down() or _is_dead():
+		return 0
+	var me := _my_world_pos()
+	for id: int in _remote_downed:
+		if not _remotes.has(id):
+			continue
+		var r: Dictionary = _remotes[id]
+		var p: Vector2 = r["pos"]
+		if int(r["loc"]) == 0:
+			p = _ship_to_world(p)
+		elif int(r["loc"]) != 1:
+			continue
+		if me.distance_to(p) <= GameConfig.REVIVE_REACH:
+			return id
+	return 0
+
+
+## Hôte : `target` est relevé (par celui qui a mené l'action jusqu'au bout).
+func _do_revive(target: int) -> void:
+	if target == _my_id():
+		apply_revived()
+	elif _net != null and _net.active:
+		_net.send_revive(target)
+
+
+## Événements de l'état d'un camarade (reçus par le réseau) : à terre, relevé, mort, temps dans l'eau.
+func _remote_state_event(peer: int, kind: String, arg: String) -> void:
+	if kind == "up" or kind == "dead":   # plus à terre : son nom revient au-dessus de sa tête
+		if _remotes.has(peer):
+			_set_name_tag((_remotes[peer]["sprite"] as Node).get_node_or_null("NameTag") as Label3D, str(_remote_names.get(peer, "")))
+	match kind:
+		"down":
+			_remote_downed[peer] = {"t": float(arg)}
+		"up":
+			_remote_downed.erase(peer)
+			_remote_dead.erase(peer)
+			_set_remote_water(peer, 0)
+		"dead":
+			_remote_downed.erase(peer)
+			_remote_dead[peer] = true
+			_set_remote_water(peer, 0)
+		"water":
+			_set_remote_water(peer, int(arg))
+
+
+## Ce qui menace un camarade dans l'eau, vu de chez moi (sirène, ailerons), d'après l'étape qu'il annonce.
+func _set_remote_water(peer: int, stage: int) -> void:
+	var w: Dictionary = _remote_water.get(peer, {"stage": 0, "siren": null, "sharks": [], "t": 0.0, "siren_pos": Vector2.ZERO})
+	w["stage"] = stage
+	if stage < 1 and w["siren"] != null:
+		(w["siren"] as Node).queue_free()
+		w["siren"] = null
+	if stage < 2:
+		for s: Dictionary in w["sharks"]:
+			if is_instance_valid(s["node"]):
+				(s["node"] as Node).queue_free()
+		w["sharks"] = []
+	if stage >= 1 and w["siren"] == null and _remotes.has(peer):
+		w["siren"] = _make_siren()
+		w["siren_pos"] = (_remotes[peer]["pos"] as Vector2) + Vector2(GameConfig.SIREN_DISTANCE, 0.0)
+	if stage >= 2 and (w["sharks"] as Array).is_empty():
+		var arr: Array = []
+		for k in GameConfig.SHARK_COUNT:
+			arr.append({"node": _make_fin(), "a": TAU * float(k) / float(GameConfig.SHARK_COUNT), "scared": 0.0})
+		w["sharks"] = arr
+	_remote_water[peer] = w
+
+
+## Chaque image (lot 4) : comptes à rebours des camarades à terre (affichés au-dessus d'eux), menaces dans l'eau des camarades.
+func _update_remote_lot4(delta: float) -> void:
+	for id: int in _remote_downed.keys():
+		var d: Dictionary = _remote_downed[id]
+		var reviving := false
+		for rid: int in _remote_acts:
+			var ra: Dictionary = _remote_acts[rid]
+			if str(ra["kind"]) == "revive" and int(ra.get("target", 0)) == id:
+				reviving = true
+		if _act != null and _act.kind == "revive" and _act.arg == id:
+			reviving = true
+		if not reviving:
+			d["t"] = maxf(float(d["t"]) - delta, 0.0)
+		d["reviving"] = reviving
+		if _remotes.has(id):   # son compte à rebours, au-dessus de lui, pour tout l'équipage
+			var tag := (_remotes[id]["sprite"] as Node).get_node_or_null("NameTag") as Label3D
+			_set_name_tag(tag, "%s — À TERRE %d s%s" % [_remote_label(id), ceili(float(d["t"])), " (on le relève…)" if reviving else " — E : relever"])
+	for id: int in _remote_water.keys():
+		var w: Dictionary = _remote_water[id]
+		if not _remotes.has(id) or int(w["stage"]) == 0:
+			continue
+		w["t"] = float(w["t"]) + delta
+		_place_water_threats(_remotes[id]["pos"], w["siren"], w["siren_pos"], w["sharks"], delta, float(w["t"]))
+
+
+## Le texte au centre de l'écran (lot 4) : à terre, mort, noyade qui approche ; et au-dessus des camarades à terre.
+func _lot4_center_text() -> String:
+	if _is_dead():
+		var why := {"à terre": "Personne ne t'a relevé…", "noyade": "Tu t'es noyé…", "requins": "Les requins ont eu raison de toi…"}
+		return "%s\nRéapparition sur ton bateau dans %d s" % [str(why.get(_dead_why, "Tu es mort…")), ceili(_dead_t)]
+	if _is_down():
+		return "À TERRE — %d s\n%s" % [ceili(_downed_t), "Un camarade te relève…" if not _revivers.is_empty() else "Un camarade peut te relever (E près de toi)"]
+	if _loc == Loc.SWIM and _water_t >= GameConfig.DROWN_AFTER - GameConfig.DROWN_WARNING:
+		return "Tu te noies ! %d s — remonte à bord, ou rejoins la sirène" % ceili(GameConfig.DROWN_AFTER - _water_t)
+	return ""
 
 
 ## Invite de la ligne du bas sur le radeau.

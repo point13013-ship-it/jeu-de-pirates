@@ -102,6 +102,26 @@ const SWELL_STEER_PENALTY := 0.2      ## maniabilité perdue à houle maximale (
 const CAM_SWAY := 0.22                ## m : balancement de la caméra à houle maximale
 const CAM_HEAVE_FOLLOW := 0.35        ## part du soulèvement du pont que la caméra suit
 
+# ------------------------------------------------------------------ Lot 4 : mort, eau et réapparition (lot 3 plus bas)
+
+const DOWNED_TIME := 25.0             ## s « à terre » avant de mourir si personne ne relève (plage 20 à 30 s)
+const REVIVED_HP := 3                 ## cœurs rendus à un pirate relevé
+const RESPAWN_TIME := 10.0            ## s avant de réapparaître sur le bateau
+const RESPAWN_INVULNERABLE := 3.0     ## s d'invulnérabilité à la réapparition
+const REVIVE_REACH := 1.6             ## m : distance pour relever un camarade
+const SIREN_AFTER := 20.0             ## s dans l'eau avant qu'une sirène vienne
+const SIREN_DISTANCE := 3.0           ## m : elle apparaît à cette distance, et on la touche (E) à moins de 1,6 m
+const SIREN_REACH := 1.6
+const SHARKS_AFTER := 45.0            ## s : les requins rôdent
+const SHARK_ATTACK_AFTER := 60.0      ## s : première morsure
+const SHARK_BITE_EVERY := 6.0         ## s entre deux morsures
+const SHARK_BITE_DAMAGE := 1          ## cœurs
+const SHARK_SCARED := 8.0             ## s : un coup de sabre fait fuir le requin ce temps-là
+const SHARK_COUNT := 2
+const DROWN_AFTER := 90.0             ## s : noyade (mort directe, sans passer à terre)
+const DROWN_WARNING := 15.0           ## s : l'alerte s'affiche dans les dernières secondes
+const DOWNED_SQUASH := 0.45           ## un pirate à terre est tassé de 45 % (provisoire, faute d'image « au sol »)
+
 ## 3.3 Cale : plus grande et plus vivante.
 const HOLD_FLOOR_HALF := 1.8          ## m : demi-largeur du fond plat (avant : 1,2)
 const HOLD_WALL_H := 1.8              ## m : mur du fond (avant : 1,4)
