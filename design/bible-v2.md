@@ -266,13 +266,13 @@ bateau. Une simulation de type FFT n'apporterait presque rien à notre résoluti
 
 ---
 
-## 7. Les décisions à prendre avec Jimmy
+## 7. Les décisions (tranchées par Jimmy le 12/11/2026)
 
-1. **Figure de proue du brigantin** : sirène, crâne, animal (lion, aigle, serpent de mer) ou autre ?
-2. **Couleur d'identité de la coque** : bois sombre avec bande rouge, bande turquoise, ou autre ?
-3. **Couleur de la magie et des sirènes** : rose nacré (proposé, car le turquoise se confond avec les lagons) ou turquoise ?
-4. **Ton de la palette** : la palette de départ (`design/palette_v1.png`) te plaît-elle, faut-il plus vif ou plus doux ?
-5. **Avis de l'auteur du jeu** sur cette direction, avant de remplacer ses modèles.
+1. **Figure de proue du brigantin** : un **serpent de mer**, dont la forme en S dépasse nettement de la silhouette.
+2. **Couleur d'identité de la coque** : bois sombre, **bande rouge** et filet doré.
+3. **Couleur de la magie et des sirènes** : **rose nacré** `#E46BE0` (le turquoise se confondait avec les lagons).
+4. **Palette** : la palette v1 (`design/palette_v1.png`) est **validée telle quelle**, et sera ajustée au fil des tests.
+5. Reste ouvert : l'**avis de l'auteur du jeu** sur cette direction, avant de remplacer ses modèles.
 
 ---
 
