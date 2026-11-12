@@ -102,6 +102,10 @@ const SWELL_STEER_PENALTY := 0.2      ## maniabilité perdue à houle maximale (
 const CAM_SWAY := 0.22                ## m : balancement de la caméra à houle maximale
 const CAM_HEAVE_FOLLOW := 0.35        ## part du soulèvement du pont que la caméra suit
 
+# ------------------------------------------------------------------ Lot 8 (en avance) : interface
+
+const NPC_NAME_RANGE := 9.0           ## m : le nom d'un habitant s'affiche à cette distance
+
 # ------------------------------------------------------------------ Lot 6 : météo et jour/nuit
 
 const DAY_SECS := 2100.0              ## 8.1 : s pour un jour complet (avant : 1 500 s ; +40 %)

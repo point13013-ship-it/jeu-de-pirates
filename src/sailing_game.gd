@@ -1657,6 +1657,9 @@ func _update_npcs(delta: float) -> void:
 		npc.blob.position = Vector3(npc.pos.x, npc.h + 0.04, npc.pos.y)
 		if shown:
 			npc.sprite.drive(delta, move, false, false, Vector2.ZERO)
+		if npc.tag != null:   # son nom : seulement d'assez près (sinon la ville serait couverte d'étiquettes)
+			var here := _lpos if _loc == Loc.LAND else _my_world_pos()
+			npc.tag.visible = shown and here.distance_to(npc.pos) < GameConfig.NPC_NAME_RANGE
 
 
 ## Version « fantôme » du shader des bâtiments : même peinture, mais mélangée à ce qui est derrière (ALPHA), et
