@@ -534,7 +534,10 @@ func _layout_view() -> void:
 	var view := Vector2i(ceili(win.x / factor), ceili(win.y / factor)) + Vector2i(2, 2)
 	_factor = factor
 	if _post_mat != null:   # rendu fin : vraies couleurs (la palette fixe salirait les teintes du ciel) ; rendu gros pixels : palette
-		_post_mat.set_shader_parameter("use_palette", _hd() < 2 and not _args.has("no-palette"))
+		# (12/11 : avec le rendu v2, jamais de palette fixe, quelle que soit la taille de fenêtre. En fenêtré, elle revenait :
+		# une peau un peu teintée par la lumière ou la brume sortait de la palette des pirates et virait aux couleurs du décor,
+		# d'où des PNJ « sans peau » chez Jimmy)
+		_post_mat.set_shader_parameter("use_palette", _hd() < 2 and not _args.has("no-palette") and not ToonLook.enabled)
 	_viewport.size = view
 	_post_vp.size = view
 	_post_rect.size = Vector2(view)
@@ -671,6 +674,8 @@ func _build_view() -> void:
 	_cam.far = 250.0
 	_cam.rotation_degrees = Vector3(-ELEVATION_DEG, 0, 0)
 	_world.add_child(_cam)
+	if ToonLook.enabled and RenderingServer.get_current_rendering_method() != "forward_plus":
+		ToonLook.enabled = false   # (le tampon des normales n'existe qu'en Forward+ : en OpenGL, on garde l'ancien rendu)
 	if ToonLook.enabled:
 		# prototype de refonte : contours de silhouette et reflets d'arête dans la 3D ; le filtre d'image ne trace plus ses
 		# contours noirs et garde les couleurs vraies (la palette fixe aplatissait les ombres colorées)

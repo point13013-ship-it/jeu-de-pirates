@@ -33,9 +33,18 @@ var palette_first := false
 ## d'un simple assombrissement. La même formule est dans SHADE_SHADER et dans tools/art/pixel_build.py (aperçus).
 const SHADOW_TINT := Color(0.10, 0.06, 0.28)
 const LIGHT_TINT := Color(0.07, 0.045, 0.0)
+## (12/11 : la teinte arrive par la couleur de la couche (self_modulate), et non plus par une matière par teinte : toutes les
+## couches partagent UNE matière, prête dès la première feuille. Avant, chaque nouvelle teinte créait sa matière pendant la
+## composition, et les couches qui manquaient chez un joueur allaient toujours par matière : toute la peau d'un PNJ (tête, nez,
+## mains, bras : une seule teinte, donc une seule matière), ou le visage et la ceinture du pirate au repos. Pas reproduit sur
+## le PC de dev (feuilles identiques d'un lancement à l'autre) : c'est la cause la plus probable, d'où aussi la double capture
+## plus bas.)
 const SHADE_SHADER := """
 shader_type canvas_item;
-uniform vec3 tint;
+varying vec3 tint;
+void vertex() {
+	tint = COLOR.rgb;
+}
 void fragment() {
 	vec4 tex = texture(TEXTURE, UV);
 	float t = tex.r;
@@ -45,8 +54,7 @@ void fragment() {
 	COLOR = vec4(clamp(c, 0.0, 1.0), tex.a);
 }
 """
-static var _shade_shader: Shader
-static var _shade_materials: Dictionary = {}   ## teinte -> ShaderMaterial
+static var _shade_mat: ShaderMaterial   ## la matière commune à toutes les couches
 
 var look: Dictionary = {}
 var anim := "idle"
@@ -388,17 +396,13 @@ static func shade(tint: Color, t: float) -> Color:
 	return Color(clampf(c.r, 0.0, 1.0), clampf(c.g, 0.0, 1.0), clampf(c.b, 0.0, 1.0), 1.0)
 
 
-static func _shade_material(tint: Color) -> ShaderMaterial:
-	var key := tint.to_html(false)
-	if not _shade_materials.has(key):
-		if _shade_shader == null:
-			_shade_shader = Shader.new()
-			_shade_shader.code = SHADE_SHADER
-		var m := ShaderMaterial.new()
-		m.shader = _shade_shader
-		m.set_shader_parameter("tint", Vector3(tint.r, tint.g, tint.b))
-		_shade_materials[key] = m
-	return _shade_materials[key]
+static func _shade_material() -> ShaderMaterial:
+	if _shade_mat == null:
+		var sh := Shader.new()
+		sh.code = SHADE_SHADER
+		_shade_mat = ShaderMaterial.new()
+		_shade_mat.shader = sh
+	return _shade_mat
 
 
 ## Ajoute à la palette « pirates » les couleurs qu'un look produit : chaque teinte × chacun des tons de gris.
@@ -452,6 +456,7 @@ static func register_weapon(weapon: String, skin: String) -> void:
 
 
 static var _compose_busy := false
+const COMPOSE_MAX_RETRIES := 8   ## captures supplémentaires au plus, en attendant que la feuille ne change plus
 
 ## Compose une feuille. Une seule composition à la fois (bug 1.4) : quand une trentaine de feuilles se fabriquaient dans la même
 ## image (les PNJ de la ville + un changement d'arme ou de skin), certaines sortaient avec leurs couches mal empilées (la peau du
@@ -502,7 +507,8 @@ static func _compose_now(p_look: Dictionary, a: String, weapon_sheets: Dictionar
 			var rect := TextureRect.new()
 			rect.texture = load(path)
 			rect.stretch_mode = TextureRect.STRETCH_KEEP
-			rect.material = _shade_material(Color.html(color_spec if color_spec.begins_with("#") else p_look["colors"][color_spec]))
+			rect.material = _shade_material()
+			rect.self_modulate = Color.html(color_spec if color_spec.begins_with("#") else p_look["colors"][color_spec])   # la teinte
 			vp.add_child(rect)
 	if weapon_sheets.get("front") is Image:
 		var front_rect := TextureRect.new()
@@ -515,6 +521,17 @@ static func _compose_now(p_look: Dictionary, a: String, weapon_sheets: Dictionar
 		await tree.process_frame
 	await RenderingServer.frame_post_draw
 	var img := vp.get_texture().get_image()
+	# (12/11 : on ne garde la feuille que quand deux rendus de suite donnent la même image : une couche qui arrive en retard
+	# (matière, texture pas encore prête sur certaines cartes graphiques) se voit comme une différence, et on attend encore.)
+	for attempt in COMPOSE_MAX_RETRIES:
+		await tree.process_frame
+		await RenderingServer.frame_post_draw
+		var again := vp.get_texture().get_image()
+		if again.get_data() == img.get_data():
+			break
+		if OS.has_environment("PIRATE_DEBUG"):
+			print("[pirate] feuille « %s » pas encore stable (essai %d) : nouvelle capture" % [a, attempt + 1])
+		img = again
 	vp.queue_free()
 	if OS.has_environment("PIRATE_DEBUG"):
 		img.save_png(OS.get_environment("PIRATE_DEBUG") + "/sheet_" + a + ".png")
