@@ -50,6 +50,31 @@ Version réseau : **12** (tout l'équipage doit avoir la même version).
 - Eau : sirène à 20 s (E : retour à bord), requins à 45 s, morsures dès 60 s (un coup de sabre les fait fuir), noyade à 90 s
   (alerte 15 s avant). Remise à zéro en quittant l'eau. Les autres voient l'état « à terre », la sirène et les ailerons.
 
+## Lot 5 : ennemis (partie 1)
+
+- Coques +25 %, 10 % plus lents, apparitions plus rares (premier à 90 s, puis 150 à 300 s).
+- Quatre rangs (★ sloop, ★★ sloop, ★★★ brigantin, ★★★★ galion, poids 52/30/14/4) : résistance, canonniers, stock de
+  planches et butin croissants (`GameConfig.ENEMY_RANKS`), couleurs propres (voiles, coque, pavillon), rang affiché.
+- L'équipage ennemi répare au calme (une planche par voie d'eau, stock limité). Un navire qui nous touche apparaît sur la
+  carte de tout l'équipage (60 s sans échange de tirs, ou jusqu'au naufrage).
+- Mobs : un boulet direct les blesse et les sonne 1,5 s ; blessés et à l'écart, ils mangent une ration (2) pour se soigner.
+- **Non traités** : 6.5 abordage (marcher sur un autre bateau qui bouge : gros chantier), 6.10 kraken.
+
+## Lot 6 : météo et jour/nuit
+
+- Journée de 35 min (+40 %), moment de la journée affiché. Mauvais temps plus rare (clair 76 %) et plus court.
+- Périodes de houle forte hors tempête ; tempête rare (4 %) avec houle maximale, pluie forte, éclairs. Même météo pour tous.
+- Pas fait : un vrai « vent fort » qui pousse le bateau pendant la tempête (le vent n'a pas de force dans la simulation).
+
+## Lot 8 (en avance)
+
+- Noms des habitants au-dessus de leur tête, de près, dans un style distinct des joueurs ; plus de boussole dans leurs mains.
+
+## Pas encore commencés
+
+Lot 7 (îles, ville, baies, trésors, mouettes) et le reste du lot 8 (audio, curseur d'interface partout, carte à grille et
+marqueurs, point d'exclamation de quête, partage de l'or à la vente).
+
 ## Choix à valider
 
 - Mort : on ne perd pas les réserves du bateau (boulets/planches de la caisse) ni les baies du sac ; « nourriture » n'existe
