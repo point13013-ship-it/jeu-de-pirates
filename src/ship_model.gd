@@ -236,6 +236,10 @@ func _dress_sails(node: Node) -> void:
 			m.albedo_color = base.albedo_color * (GameConfig.SAIL_PANEL_DARK if key == "sail_d" else GameConfig.SAIL_PANEL_LIGHT)
 
 
+const FLAG_EMBLEM_OFFSET := 0.045   ## unités du modèle (≈ 7 cm) : distance de chaque tête de mort au plan du pavillon
+var flag_emblems: Array = []        ## les deux têtes de mort du pavillon (une par face)
+
+
 ## Le crâne du pavillon (un disque blanc dans le modèle) remplacé par une tête de mort dessinée, des deux côtés du pavillon.
 func _dress_flag() -> void:
 	var disc := _find(_model, "flag_skull") as Node3D
@@ -255,8 +259,12 @@ func _dress_flag() -> void:
 		m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 		q.material_override = m
 		disc.get_parent().add_child(q)
-		q.position = disc.position + Vector3(0.0, 0.0, side * 0.03)
+		# 13/11 : à FLAG_EMBLEM_OFFSET de part et d'autre du PLAN DU PAVILLON (z = 0 dans le modèle). Avant, à ±3 cm du disque
+		# du modèle, lui-même déjà décalé de 3 cm : un des deux crânes tombait pile dans le plan du pavillon, et les deux
+		# surfaces se disputaient les pixels au gré du roulis (le crâne apparaissait et disparaissait).
+		q.position = Vector3(disc.position.x, disc.position.y, side * FLAG_EMBLEM_OFFSET)
 		q.rotation.y = 0.0 if side > 0 else PI
+		flag_emblems.append(q)
 
 
 func _find(node: Node, node_name: String) -> Node:

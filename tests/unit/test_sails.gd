@@ -28,6 +28,10 @@ func _initialize() -> void:
 		_check_true("%s : %d voiles carrées, %d vergues" % [ship_name, squares, ship._yards.size()], ship._yards.size() == squares * 2)
 		for y: Dictionary in ship._yards:
 			_check_true("%s : %s tourne autour d'un mât" % [ship_name, String((y["node"] as Node).name)], not is_nan(float(y["pivot"])))
+		# le pavillon : une tête de mort par face, jamais dans le plan du pavillon (sinon elle clignote : bug du 13/11)
+		_check_true("%s : deux têtes de mort sur le pavillon" % ship_name, ship.flag_emblems.size() == 2)
+		for q: Node3D in ship.flag_emblems:
+			_check_true("%s : tête de mort à %.3f du plan du pavillon" % [ship_name, q.position.z], absf(q.position.z) >= 0.03)
 		ship.set_sail_trim(0.6)
 		for y: Dictionary in ship._yards:
 			_check_true("%s : %s a tourné avec sa voile" % [ship_name, String((y["node"] as Node).name)],
