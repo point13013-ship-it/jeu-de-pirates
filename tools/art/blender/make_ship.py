@@ -92,7 +92,7 @@ MAT = {
     "red": make_mat("red", (0.42, 0.09, 0.11)),
     "flag": make_mat("flag", (0.022, 0.018, 0.045)),
     "bone": make_mat("bone", (0.90, 0.86, 0.76)),
-    "glow": make_mat("glow", (1.0, 0.62, 0.20), 0.5, emit=7.0),
+    "glow": make_mat("glow", (1.0, 0.55, 0.16), 0.5, emit=2.2),   # (12/11 : 7 brûlait en blanc avec le halo de l'écran)
     "dark": make_mat("dark", (0.025, 0.02, 0.035)),
     "iron": make_mat("iron", (0.07, 0.065, 0.09), 0.55),
     "rope": make_mat("rope", (0.06, 0.04, 0.045)),
@@ -315,11 +315,36 @@ wall("cut_wall_e2", ex - T, DOOR[1], ex, ny)
 wall("cut_wall_e_top", ex - T, DOOR[0], ex, DOOR[1], z0=fz + 1.45, solid=False)
 box("cut_ceiling", cabin_cx, 0, fz + H0 + 0.07, ln0 + 0.2, wid0 + 0.2, 0.14, "hull")
 box("cut_trim", cabin_cx, 0, fz + H0 + 0.16, ln0 + 0.3, wid0 + 0.3, 0.06, "gold")
+def window(name, x, y, z, across_x, w=0.5, h=0.44):
+    """Fenêtre de cabine (12/11 : avant, un simple pavé lumineux qui « brûlait » à l'écran) : vitre ambrée en retrait, cadre
+    de bois sombre, croisillon en quatre carreaux, appui. `across_x` : la fenêtre est sur un mur perpendiculaire à x."""
+    def b(n, cx, cy, cz, sw, sh, depth, mat):
+        if across_x:
+            box(n, cx, cy, cz, depth, sw, sh, mat)
+        else:
+            box(n, cx, cy, cz, sw, depth, sh, mat)
+    out = -0.012 if across_x else 0.0
+    b(name, x, y, z, w - 0.06, h - 0.06, 0.05, "glow")                                     # la vitre éclairée
+    f = 0.055
+    for s in (-1, 1):
+        if across_x:
+            b(name + "_frame", x + out, y + s * (w / 2 - f / 2), z, f, h, 0.09, "mast")       # montants
+        else:
+            b(name + "_frame", x + s * (w / 2 - f / 2), y, z, f, h, 0.09, "mast")
+        b(name + "_frame", x + out, y, z + s * (h / 2 - f / 2), w, f, 0.09, "mast")          # traverses haut et bas
+    b(name + "_frame", x + out, y, z, w, 0.03, 0.08, "mast")                                 # croisillon horizontal
+    if across_x:
+        b(name + "_frame", x + out, y, z, 0.03, h, 0.08, "mast")
+    else:
+        box(name + "_frame", x, y, z, 0.03, 0.08, h, "mast")                                 # croisillon vertical
+    b(name + "_sill", x + out, y, z - h / 2 - 0.03, w + 0.12, 0.05, 0.12, "hull_l")         # appui
+
+
 # fenêtres éclairées sur les murs extérieurs
 for k in range(2):
-    box("cut_win_w", wx - 0.02, (k - 0.5) * (wid0 * 0.5), fz + 1.0, 0.07, 0.5, 0.42, "glow")
+    window("cut_win_w", wx - 0.02, (k - 0.5) * (wid0 * 0.5), fz + 1.0, True)
 for sgn, tag in ((-1, "s"), (1, "n")):
-    box("cut_win_" + tag, cabin_cx - 0.3, sgn * (ny + 0.02), fz + 1.0, 0.5, 0.07, 0.42, "glow")
+    window("cut_win_" + tag, cabin_cx - 0.3, sgn * (ny + 0.02), fz + 1.0, False)
 # mobilier : couchette, coffre, table, tapis, lanterne suspendue
 box("int_rug", cabin_cx + 0.3, 0, fz + 0.02, ln0 * 0.55, wid0 * 0.45, 0.03, "red")
 box("int_bunk", wx + T + 0.85, ny - T - 0.45, fz + 0.22, 1.5, 0.78, 0.44, "deck_l")
@@ -346,21 +371,31 @@ for lvl in range(1, c):
     face = cabin_cx - ln / 2 - 0.02
     for k in range(2 + (c >= 3)):
         yy = (k - (1 + (c >= 3)) / 2) * (cw * 0.7 / (2 + (c >= 3)))
-        box("cut_up_win", face, yy, top + h / 2, 0.07, 0.5, 0.42, "glow")
+        window("cut_up_win", face, yy, top + h / 2, True)
     for sgn in (-1, 1):
-        box("cut_up_win", cabin_cx, sgn * (wd / 2 + 0.02), top + h / 2, 0.5, 0.07, 0.42, "glow")
+        window("cut_up_win", cabin_cx, sgn * (wd / 2 + 0.02), top + h / 2, False)
     top += h + 0.12
 roof_len = (2.4 + 0.5) if c > 1 else ln0 + 0.5
 roof_wid = cw * 0.78 if c > 1 else wid0 + 0.3
 box("cut_roof", cabin_cx, 0, top + 0.1, roof_len, roof_wid, 0.22, "red")
 cyl("cut_lamp_post", wx + 0.3, 0, top + 0.5, 0.07, 1.0, "dark")
-box("cut_lamp", wx + 0.3, 0, top + 1.15, 0.3, 0.3, 0.4, "glow")
+# la lanterne de poupe (12/11 : avant, un cube lumineux) : socle et chapeau de fer, quatre montants, flamme ambrée au milieu
+_lz = top + 1.15
+cyl("cut_lamp_base", wx + 0.3, 0, _lz - 0.2, 0.17, 0.06, "iron", verts=8)
+cyl("cut_lamp_cap", wx + 0.3, 0, _lz + 0.2, 0.19, 0.07, "iron", verts=8)
+cyl("cut_lamp_top", wx + 0.3, 0, _lz + 0.29, 0.07, 0.12, "iron", verts=8)
+for q in range(4):
+    a = q * math.pi / 2 + math.pi / 4
+    cyl("cut_lamp_bar", wx + 0.3 + 0.13 * math.cos(a), 0.13 * math.sin(a), _lz, 0.018, 0.38, "iron", verts=5)
+cyl("cut_lamp", wx + 0.3, 0, _lz, 0.1, 0.24, "glow", verts=10)
 # barre à roue : dans l'axe, devant la cabine (le barreur se tient derrière, face à l'étrave) ; la roue regarde vers l'avant.
 # L'obstacle est la colonne (le bas de la roue passe au-dessus des hanches), pas tout le disque.
 HELM = (ex + 1.5, 0.0)
 _hz = station((HELM[0] + L / 2) / L)[2]
-cyl("helm", HELM[0], HELM[1], _hz + 1.35, 0.5, 0.1, "mast", rot=(0, math.radians(90), 0), verts=14)
-cyl("helm_post", HELM[0], HELM[1], _hz + 0.65, 0.1, 1.3, "mast")
+# (12/11) centre de la roue à hauteur de poitrine du pirate (~1,25 m), plus 2 m : elle le dominait
+HELM_Z = 0.84
+cyl("helm", HELM[0], HELM[1], _hz + HELM_Z, 0.5, 0.1, "mast", rot=(0, math.radians(90), 0), verts=14)
+cyl("helm_post", HELM[0] - 0.06, HELM[1], _hz + HELM_Z / 2, 0.1, HELM_Z, "mast")
 OBST_CIRCLES.append((HELM[0], HELM[1], 0.24))
 
 if CFG["bow_castle"]:
@@ -396,8 +431,11 @@ cyl("anchor_capstan", ANCHOR[0], ANCHOR[1], _adz + 0.45, 0.26, 0.7, "iron")
 cyl("anchor_capstan_top", ANCHOR[0], ANCHOR[1], _adz + 0.84, 0.34, 0.08, "gold")
 cyl("anchor_spoke", ANCHOR[0], ANCHOR[1], _adz + 0.8, 0.05, 0.9, "mast", rot=(math.radians(90), 0, 0), verts=5)
 OBST_CIRCLES.append((ANCHOR[0], ANCHOR[1], 0.3))
+# la caisse à planches (12/11 : elle ne donne que des planches) : une caisse ouverte, des planches qui dépassent par-dessus
 box("crate", _cx, _cy, _bdz + 0.32, 0.7, 0.65, 0.64, "deck_l")
-box("crate2", _cx + 0.05, _cy - 0.03, _bdz + 0.86, 0.42, 0.42, 0.46, "deck")
+for k in range(3):
+    box("crate_plank", _cx + 0.12, _cy - 0.2 + k * 0.2, _bdz + 0.7 + k * 0.05, 1.05, 0.16, 0.05, "deck" if k % 2 else "hull_l",
+        rot=(0, math.radians(-8 + 6 * k), math.radians(4 * (k - 1))))
 
 # figure de proue : tête de mort ; beaupré
 x_b, hw_b, dz_b, _ = station(1.0)

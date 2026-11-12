@@ -668,10 +668,16 @@ func update_sail_fade(origin: Vector3, to_cam: Vector3, active: bool, delta: flo
 
 ## Masque le toit et les murs tournés vers la caméra quand le joueur est dans la cabine.
 ## La caméra regarde vers -z : un mur dont la normale (en monde) a une composante +z est de son côté.
+## 12/11 : un mur côté caméra n'est plus masqué en entier, il est rabattu en muret (GameConfig.CABIN_STUB_WALL) : on voit
+## toujours le contour de la pièce et l'ouverture de la porte, donc où sortir (comme les murs « coupés » des jeux vus de dessus).
 func update_cutaway(player_inside: bool) -> void:
 	var basis := global_transform.basis
 	for entry: Dictionary in _cuts:
 		var node: Node3D = entry["node"]
+		if not entry.has("base"):
+			entry["base"] = node.transform
+		var base: Transform3D = entry["base"]
+		node.transform = base
 		if not player_inside:
 			node.visible = true
 			continue
@@ -680,7 +686,26 @@ func update_cutaway(player_inside: bool) -> void:
 			continue
 		var n: Vector2 = entry["normal"]
 		var world_normal := basis * Vector3(n.x, 0.0, -n.y)
-		node.visible = world_normal.z <= 0.1
+		if world_normal.z <= 0.1:
+			node.visible = true   # mur du fond : entier
+			continue
+		var is_wall := String(node.name).begins_with("cut_wall_")
+		var box := _parent_aabb(node, base)
+		if not is_wall or box.size.y <= 0.0 or box.position.y > float(cabin.get("floor_z", 0.0)) + 0.3:
+			node.visible = false   # fenêtres, linteau au-dessus de la porte : masqués
+			continue
+		node.visible = true
+		var k := clampf(GameConfig.CABIN_STUB_WALL / box.size.y, 0.02, 1.0)
+		var bottom := box.position.y
+		node.transform = Transform3D(Basis(), Vector3(0.0, bottom, 0.0)) * Transform3D(Basis.from_scale(Vector3(1.0, k, 1.0)), Vector3.ZERO) \
+				* Transform3D(Basis(), Vector3(0.0, -bottom, 0.0)) * base
+
+
+## Boîte englobante d'un mur dans le repère de son parent (unités du modèle).
+func _parent_aabb(node: Node3D, base: Transform3D) -> AABB:
+	if node is MeshInstance3D:
+		return base * (node as MeshInstance3D).get_aabb()
+	return AABB()
 
 
 ## Écoutille du pont (unités du modèle), qui mène à la cale. Le sloop n'en a pas dans son modèle : on en

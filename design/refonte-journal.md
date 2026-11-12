@@ -120,6 +120,21 @@ GDC « horizontal resequencing », interviews de Rare sur Sea of Thieves). Appli
 - Bug : en visant au canon on pouvait partir se promener (on ne lâchait le canon qu'à 4,8 m) et continuer à tirer. Au canon,
   on est maintenant placé derrière la culasse et on ne bouge plus ; R pour lâcher.
 
+## Retours du premier essai de Jimmy (12/11)
+
+- Barre trop haute : centre de la roue à 1,26 m du pont (2 m avant), colonne raccourcie.
+- Grincement de la barre « toujours pareil » : chaque coup de barre tire sa force (55 à 100 %) et sa hauteur, la boucle change
+  de prise (3 prises), et des craquements de bois tombent au hasard par-dessus (7 prises).
+- Lumières du bateau : fenêtres refaites (vitre ambrée en retrait, cadre et croisillon en bois, appui), lanterne de poupe en
+  fer avec une flamme ; lumière moins forte (émission 2,2 au lieu de 7 : elle « brûlait » en blanc).
+- Pirate qui rentre dans la table / disparaît derrière la coque : l'image du pirate est dessinée 0,6 m vers la caméra (même
+  place à l'écran) et une silhouette claire apparaît là où un décor le cache (shader `depth_test_inverted`). Pour tous les
+  pirates (joueurs, habitants).
+- Cabine : les murs côté caméra sont rabattus en muret (0,5 m) au lieu de disparaître : on voit la porte pour sortir.
+- Tonneau de boulets qui donnait des planches : le tonneau ne donne que des boulets, la caisse du pont que des planches (des
+  planches dépassent maintenant de la caisse). L'étagère de la cale garde les deux.
+- Traînées de vent plus légères (opacité 0,18 au lieu de 0,32).
+
 ## Vent visible (12/11)
 
 - Traînées blanches très fines qui filent dans le sens du vent à hauteur des voiles (`src/sea/wind_streaks.gd`), plus vives

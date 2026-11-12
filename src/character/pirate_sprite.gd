@@ -72,6 +72,98 @@ func _init() -> void:
 	offset = Vector2(0.0, float(feet[1]) - float(frame_size[1]) / 2.0)   # les pieds tombent sur l'origine du noeud
 	_live.append(self)
 	_palette_dirty = true
+	_setup_depth_and_xray()
+
+
+# ------------------------------------------------------------------ profondeur et silhouette (12/11/2026)
+# Le pirate est une image plate tournée vers la caméra : debout contre une table, le haut de l'image « rentrait » dans le
+# plateau ; derrière la coque ou un mur de cabine, il disparaissait selon l'angle de la caméra. Deux remèdes classiques des
+# jeux vus de dessus :
+# - l'image est dessinée un peu en avant, vers la caméra (GameConfig.SPRITE_DEPTH_PUSH m), sans bouger à l'écran : elle ne se
+#   coupe plus sur les meubles contre lesquels on se tient ;
+# - là où un décor la cache, une silhouette unie apparaît par-dessus (GameConfig.SPRITE_XRAY_*) : on ne perd jamais son pirate.
+
+const _BILLBOARD := """
+	MODELVIEW_MATRIX = VIEW_MATRIX * mat4(INV_VIEW_MATRIX[0], INV_VIEW_MATRIX[1], INV_VIEW_MATRIX[2], MODEL_MATRIX[3]);
+	MODELVIEW_MATRIX = MODELVIEW_MATRIX * mat4(vec4(length(MODEL_MATRIX[0].xyz), 0.0, 0.0, 0.0),
+			vec4(0.0, length(MODEL_MATRIX[1].xyz), 0.0, 0.0), vec4(0.0, 0.0, length(MODEL_MATRIX[2].xyz), 0.0), vec4(0.0, 0.0, 0.0, 1.0));
+	MODELVIEW_NORMAL_MATRIX = mat3(MODELVIEW_MATRIX);
+	vec4 vp = MODELVIEW_MATRIX * vec4(VERTEX, 1.0);
+	vp.xyz *= max(1.0 - push / max(length(vp.xyz), 0.01), 0.05);   // vers la caméra, le long du rayon : même place à l'écran
+	POSITION = PROJECTION_MATRIX * vp;
+"""
+const _MAIN_SHADER := """
+shader_type spatial;
+render_mode unshaded, cull_disabled;
+uniform sampler2D tex : source_color, filter_nearest;
+uniform float push = 0.6;
+void vertex() {%s}
+void fragment() {
+	vec4 t = texture(tex, UV);
+	if (t.a * COLOR.a < 0.5) { discard; }
+	ALBEDO = t.rgb * COLOR.rgb;
+}
+"""
+const _XRAY_SHADER := """
+shader_type spatial;
+render_mode unshaded, cull_disabled, depth_test_inverted, depth_draw_never, blend_mix;
+uniform sampler2D tex : source_color, filter_nearest;
+uniform float push = 0.6;
+uniform vec4 xray_color : source_color = vec4(0.85, 0.9, 1.0, 0.4);
+void vertex() {%s}
+void fragment() {
+	vec4 t = texture(tex, UV);
+	if (t.a * COLOR.a < 0.5) { discard; }
+	ALBEDO = xray_color.rgb;
+	ALPHA = xray_color.a;
+}
+"""
+static var _main_shader: Shader
+static var _xray_shader: Shader
+var _main_mat: ShaderMaterial
+var _xray: Sprite3D
+var _xray_mat: ShaderMaterial
+
+
+func _setup_depth_and_xray() -> void:
+	if _main_shader == null:
+		_main_shader = Shader.new()
+		_main_shader.code = _MAIN_SHADER % _BILLBOARD
+		_xray_shader = Shader.new()
+		_xray_shader.code = _XRAY_SHADER % _BILLBOARD
+	_main_mat = ShaderMaterial.new()
+	_main_mat.shader = _main_shader
+	_main_mat.set_shader_parameter("push", GameConfig.SPRITE_DEPTH_PUSH)
+	material_override = _main_mat
+	_xray = Sprite3D.new()
+	_xray.pixel_size = pixel_size
+	_xray.vframes = vframes
+	_xray.offset = offset
+	_xray.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_xray_mat = ShaderMaterial.new()
+	_xray_mat.shader = _xray_shader
+	_xray_mat.set_shader_parameter("push", GameConfig.SPRITE_DEPTH_PUSH)
+	_xray_mat.set_shader_parameter("xray_color", GameConfig.SPRITE_XRAY_COLOR)
+	_xray_mat.render_priority = 8
+	_xray.material_override = _xray_mat
+	add_child(_xray)
+
+
+## Recopie l'image en cours dans les deux matières (l'image de base et la silhouette).
+func _sync_depth_and_xray() -> void:
+	if _main_mat == null:
+		return
+	_main_mat.set_shader_parameter("tex", texture)
+	_xray_mat.set_shader_parameter("tex", texture)
+	_xray.texture = texture
+	_xray.hframes = hframes
+	_xray.vframes = vframes
+	_xray.frame = frame
+	_xray.offset = offset
+	# (le jeu dessine parfois le pirate par-dessus tout, `no_depth_test` : en haut du mât, sur le radeau… la matière d'origine
+	# du sprite s'en charge, et la silhouette est alors inutile)
+	material_override = null if no_depth_test else _main_mat
+	_xray.visible = GameConfig.SPRITE_XRAY_COLOR.a > 0.0 and not no_depth_test
 
 
 func _notification(what: int) -> void:
@@ -231,6 +323,7 @@ func _apply() -> void:
 	if texture != tex:
 		texture = tex
 	frame = direction * frames + (_forced_frame if _forced_frame >= 0 else int(_time) % frames)
+	_sync_depth_and_xray()
 	_update_compass()
 
 

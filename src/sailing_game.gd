@@ -716,6 +716,11 @@ func _wave_height(p: Vector2) -> float:
 	return h * _wave_amp
 
 
+var _helm_turning := false
+var _helm_gain := 1.0
+var _helm_pitch := 1.0
+
+
 ## Lot 3 (3.9) : la roue tourne avec la barre (chez tout le monde : la barre est dans l'état du bateau) et grince d'autant plus
 ## qu'elle tourne vite.
 func _update_helm_wheel(delta: float) -> void:
@@ -725,9 +730,20 @@ func _update_helm_wheel(delta: float) -> void:
 	_helm_creak = lerpf(_helm_creak, clampf(rate / 1.6, 0.0, 1.0), 1.0 - exp(-delta * 10.0))
 	var helm: Array = _ship.meta.get("helm", [0.0, 0.0])
 	var at := _ship_point(Vector2(float(helm[0]), float(helm[1])), 1.0)
+	# 12/11 : « toujours le même bruit à chaque coup de barre ». Chaque nouveau coup de barre a sa propre force et sa propre
+	# hauteur (tirées au départ), la boucle elle-même change de prise, et le bois craque de temps en temps par-dessus, au hasard.
 	if _helm_creak > 0.03:
-		_sfx.loop_at("helm", Synth.wheel_creak(), at, _helm_creak * GameConfig.HELM_CREAK_VOL, 0.85 + 0.35 * _helm_creak)
+		if not _helm_turning:
+			_helm_turning = true
+			_helm_gain = randf_range(GameConfig.HELM_GAIN_MIN, 1.0)
+			_helm_pitch = randf_range(0.9, 1.08)
+			_sfx.stop_loop("helm")   # (relancée juste après : une autre prise du grincement)
+		_sfx.loop_at("helm", Synth.wheel_creak(), at, _helm_creak * GameConfig.HELM_CREAK_VOL * _helm_gain,
+				_helm_pitch * (0.88 + 0.25 * _helm_creak))
+		if randf() < GameConfig.HELM_CRACK_PER_S * _helm_creak * delta:
+			_sfx.play_at(Synth.recorded("helm_crack"), at, randf_range(0.35, 0.75))
 	else:
+		_helm_turning = false
 		_sfx.stop_loop("helm")
 
 
@@ -5011,9 +5027,9 @@ func _interact(secondary: bool) -> void:
 			if not secondary:
 				_enter_hold()
 		"ammo":
-			_interact_crate(secondary)   # le tonneau de boulets : E prend un boulet, R une planche, et il reprend ce qu'on porte
+			_interact_crate(secondary, "ball")    # le tonneau de boulets : des boulets seulement
 		"crate":
-			_interact_crate(secondary)
+			_interact_crate(secondary, "plank")   # la caisse du pont : des planches seulement
 		"stash":
 			_interact_stash(secondary)
 		"grapple":
@@ -5039,20 +5055,25 @@ const SUPPLY_MAX := 99          ## boulets ou planches que la caisse peut conten
 const FENCE_RANGE := 36.0       ## m : le bateau doit être à quai à cette distance du receleur pour qu'il achète le coffre
 
 ## La caisse de provisions du pont : E prend un boulet (ou range ce qu'on porte), R prend une planche.
-func _interact_crate(secondary: bool) -> void:
+## Le tonneau de boulets ne donne et ne reprend que des boulets ; la caisse du pont, que des planches (12/11 : un tonneau de
+## boulets qui donnait aussi des planches, ce n'était pas logique). `only` : "ball" ou "plank".
+func _interact_crate(_secondary: bool, only: String = "plank") -> void:
+	var what := "un boulet" if only == "ball" else "une planche"
+	var where := "le tonneau de boulets" if only == "ball" else "la caisse à planches"
 	if _carrying:
-		if _carry_kind == "ball" or _carry_kind == "plank":
+		if _carry_kind == only:
 			_put_supply(_carry_kind)
-			_say("Rangé dans la caisse : %s" % ("un boulet" if _carry_kind == "ball" else "une planche"), 2.0)
+			_say("Rangé dans %s : %s" % [where, what], 2.0)
 			_drop_carried()
+		elif _carry_kind == "ball" or _carry_kind == "plank":
+			_say("Ça va dans %s" % ("le tonneau de boulets" if _carry_kind == "ball" else "la caisse à planches"), 3.0)
 		else:
-			_say("La caisse ne prend que des boulets et des planches : les trésors vont dans le coffre du capitaine (cabine)", 4.0)
+			_say("Les trésors vont dans le coffre du capitaine (cabine)", 4.0)
 		return
-	var kind := "plank" if secondary else "ball"
-	if _profile.take_supply(kind):
-		_start_carry(kind)
+	if _profile.take_supply(only):
+		_start_carry(only)
 	else:
-		_say("La caisse n'a plus de %s : rachètes-en au Magasin Général ou casse des tonneaux sur les îles" % ("planches" if secondary else "boulets"), 4.0)
+		_say("Plus de %s : rachètes-en au Magasin Général ou casse des tonneaux sur les îles" % ("boulets" if only == "ball" else "planches"), 4.0)
 
 
 ## Range un boulet ou une planche dans les réserves (la caisse).
@@ -6294,12 +6315,12 @@ func _update_hud() -> void:
 		"mast":
 			_prompt.text = "E : régler les voiles (orienter, hisser)   R : affaler   (voiles %d/%d)" % [_sim.sail_level, ShipSim.SAIL_LEVELS]
 		"crate":
-			if _carry_kind == "ball" or _carry_kind == "plank":
-				_prompt.text = "E : ranger dans la caisse   (boulets %d, planches %d)" % [_profile.balls, _profile.planks]
+			if _carry_kind == "plank":
+				_prompt.text = "E : ranger la planche dans la caisse   (planches %d)" % _profile.planks
 			elif _carrying:
-				_prompt.text = "La caisse ne prend que boulets et planches"
+				_prompt.text = "La caisse ne prend que des planches"
 			else:
-				_prompt.text = "Caisse : E : prendre un boulet (%d)   R : prendre une planche (%d)" % [_profile.balls, _profile.planks]
+				_prompt.text = "Caisse à planches : E : prendre une planche (%d)" % _profile.planks
 		"grapple":
 			_prompt.text = "E ou R : décrocher le grappin" if _grap_state != 0 else "E : prendre le grappin en main — on vise à la souris, tout autour du bateau"
 		"stash":
@@ -6312,12 +6333,12 @@ func _update_hud() -> void:
 		"anchor":
 			_prompt.text = "E : lever l'ancre" if _sim.anchored else "E : jeter l'ancre"
 		"ammo":
-			if _carry_kind == "ball" or _carry_kind == "plank":
-				_prompt.text = "E : ranger dans le tonneau   (boulets %d, planches %d)" % [_profile.balls, _profile.planks]
+			if _carry_kind == "ball":
+				_prompt.text = "E : remettre le boulet dans le tonneau   (boulets %d)" % _profile.balls
 			elif _carrying:
-				_prompt.text = "Le tonneau ne prend que boulets et planches"
+				_prompt.text = "Le tonneau ne prend que des boulets"
 			else:
-				_prompt.text = "E : prendre un boulet (%d)   R : prendre une planche (%d)" % [_profile.balls, _profile.planks]
+				_prompt.text = "Tonneau de boulets : E : prendre un boulet (%d)" % _profile.balls
 		"cannon":
 			var i: int = it["index"]
 			if _gun_i == i:

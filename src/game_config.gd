@@ -227,7 +227,9 @@ const SAIL_PANEL_LIGHT := 1.02        ## teinte des panneaux clairs (le modèle 
 
 ## 3.9 Roue du gouvernail.
 const HELM_WHEEL_RADIUS := 0.5        ## unités du modèle (la taille de l'ancien disque)
-const HELM_WHEEL_TURNS := 1.5         ## tours de roue d'une butée à l'autre
+const HELM_GAIN_MIN := 0.55            ## chaque coup de barre grince entre 55 % et 100 % du volume (tiré au hasard)
+const HELM_CRACK_PER_S := 0.6          ## craquements de bois par seconde (au plus vite de la roue), par-dessus le grincement
+const HELM_WHEEL_TURNS := 1.5        ## tours de roue d'une butée à l'autre
 const HELM_CREAK_VOL := 0.9           ## volume du grincement à pleine vitesse de rotation
 
 ## 3.1 Coques agrandies (12/11/2026) : facteur de longueur appliqué par tools/art/blender/make_ship.py (KL). Sert à garder la poupe
@@ -244,7 +246,7 @@ const WIND_STREAK_LIFE := 2.4          ## s de vie d'une traînée
 const WIND_STREAK_SPEED := 11.0        ## m/s
 const WIND_STREAK_LENGTH := 2.6        ## m
 const WIND_STREAK_WIDTH := 0.07        ## m (très fines)
-const WIND_STREAK_ALPHA := 0.32        ## opacité (très légères)
+const WIND_STREAK_ALPHA := 0.18        ## opacité (très légères ; 0,32 au départ, jugé un peu trop marqué)
 const WIND_STREAK_BOX := Vector3(26.0, 4.5, 20.0)   ## m : demi-taille de la zone où elles naissent (au vent du bateau)
 const WIND_STREAK_HEIGHT := 5.5        ## m au-dessus de l'eau : à hauteur des voiles
 const SAIL_BULGE_SLACK := 0.35         ## creux des voiles qui ne prennent pas le vent (x le creux du modèle)
@@ -253,6 +255,14 @@ const SAIL_LUFF_AT := 0.5              ## en dessous de ce rendement, des voiles
 const SAIL_LUFF_FLAP := 0.22           ## amplitude du battement
 const SAIL_FILL_SOUND_AT := 0.6        ## rendement qu'on franchit en montant : « vlouf » des voiles qui se gonflent
 const SAIL_FILL_SMOOTH := 1.2          ## s pour que le gonflement suive le rendement (pas de saut)
+
+## Pirates (images plates) : dessinés un peu vers la caméra pour ne pas se couper sur les meubles, et silhouette visible à
+## travers le décor qui les cache (alpha 0 : pas de silhouette).
+const SPRITE_DEPTH_PUSH := 0.6         ## m
+const SPRITE_XRAY_COLOR := Color(0.85, 0.9, 1.0, 0.38)
+
+## Dans la cabine, les murs côté caméra sont rabattus à cette hauteur (unités du modèle, x1,5 = m) au lieu de disparaître.
+const CABIN_STUB_WALL := 0.32
 
 ## 3.8 Son de coque : renfort par la houle et gerbes au hasard.
 const HULL_SWELL_VOL := 0.25
