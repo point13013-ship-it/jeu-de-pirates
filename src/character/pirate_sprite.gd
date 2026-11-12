@@ -89,6 +89,7 @@ const _BILLBOARD := """
 			vec4(0.0, length(MODEL_MATRIX[1].xyz), 0.0, 0.0), vec4(0.0, 0.0, length(MODEL_MATRIX[2].xyz), 0.0), vec4(0.0, 0.0, 0.0, 1.0));
 	MODELVIEW_NORMAL_MATRIX = mat3(MODELVIEW_MATRIX);
 	vec4 vp = MODELVIEW_MATRIX * vec4(VERTEX, 1.0);
+	world_y = (INV_VIEW_MATRIX * vp).y;
 	vp.xyz *= max(1.0 - push / max(length(vp.xyz), 0.01), 0.05);   // vers la caméra, le long du rayon : même place à l'écran
 	POSITION = PROJECTION_MATRIX * vp;
 """
@@ -97,10 +98,12 @@ shader_type spatial;
 render_mode unshaded, cull_disabled;
 uniform sampler2D tex : source_color, filter_nearest;
 uniform float push = 0.6;
+uniform float clip_below = -10000.0;   // à la nage : rien sous la surface de l'eau (on ne voit que la tête et les épaules)
+varying float world_y;
 void vertex() {%s}
 void fragment() {
 	vec4 t = texture(tex, UV);
-	if (t.a * COLOR.a < 0.5) { discard; }
+	if (t.a * COLOR.a < 0.5 || world_y < clip_below) { discard; }
 	ALBEDO = t.rgb * COLOR.rgb;
 }
 """
@@ -110,10 +113,12 @@ render_mode unshaded, cull_disabled, depth_test_inverted, depth_draw_never, blen
 uniform sampler2D tex : source_color, filter_nearest;
 uniform float push = 0.6;
 uniform vec4 xray_color : source_color = vec4(0.85, 0.9, 1.0, 0.4);
+uniform float clip_below = -10000.0;
+varying float world_y;
 void vertex() {%s}
 void fragment() {
 	vec4 t = texture(tex, UV);
-	if (t.a * COLOR.a < 0.5) { discard; }
+	if (t.a * COLOR.a < 0.5 || world_y < clip_below) { discard; }
 	ALBEDO = xray_color.rgb;
 	ALPHA = xray_color.a;
 }
@@ -147,6 +152,13 @@ func _setup_depth_and_xray() -> void:
 	_xray_mat.render_priority = 8
 	_xray.material_override = _xray_mat
 	add_child(_xray)
+
+
+## À la nage : tout ce qui est sous `y` (monde, la surface de l'eau) n'est pas dessiné. -10000 : rien n'est coupé.
+func set_water_clip(y: float) -> void:
+	if _main_mat != null:
+		_main_mat.set_shader_parameter("clip_below", y)
+		_xray_mat.set_shader_parameter("clip_below", y)
 
 
 ## Recopie l'image en cours dans les deux matières (l'image de base et la silhouette).

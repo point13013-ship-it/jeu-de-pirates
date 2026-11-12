@@ -200,7 +200,8 @@ const RESPAWN_TIME := 10.0            ## s avant de réapparaître sur le bateau
 const RESPAWN_INVULNERABLE := 3.0     ## s d'invulnérabilité à la réapparition
 const REVIVE_REACH := 1.6             ## m : distance pour relever un camarade
 const SIREN_AFTER := 20.0             ## s dans l'eau avant qu'une sirène vienne
-const SIREN_DISTANCE := 3.0           ## m : elle apparaît à cette distance, et on la touche (E) à moins de 1,6 m
+const SIREN_DISTANCE := 22.0          ## m : elle apparaît à cette distance (12/11 : 3 m, « toujours collée à nous »), du côté du bateau ;
+                                      ## sa traînée de lumière se voit de loin, on nage jusqu'à elle et on la touche (E) à moins de 1,6 m
 const SIREN_REACH := 1.6
 const SHARKS_AFTER := 45.0            ## s : les requins rôdent
 const SHARK_ATTACK_AFTER := 60.0      ## s : première morsure
@@ -208,6 +209,17 @@ const SHARK_BITE_EVERY := 6.0         ## s entre deux morsures
 const SHARK_BITE_DAMAGE := 1          ## cœurs
 const SHARK_SCARED := 8.0             ## s : un coup de sabre fait fuir le requin ce temps-là
 const SHARK_COUNT := 2
+## Comportement des requins (12/11) : ils arrivent de loin, tournent, chargent l'un après l'autre, mordent, repartent au large.
+const SHARK_SPAWN_DIST := 32.0        ## m : où ils apparaissent
+const SHARK_CIRCLE_R := 9.0           ## m : rayon de leur ronde au début
+const SHARK_CIRCLE_TIGHT := 4.5       ## m : ils resserrent jusque-là quand la chasse est ouverte
+const SHARK_CIRCLE_MIN := 5.0         ## s de ronde avant une charge (tiré entre les deux)
+const SHARK_CIRCLE_MAX := 10.0
+const SHARK_RETREAT_DIST := 14.0      ## m : après une morsure (ou un coup de sabre), ils s'éloignent jusque-là
+const SHARK_SPEED_APPROACH := 5.0     ## m/s
+const SHARK_SPEED_CIRCLE := 3.6
+const SHARK_SPEED_ATTACK := 8.0
+const SHARK_TURN := 2.4               ## rad/s : vitesse à laquelle ils changent de cap
 const DROWN_AFTER := 90.0             ## s : noyade (mort directe, sans passer à terre)
 const DROWN_WARNING := 15.0           ## s : l'alerte s'affiche dans les dernières secondes
 const DOWNED_SQUASH := 0.45           ## un pirate à terre est tassé de 45 % (provisoire, faute d'image « au sol »)
@@ -249,7 +261,8 @@ const WIND_STREAK_WIDTH := 0.07        ## m (très fines)
 const WIND_STREAK_ALPHA := 0.18        ## opacité (très légères ; 0,32 au départ, jugé un peu trop marqué)
 const WIND_STREAK_BOX := Vector3(26.0, 4.5, 20.0)   ## m : demi-taille de la zone où elles naissent (au vent du bateau)
 const WIND_STREAK_HEIGHT := 5.5        ## m au-dessus de l'eau : à hauteur des voiles
-const SAIL_BULGE_SLACK := 0.35         ## creux des voiles qui ne prennent pas le vent (x le creux du modèle)
+const SAIL_FADE := false               ## voiles transparentes quand elles cachent le pirate (abandonné le 12/11 : clignotait)
+const SAIL_BULGE_SLACK := 0.35        ## creux des voiles qui ne prennent pas le vent (x le creux du modèle)
 const SAIL_BULGE_FULL := 1.3           ## creux des voiles gonflées (vent bien pris)
 const SAIL_LUFF_AT := 0.5              ## en dessous de ce rendement, des voiles hissées battent (faseyent)
 const SAIL_LUFF_FLAP := 0.22           ## amplitude du battement
@@ -262,7 +275,8 @@ const TOWN_SOUND_NEAR := 30.0
 const TOWN_SOUND_FAR := 85.0
 const TOWN_CROWD_VOL := 0.14
 const TOWN_KIDS_VOL := 0.07
-const SAND_BAND := 3.4                ## m du rivage d'une île où l'on marche dans le sable (au-delà : l'herbe)
+const SWIM_STROKE_EVERY := 0.8        ## s entre deux brassées entendues quand on nage
+const SAND_BAND := 3.4               ## m du rivage d'une île où l'on marche dans le sable (au-delà : l'herbe)
 
 ## Caméra (12/11) : molette enfoncée + haut/bas pour l'incliner entre ces angles (°, 40 = vue de base) ; trois clics de molette
 ## en moins de CAM_RESET_CLICK_GAP s entre chaque pour revenir à la vue de base.

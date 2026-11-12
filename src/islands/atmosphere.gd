@@ -62,6 +62,8 @@ func update(delta: float, ctx: Dictionary) -> void:
 	var mood := "mer"
 	if bool(ctx.get("battle", false)):
 		mood = "combat"
+	elif bool(ctx.get("sharks", false)):
+		mood = "requins"   # des requins rôdent autour du nageur : musique angoissante, qui monte quand ils approchent
 	elif where == "land":
 		mood = "escale"
 	elif sky.storm >= GameConfig.MUSIC_STORM_AT:

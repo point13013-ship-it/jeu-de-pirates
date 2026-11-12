@@ -14,7 +14,8 @@ extends Node
 ## (MusicSynth), joué en boucle comme avant.
 
 const DIR := "res://assets/audio/music/"
-const STATES := ["mer", "escale", "combat", "tempete"]
+const STATES := ["mer", "escale", "combat", "tempete", "requins"]
+const CONTINUOUS := ["combat", "requins"]   ## états sans silence entre deux morceaux (la tension ne retombe pas)
 const BASE := 0.55               ## volume de base d'un air (le curseur de musique s'applique en plus, via le bus)
 
 var _files: Dictionary = {}      ## état -> Array[String] (chemins des morceaux)
@@ -121,7 +122,7 @@ func update(delta: float, mood: String, duck: float = 1.0, intensity: float = 0.
 	elif _playing_id != "" and not _active.playing:
 		# le morceau est fini : silence, puis un autre (le combat et les airs fabriqués enchaînent sans pause)
 		_playing_id = ""
-		_gap = 0.0 if (_state == "combat" or _files_of(_state).is_empty()) \
+		_gap = 0.0 if (_state in CONTINUOUS or _files_of(_state).is_empty()) \
 				else randf_range(GameConfig.MUSIC_GAP_MIN, GameConfig.MUSIC_GAP_MAX)
 	elif _playing_id == "":
 		_gap -= delta
@@ -186,7 +187,7 @@ func _pick(st: String) -> AudioStream:
 			_picked_top = load(stem + "_melody.ogg") as AudioStream
 			path = stem + "_instruments.ogg"
 		var s := load(path) as AudioStreamOggVorbis
-		if s != null and st == "combat":
+		if s != null and st in CONTINUOUS:
 			s = s.duplicate() as AudioStreamOggVorbis
 			s.loop = false   # (le combat enchaîne les morceaux : fin de morceau -> pas de silence, un autre)
 		return s

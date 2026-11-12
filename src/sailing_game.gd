@@ -30,7 +30,7 @@ const JUMP_SPEED := 7.0                ## m/s : sommet à 1,6 m ; assez pour enj
 const AIR_SPEED := 1.3                 ## multiplicateur de la vitesse de marche en plein saut (on franchit ~4 m)
 const GRAVITY := 15.0                  ## m/s²
 const SWIM_SPEED := 2.3                ## m/s
-const SWIM_DEPTH := 0.5                ## m : de combien le pirate est enfoncé dans l'eau (on ne voit que le haut du corps)
+const SWIM_DEPTH := 0.8               ## m : de combien le pirate est enfoncé dans l'eau (on ne voit que le haut du corps)
 const BOARD_REACH := 2.4               ## m : à moins de cette distance de la coque, un nageur peut remonter à bord
 const CANNON_SPEED := 19.0             ## m/s : vitesse horizontale du pirate tiré du canon
 const CANNON_LIFT := 9.0               ## m/s : vitesse verticale au départ du canon
@@ -259,6 +259,7 @@ var _siren: Node3D
 var _siren_pos := Vector2.ZERO
 var _sharks: Array = []              ## {node, a (angle autour de moi), scared (s)}
 var _shark_bite_t := 0.0
+var _shark_threat := 0.0              ## 0…1 : les requins autour de moi (musique angoissante qui monte)
 var _remote_downed: Dictionary = {}  ## id -> {t (s restantes), reviving}
 var _remote_dead: Dictionary = {}    ## id -> true
 var _remote_water: Dictionary = {}   ## id -> {stage, siren, siren_pos, sharks, t}
@@ -2976,7 +2977,9 @@ func _process(delta_raw: float) -> void:
 	_update_loot_pickup(delta)
 	_update_grapple_visual()
 	_update_hook_aim()
-	var watching_sails := (_loc == Loc.SHIP or _loc == Loc.CLIMB or _loc == Loc.SWIM) and not _args.has("no-fade")
+	# 12/11 : les voiles ne s'effacent plus (« des fois transparentes, des fois non, selon la caméra ») : la silhouette du pirate se
+	# voit à travers elles (PirateSprite). GameConfig.SAIL_FADE remet l'ancien comportement.
+	var watching_sails := GameConfig.SAIL_FADE and (_loc == Loc.SHIP or _loc == Loc.CLIMB or _loc == Loc.SWIM) and not _args.has("no-fade")
 	_ship.update_sail_fade(_sprite.global_position + Vector3(0.0, 1.0, 0.0), _cam.global_transform.basis.z, watching_sails, delta,
 			float(_args.get("sail-fade", "0.3")))
 	if _loc == Loc.SWIM:
@@ -3376,7 +3379,11 @@ func _enter_swim(w: Vector2) -> void:
 	_prev_lpos = w
 	_splash(Vector3(w.x, SEA_Y + 0.05, w.y))   # (_splash et _splash_burst posent leurs nœuds dans le monde fixe : coordonnées du monde)
 	_splash_burst(w)
+	_sfx.play_at(Synth.recorded("dive"), _world_fixed.to_global(Vector3(w.x, SEA_Y, w.y)), 0.9)   # le plongeon (prises enregistrées)
 	_say("À la nage ! E près de la coque : remonter à bord. Un quai ou une plage : nage jusqu'au bord", 5.0)
+
+
+var _swim_sound_t := 0.0
 
 
 ## Gerbe d'éclaboussures (gouttes qui retombent) en `w`.
@@ -3485,10 +3492,16 @@ func _try_board_from_water() -> void:
 
 ## Les rides que laisse le nageur : un anneau d'écume de temps en temps (plus souvent quand il nage).
 func _swim_effects(delta: float) -> void:
+	var swimming := _lpos.distance_to(_prev_lpos) > 0.005
 	_swim_ring_t -= delta
 	if _swim_ring_t <= 0.0:
-		_swim_ring_t = 0.55 if _lpos.distance_to(_prev_lpos) > 0.005 else 1.1
+		_swim_ring_t = 0.55 if swimming else 1.1
 		_splash(Vector3(_lpos.x, SEA_Y + 0.04, _lpos.y))
+	# le bruit de l'eau : une brassée régulière quand on nage, un petit clapotis de temps en temps quand on fait du sur-place
+	_swim_sound_t -= delta
+	if _swim_sound_t <= 0.0:
+		_swim_sound_t = GameConfig.SWIM_STROKE_EVERY * randf_range(0.85, 1.15) if swimming else randf_range(2.0, 3.5)
+		_sfx.play_at(Synth.recorded("swim_stroke"), _my_scene_pos(), 0.55 if swimming else 0.25)
 
 
 # ------------------------------------------------------------------ vol du canon
@@ -3995,6 +4008,8 @@ func _place_pirate() -> void:
 			gp = _ship_point(_ppos, 0.02 + _pz)
 			ground = _ship_point(_ppos, 0.04)
 	_sprite.global_position = gp
+	# à la nage : le bas du corps est coupé à la surface (l'eau est transparente, on le voyait « marcher » dessous)
+	_sprite.set_water_clip(_land_point(_lpos, SEA_Y + _wave_height(_lpos) + 0.02).y if _loc == Loc.SWIM else -10000.0)
 	_blob.global_position = ground
 	_blob.visible = shadow and not (_loc == Loc.SHIP and _mode == Mode.CANNON)
 	var air := _pz if (_loc == Loc.SHIP or _loc == Loc.LAND) else 0.0
@@ -4214,6 +4229,7 @@ func _update_remotes(delta: float) -> void:
 		var pz: float = r["pz"]
 		var sprite := r["sprite"] as Node3D
 		var blob := r["blob"] as MeshInstance3D
+		(sprite as PirateSprite).set_water_clip(-10000.0)   # (remis plus bas s'il nage)
 		if int(r["loc"]) == 4:
 			sprite.global_position = _hold.point(p, 0.02)
 			blob.global_position = _hold.point(p, 0.07)
@@ -4225,6 +4241,7 @@ func _update_remotes(delta: float) -> void:
 			var wl := SEA_Y + _wave_height(p)
 			sprite.global_position = _land_point(p, wl - SWIM_DEPTH + sin(_time * 3.4 + float(id)) * 0.05)
 			blob.global_position = _land_point(p, wl + 0.03)
+			(sprite as PirateSprite).set_water_clip(_land_point(p, wl + 0.02).y)
 		elif int(r["loc"]) == 6:   # tiré du canon : pz porte l'altitude
 			sprite.global_position = _land_point(p, pz)
 			blob.global_position = _land_point(p, SEA_Y + 0.04)
@@ -4373,7 +4390,14 @@ func _animate_pirates(delta: float) -> void:
 		climb_face = (_climb["to"] as Vector2) - (_climb["from"] as Vector2)
 		if not bool(_climb.get("board", false)):
 			climb_face = -climb_face   # en descendant vers le quai, on reste face au bateau
-	_sprite.drive(delta, move, _carrying, _loc == Loc.SHIP and _mode == Mode.HELM, helm_dir, air, climbing, climb_face)
+	if _loc == Loc.SWIM:
+		# à la nage : pas de jambes qui « marchent » sous l'eau ; le pirate flotte (pose de repos, qui ondule avec la houle) et se
+		# tourne vers où il nage (en attendant de vraies images de nage)
+		if move.length() > 0.0005:
+			_sprite.direction = PirateSprite.direction_of(move)
+		_sprite.drive(delta, Vector2.ZERO, _carrying, false, helm_dir, 0, false, climb_face)
+	else:
+		_sprite.drive(delta, move, _carrying, _loc == Loc.SHIP and _mode == Mode.HELM, helm_dir, air, climbing, climb_face)
 	_prev_ppos = _ppos
 	_prev_lpos = _lpos
 	_prev_hpos = _hpos
@@ -4502,7 +4526,8 @@ func _update_atmosphere(delta: float) -> void:
 	_music_heat = maxf(_music_heat - delta / GameConfig.MUSIC_HEAT_DECAY, 0.0)   # les coups reçus réchauffent, puis ça retombe
 	_atmo.update(delta, {"pos": pos, "where": where, "speed": _sim.speed / maxf(_sim.max_speed, 0.1) * 8.0, "moved": moved,
 			"face": _face, "focus": _cam_focus, "paused": _pause.is_open(), "battle": battle,
-			"intensity": clampf(heat + _music_heat, 0.0, 1.0), "ground": _ground_kind(),
+			"intensity": clampf(maxf(heat + _music_heat, _shark_threat), 0.0, 1.0), "ground": _ground_kind(),
+			"sharks": not _sharks.is_empty(),
 			"town": 1.0 - smoothstep(GameConfig.TOWN_SOUND_NEAR, GameConfig.TOWN_SOUND_FAR, pos.distance_to(GameConfig.TOWN_CENTER))})
 	_apply_grade()
 	_spawn_castaways()
@@ -7578,18 +7603,20 @@ func _update_water(delta: float) -> void:
 			_sfx.play_at(Synth.shark_alert(), _my_scene_pos(), 1.0)
 	if stage >= 1 and _siren == null:
 		_siren = _make_siren()
-		_siren_pos = _lpos + Vector2.from_angle(randf() * TAU) * GameConfig.SIREN_DISTANCE
+		# (12/11 : elle apparaissait collée au nageur) loin, du côté du bateau si possible : on nage vers elle en suivant sa lumière
+		var toward := (_sim.position - _lpos).normalized() if _sim.position.distance_to(_lpos) > 1.0 else Vector2.from_angle(randf() * TAU)
+		_siren_pos = _lpos + toward.rotated(randf_range(-0.9, 0.9)) * GameConfig.SIREN_DISTANCE
+	if _siren != null:
+		_sfx.loop_at("siren", Synth.recorded("siren_hum", true), _world_fixed.to_global(Vector3(_siren_pos.x, SEA_Y + 0.8, _siren_pos.y)), 0.9)
 	if stage >= 2 and _sharks.is_empty():
 		for k in GameConfig.SHARK_COUNT:
-			_sharks.append({"node": _make_fin(), "a": TAU * float(k) / float(GameConfig.SHARK_COUNT), "scared": 0.0})
-	if stage >= 3:
-		_shark_bite_t -= delta
-		if _shark_bite_t <= 0.0:
-			_shark_bite_t = GameConfig.SHARK_BITE_EVERY
-			_shark_bite()
+			_sharks.append(_new_shark(_lpos, k))
 	if _water_t >= GameConfig.DROWN_AFTER:
 		_die("noyade")
-	_place_water_threats(_lpos, _siren, _siren_pos, _sharks, delta, _water_t)
+		return
+	if _place_water_threats(_lpos, _siren, _siren_pos, _sharks, delta, _water_t, stage >= 3):
+		_shark_bite()   # un requin est arrivé sur moi au bout de sa charge
+	_shark_threat = _sharks_threat(_lpos, _sharks)
 
 
 ## Un requin mord (sauf s'ils ont tous fui) : un cœur en moins ; à 0, mort directe (dans l'eau, pas d'état à terre).
@@ -7627,6 +7654,8 @@ func _scare_shark() -> bool:
 
 
 func _clear_water_threats() -> void:
+	_sfx.stop_loop("siren")
+	_shark_threat = 0.0
 	if _siren != null:
 		_siren.queue_free()
 		_siren = null
@@ -7640,54 +7669,238 @@ func _clear_water_threats() -> void:
 
 ## Place la sirène (qui ondule, et s'approche un peu) et les ailerons (qui tournent autour du nageur, se resserrent quand ils
 ## chassent, s'écartent quand ils ont peur). Sert pour moi et, chez moi, pour un camarade qui nage (mêmes règles, d'après son étape).
-func _place_water_threats(center: Vector2, siren: Node3D, siren_pos: Vector2, sharks: Array, delta: float, t: float) -> void:
+## Renvoie vrai si un requin vient d'arriver sur le nageur au bout d'une charge (morsure : à appliquer par l'appelant, pour moi).
+##
+## Requins (12/11, refait : « ils tournent autour de nous de manière bizarre, collés à nous ») : chacun a un comportement à étapes,
+## comme un vrai prédateur. Il arrive de loin (SHARK_SPAWN_DIST), tourne autour à bonne distance en ondulant, resserre son cercle,
+## puis, quand les attaques sont permises (`can_attack`) et qu'aucun autre ne charge, fonce sur le nageur, mord, et repart au large
+## avant de revenir tourner. Un coup de sabre le fait fuir un moment. Il change de cap progressivement (rayon de virage).
+func _place_water_threats(center: Vector2, siren: Node3D, siren_pos: Vector2, sharks: Array, delta: float, t: float,
+		can_attack: bool = false) -> bool:
 	if siren != null:
 		var sy := SEA_Y + _wave_height(siren_pos) - 0.25 + sin(t * 2.2) * 0.12
 		siren.position = Vector3(siren_pos.x, sy, siren_pos.y)
 		siren.rotation.y = atan2(center.x - siren_pos.x, center.y - siren_pos.y)
+	var bit := false
+	var someone_charging := false
+	for s: Dictionary in sharks:
+		if str(s.get("state", "")) == "attack":
+			someone_charging = true
 	for s: Dictionary in sharks:
 		var n := s["node"] as Node3D
-		if not is_instance_valid(n):
+		if not is_instance_valid(n) or not s.has("pos"):
 			continue
 		s["scared"] = maxf(float(s["scared"]) - delta, 0.0)
-		var hunting := float(s["scared"]) <= 0.0
-		var r := (2.6 if hunting else 6.5) + 0.6 * sin(t * 0.7 + float(s["a"]))
-		s["a"] = float(s["a"]) + delta * (0.9 if hunting else 0.4)
-		var a := float(s["a"])
-		var p := center + Vector2(cos(a), sin(a)) * r
-		n.position = Vector3(p.x, SEA_Y + _wave_height(p) + 0.05, p.y)
-		n.rotation.y = -a   # l'aileron file dans le sens du cercle
+		s["t"] = float(s["t"]) + delta
+		var pos: Vector2 = s["pos"]
+		var off := pos - center
+		var d := off.length()
+		var state := str(s["state"])
+		if float(s["scared"]) > 0.0 and state != "retreat":
+			state = "retreat"
+		var target := center
+		var speed := GameConfig.SHARK_SPEED_CIRCLE
+		match state:
+			"approach":
+				target = center + off.normalized().rotated(0.5 * float(s["spin"])) * float(s["circle_r"])
+				speed = GameConfig.SHARK_SPEED_APPROACH
+				if d < float(s["circle_r"]) + 1.5:
+					state = "circle"
+					s["t"] = 0.0
+					s["dur"] = randf_range(GameConfig.SHARK_CIRCLE_MIN, GameConfig.SHARK_CIRCLE_MAX)
+			"circle":
+				if can_attack:   # il resserre son cercle quand la chasse est ouverte
+					s["circle_r"] = maxf(float(s["circle_r"]) - delta * 0.35, GameConfig.SHARK_CIRCLE_TIGHT)
+				var ang := off.angle() + 0.55 * float(s["spin"])
+				target = center + Vector2.from_angle(ang) * float(s["circle_r"])
+				if can_attack and float(s["t"]) > float(s["dur"]) and not someone_charging:
+					state = "attack"
+					someone_charging = true
+					s["t"] = 0.0
+			"attack":
+				speed = GameConfig.SHARK_SPEED_ATTACK
+				if d < 1.1:
+					bit = bit or float(s["scared"]) <= 0.0
+					state = "retreat"
+					s["t"] = 0.0
+			"retreat":
+				target = center + (off.normalized() if d > 0.1 else Vector2.RIGHT) * GameConfig.SHARK_RETREAT_DIST
+				speed = GameConfig.SHARK_SPEED_ATTACK * 0.8
+				if d > GameConfig.SHARK_RETREAT_DIST - 2.0 and float(s["scared"]) <= 0.0:
+					state = "circle"
+					s["t"] = 0.0
+					s["circle_r"] = randf_range(GameConfig.SHARK_CIRCLE_TIGHT + 2.0, GameConfig.SHARK_CIRCLE_R)
+					s["dur"] = randf_range(GameConfig.SHARK_CIRCLE_MIN, GameConfig.SHARK_CIRCLE_MAX)
+		s["state"] = state
+		# cap : il tourne vers sa cible à vitesse limitée, en ondulant (la queue qui bat)
+		var want := (target - pos).angle()
+		var head := float(s["head"])
+		head = rotate_toward(head, want, GameConfig.SHARK_TURN * delta) + sin(float(s["t"]) * 3.1 + float(s["a"])) * 0.6 * delta
+		s["head"] = head
+		pos += Vector2.from_angle(head) * speed * delta
+		s["pos"] = pos
+		var sink := 0.18 if state == "approach" and d > GameConfig.SHARK_SPAWN_DIST * 0.6 else 0.0   # de loin, l'aileron affleure à peine
+		n.position = Vector3(pos.x, SEA_Y + _wave_height(pos) + 0.05 - sink, pos.y)
+		n.rotation.y = PI / 2.0 - head   # l'aileron file dans le sens de sa course
+	return bit
 
 
-## La sirène (PROVISOIRE : maquette simple, à remplacer par un vrai modèle) : buste, chevelure, queue turquoise, halo.
+## Un nouveau requin pour un nageur en `center` : il naît au loin, dans une direction au hasard (le k-ième, réparti).
+func _new_shark(center: Vector2, k: int) -> Dictionary:
+	var a := TAU * float(k) / float(GameConfig.SHARK_COUNT) + randf_range(-0.6, 0.6)
+	var p := center + Vector2.from_angle(a) * GameConfig.SHARK_SPAWN_DIST
+	return {"node": _make_fin(), "pos": p, "head": a + PI, "state": "approach", "t": 0.0, "dur": 6.0, "a": a, "scared": 0.0,
+			"circle_r": randf_range(GameConfig.SHARK_CIRCLE_R - 2.0, GameConfig.SHARK_CIRCLE_R + 1.0), "spin": 1.0 if randf() < 0.5 else -1.0}
+
+
+## 0…1 : à quel point les requins menacent (pour la musique) : un requin qui charge, c'est 1 ; sinon, plus ils sont près, plus ça monte.
+func _sharks_threat(center: Vector2, sharks: Array) -> float:
+	var th := 0.0
+	for s: Dictionary in sharks:
+		if not s.has("pos"):
+			continue
+		if str(s["state"]) == "attack":
+			return 1.0
+		var d := (s["pos"] as Vector2).distance_to(center)
+		th = maxf(th, 1.0 - clampf((d - 3.0) / (GameConfig.SHARK_SPAWN_DIST - 3.0), 0.0, 1.0))
+	return th * 0.85
+
+
+## La sirène (12/11, refaite : « la maquette pue ») : buste et bras, visage, longue chevelure qui tombe dans le dos, queue
+## d'écailles qui plonge en courbe et nageoire caudale qui sort de l'eau derrière elle, couronne de coquillages. Et surtout de
+## loin : une traînée de lumière turquoise qui monte vers le ciel (comme un phare), pour qu'on la trouve et qu'on nage vers elle,
+## avec une lueur à la surface. Son chant (Synth « siren_hum ») s'entend de plus en plus fort en approchant.
 func _make_siren() -> Node3D:
 	var root := Node3D.new()
-	var body := _make_ball(0.28, Color(0.95, 0.78, 0.66))
-	body.position = Vector3(0, 0.55, 0)
-	body.scale = Vector3(0.9, 1.3, 0.8)
-	root.add_child(body)
-	var head := _make_ball(0.2, Color(0.95, 0.78, 0.66))
-	head.position = Vector3(0, 1.05, 0)
+	var skin := Color(0.93, 0.76, 0.64)
+	var hair_c := Color(0.86, 0.3, 0.26)
+	var scale_c := Color(0.12, 0.62, 0.62)
+	var scale_l := Color(0.3, 0.85, 0.78)
+	var torso := _siren_capsule(0.17, 0.62, skin)
+	torso.position = Vector3(0, 0.72, 0)
+	root.add_child(torso)
+	var head := _make_ball(0.15, skin)
+	head.position = Vector3(0, 1.17, 0)
 	root.add_child(head)
-	var hair := _make_ball(0.25, Color(0.85, 0.25, 0.3))
-	hair.position = Vector3(0, 1.1, -0.06)
-	hair.scale = Vector3(1.0, 1.15, 1.0)
-	root.add_child(hair)
-	var tail := _make_ball(0.3, Color(0.15, 0.75, 0.7))
-	tail.position = Vector3(0, 0.05, 0.2)
-	tail.scale = Vector3(0.8, 0.6, 1.6)
-	root.add_child(tail)
-	var halo := _make_ball(0.6, Color(0.6, 1.0, 0.95))
-	var hm := halo.material_override as StandardMaterial3D
-	hm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	hm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	hm.albedo_color = Color(0.6, 1.0, 0.95, 0.18)
-	halo.position = Vector3(0, 0.6, 0)
-	halo.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	root.add_child(halo)
+	for side in [-1.0, 1.0]:   # bras le long du corps, mains vers l'avant (elle tend la main)
+		var arm := _siren_capsule(0.05, 0.5, skin)
+		arm.position = Vector3(side * 0.21, 0.82, 0.06)
+		arm.rotation = Vector3(-0.5, 0.0, side * 0.18)
+		root.add_child(arm)
+		var eye := _make_ball(0.025, Color(0.08, 0.2, 0.25))
+		eye.position = Vector3(side * 0.055, 1.19, 0.13)
+		root.add_child(eye)
+	for k in 7:   # la chevelure : des mèches qui tombent dans le dos et sur les épaules
+		var a := lerpf(-1.1, 1.1, float(k) / 6.0)
+		var lock := _siren_capsule(0.045, 0.7 + 0.12 * absf(sin(a * 2.0)), hair_c)
+		lock.position = Vector3(sin(a) * 0.13, 0.98, -0.08 - 0.04 * cos(a))
+		lock.rotation = Vector3(0.25, 0.0, -sin(a) * 0.25)
+		root.add_child(lock)
+	var crown := _make_ball(0.16, hair_c)
+	crown.position = Vector3(0, 1.24, -0.02)
+	crown.scale = Vector3(1.05, 0.75, 1.1)
+	root.add_child(crown)
+	for k in 3:   # coquillages
+		var shell := _make_ball(0.04, Color(0.98, 0.85, 0.8))
+		shell.position = Vector3((float(k) - 1.0) * 0.07, 1.33, 0.06)
+		root.add_child(shell)
+	for k in 5:   # la queue : des anneaux d'écailles qui plongent en courbe derrière elle
+		var u := float(k) / 4.0
+		var ring := _siren_capsule(lerpf(0.16, 0.06, u), 0.32, scale_c if k % 2 == 0 else scale_l)
+		ring.position = Vector3(0, 0.3 - 0.35 * sin(u * PI * 0.8), -0.12 - u * 0.75)
+		ring.rotation = Vector3(PI / 2.0 - 0.6 + u * 1.3, 0.0, 0.0)
+		root.add_child(ring)
+	for side in [-1.0, 1.0]:   # la nageoire qui sort de l'eau
+		var fin := MeshInstance3D.new()
+		var pm := PrismMesh.new()
+		pm.size = Vector3(0.36, 0.42, 0.04)
+		fin.mesh = pm
+		var fm := StandardMaterial3D.new()
+		fm.albedo_color = scale_l
+		fm.emission_enabled = true
+		fm.emission = scale_l * 0.25
+		fin.material_override = fm
+		fin.position = Vector3(side * 0.16, 0.42, -1.0)
+		fin.rotation = Vector3(0.3, 0.0, side * 0.9)
+		root.add_child(fin)
+	var glow := _make_ball(1.0, Color(0.5, 1.0, 0.92))   # la lueur à la surface
+	var gm := glow.material_override as StandardMaterial3D
+	gm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	gm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	gm.albedo_color = Color(0.5, 1.0, 0.92, 0.16)
+	glow.scale = Vector3(1.6, 0.12, 1.6)
+	glow.position = Vector3(0, 0.25, 0)
+	glow.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	root.add_child(glow)
+	root.add_child(_siren_trail())
+	var light := OmniLight3D.new()
+	light.light_color = Color(0.5, 1.0, 0.9)
+	light.light_energy = 1.4
+	light.omni_range = 6.0
+	light.position = Vector3(0, 1.2, 0)
+	root.add_child(light)
 	_world_fixed.add_child(root)
 	_sfx.play_at(Synth.chime(), root.global_position, 0.8, 0.8)
 	return root
+
+
+func _siren_capsule(radius: float, height: float, c: Color) -> MeshInstance3D:
+	var mi := MeshInstance3D.new()
+	var cm := CapsuleMesh.new()
+	cm.radius = radius
+	cm.height = maxf(height, radius * 2.0)
+	cm.radial_segments = 10
+	cm.rings = 4
+	mi.mesh = cm
+	var m := StandardMaterial3D.new()
+	m.albedo_color = c
+	m.roughness = 0.6
+	mi.material_override = m
+	return mi
+
+
+## La traînée de lumière de la sirène : des lueurs turquoise qui montent lentement en spirale jusqu'à une quinzaine de mètres.
+func _siren_trail() -> GPUParticles3D:
+	var p := GPUParticles3D.new()
+	p.amount = 60
+	p.lifetime = 4.5
+	p.preprocess = 4.5
+	p.visibility_aabb = AABB(Vector3(-4, -1, -4), Vector3(8, 22, 8))
+	p.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var pm := ParticleProcessMaterial.new()
+	pm.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_SPHERE
+	pm.emission_sphere_radius = 0.45
+	pm.direction = Vector3(0, 1, 0)
+	pm.spread = 12.0
+	pm.gravity = Vector3(0, 0.6, 0)
+	pm.initial_velocity_min = 2.2
+	pm.initial_velocity_max = 3.4
+	pm.orbit_velocity_min = 0.08
+	pm.orbit_velocity_max = 0.16
+	pm.scale_min = 0.6
+	pm.scale_max = 1.2
+	var ramp := Gradient.new()
+	ramp.set_color(0, Color(0.7, 1.0, 0.95, 0.0))
+	ramp.set_color(1, Color(0.5, 1.0, 0.9, 0.0))
+	ramp.add_point(0.15, Color(0.7, 1.0, 0.95, 0.9))
+	ramp.add_point(0.7, Color(0.5, 1.0, 0.9, 0.5))
+	var gt := GradientTexture1D.new()
+	gt.gradient = ramp
+	pm.color_ramp = gt
+	p.process_material = pm
+	var quad := QuadMesh.new()
+	quad.size = Vector2(0.22, 0.22)
+	var qm := StandardMaterial3D.new()
+	qm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	qm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	qm.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	qm.vertex_color_use_as_albedo = true
+	qm.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
+	qm.albedo_color = Color(1, 1, 1, 1)
+	quad.material = qm
+	p.draw_pass_1 = quad
+	p.position = Vector3(0, 1.0, 0)
+	return p
 
 
 ## Un aileron de requin (PROVISOIRE) : un triangle gris sombre qui fend l'eau, et son sillage d'écume.
@@ -7785,10 +7998,10 @@ func _set_remote_water(peer: int, stage: int) -> void:
 	if stage >= 1 and w["siren"] == null and _remotes.has(peer):
 		w["siren"] = _make_siren()
 		w["siren_pos"] = (_remotes[peer]["pos"] as Vector2) + Vector2(GameConfig.SIREN_DISTANCE, 0.0)
-	if stage >= 2 and (w["sharks"] as Array).is_empty():
+	if stage >= 2 and (w["sharks"] as Array).is_empty() and _remotes.has(peer):
 		var arr: Array = []
 		for k in GameConfig.SHARK_COUNT:
-			arr.append({"node": _make_fin(), "a": TAU * float(k) / float(GameConfig.SHARK_COUNT), "scared": 0.0})
+			arr.append(_new_shark(_remotes[peer]["pos"] as Vector2, k))
 		w["sharks"] = arr
 	_remote_water[peer] = w
 
@@ -7815,7 +8028,7 @@ func _update_remote_lot4(delta: float) -> void:
 		if not _remotes.has(id) or int(w["stage"]) == 0:
 			continue
 		w["t"] = float(w["t"]) + delta
-		_place_water_threats(_remotes[id]["pos"], w["siren"], w["siren_pos"], w["sharks"], delta, float(w["t"]))
+		_place_water_threats(_remotes[id]["pos"], w["siren"], w["siren_pos"], w["sharks"], delta, float(w["t"]), int(w["stage"]) >= 3)
 
 
 ## Le texte au centre de l'écran (lot 4) : à terre, mort, noyade qui approche ; et au-dessus des camarades à terre.
@@ -7827,6 +8040,11 @@ func _lot4_center_text() -> String:
 		return "À TERRE — %d s\n%s" % [ceili(_downed_t), "Un camarade te relève…" if not _revivers.is_empty() else "Un camarade peut te relever (E près de toi)"]
 	if _loc == Loc.SWIM and _water_t >= GameConfig.DROWN_AFTER - GameConfig.DROWN_WARNING:
 		return "Tu te noies ! %d s — remonte à bord, ou rejoins la sirène" % ceili(GameConfig.DROWN_AFTER - _water_t)
+	if _loc == Loc.SWIM and _siren != null:   # (12/11 : on ne comprenait pas quoi faire de la sirène)
+		var sd := _lpos.distance_to(_siren_pos)
+		if sd <= GameConfig.SIREN_REACH + 0.4:
+			return "E : la sirène te ramène à ton bateau"
+		return "Une sirène t'attend à %d m : nage vers sa lumière" % ceili(sd)
 	return ""
 
 
