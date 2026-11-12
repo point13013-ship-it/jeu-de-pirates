@@ -7,6 +7,7 @@ extends RefCounted
 const DAY_SECS := GameConfig.DAY_SECS            ## s : durée d'un jour complet (lot 6 : 25 -> 35 minutes)
 const WEATHER_SECS := GameConfig.WEATHER_SECS    ## s : le temps est retiré à chaque tranche
 const FADE := 0.08              ## vitesse du changement de temps (par seconde)
+const FOG_CAM_DIST := 60.0      ## m : distance de la caméra au point qu'elle regarde (voir SailingGame._update_camera)
 
 const DAY_AMBIENT := Color(0.52, 0.60, 0.80)
 const DAY_SUN := Color(1.0, 0.90, 0.72)
@@ -256,12 +257,24 @@ func _apply(_delta: float) -> void:
 	# soleil haut à midi, bas le matin et le soir ; la lune garde une hauteur moyenne
 	var elev := lerpf(14.0, 52.0, clampf(sun_h, 0.0, 1.0)) if sun_h > 0.0 else 48.0
 	_sun.rotation_degrees = Vector3(-elev, -40.0, 0.0)
-	# la brume : un voile uniforme qui délave tout
+	# la brume (12/11, refaite : « le brouillard est vraiment mal fait », un voile blanc uniforme sur tout l'écran). Elle est
+	# maintenant dans la 3D, comme dans les jeux actuels :
+	# - brume de profondeur : nette autour du pirate, elle s'épaissit vers le lointain (le haut de l'écran). La caméra est
+	#   toujours à FOG_CAM_DIST m du point visé : la brume commence un peu avant ce point et devient opaque au loin ;
+	# - brume basse : plus dense au ras de l'eau, les mâts et les toits en sortent.
 	var fog_amount := clampf(mist + rain * 0.35, 0.0, 1.0)
 	_env.fog_enabled = fog_amount > 0.02
-	_env.fog_light_color = Color(0.25, 0.28, 0.40).lerp(Color(0.74, 0.80, 0.84), daylight)
-	_env.fog_density = 0.0004 + 0.0018 * fog_amount   # le gros de la brume est dans le filtre d'image (nuages de brume animés)
+	_env.fog_mode = Environment.FOG_MODE_DEPTH
+	_env.fog_light_color = Color(0.22, 0.26, 0.38).lerp(Color(0.70, 0.77, 0.82), daylight)
+	_env.fog_light_energy = 1.0
+	_env.fog_density = clampf(0.25 + 0.7 * fog_amount, 0.0, 0.95)   # opacité maximale au loin
+	_env.fog_depth_begin = FOG_CAM_DIST - lerpf(2.0, 8.0, fog_amount)
+	_env.fog_depth_end = FOG_CAM_DIST + lerpf(70.0, 18.0, fog_amount)
+	_env.fog_depth_curve = 1.6
+	_env.fog_height = 1.5
+	_env.fog_height_density = 0.12 * fog_amount
 	_env.fog_sun_scatter = 0.0
+	_env.fog_aerial_perspective = 0.0
 	# lueur (bloom) : discrète le jour, nette la nuit pour les lanternes et les fenêtres
 	_env.glow_enabled = true
 	_env.glow_intensity = lerpf(0.95, 0.35, daylight)
@@ -293,5 +306,5 @@ func _compute_grade(day: float, dusk: float, fog_amount: float) -> void:
 	haze_c = haze_c.lerp(Vector3(0.30, 0.33, 0.40) * lerpf(0.4, 1.0, day), dark * 0.7)
 	grade = {
 		"tint": tint, "shadow": shadow, "high": high, "sat": sat, "contrast": con, "vignette": vig,
-		"haze_color": haze_c, "haze": fog_amount * 0.62,
+		"haze_color": haze_c, "haze": fog_amount * 0.35,   # (12/11 : 0,62 ; le filtre ne fait plus que des bancs qui dérivent)
 	}

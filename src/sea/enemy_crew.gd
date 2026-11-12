@@ -69,7 +69,7 @@ func build(p_model: ShipModel, p_cannons: Array, kind: String, rng: RandomNumber
 	var helm: Array = model.meta.get("helm", [0.0, 0.0])
 	_helm_bp = model.nearest_walkable(Vector2(float(helm[0]) - 0.55, float(helm[1])))
 	helmsman = _make_skeleton(1, _helm_bp, Vector2(1.0, 0.0))
-	# les canonniers partent du tonneau de boulets
+	# les canonniers partent du coffre à boulets
 	var count := mini(int(GUNNERS.get(kind, 3)) + extra_gunners, model.cannons.size())   # lot 5 (6.2) : plus nombreux aux rangs élevés
 	for k in count:
 		var bp := model.nearest_walkable(_ammo_spot + Vector2(-0.3 * k, 0.25 * (k % 2) - 0.1))

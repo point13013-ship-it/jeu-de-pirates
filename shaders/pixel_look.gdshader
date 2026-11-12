@@ -56,10 +56,16 @@ vec3 grade(vec3 c, vec2 uv) {
 	c = mix(vec3(dot(c, vec3(0.299, 0.587, 0.114))), c, grade_sat);
 	c = (c - 0.5) * grade_contrast + 0.5;
 	if (haze_amount > 0.001) {
-		vec2 q = uv * vec2(3.2, 1.8) + vec2(TIME * 0.018, TIME * 0.007);
-		float n = fbm(q + fbm(q * 0.7 + TIME * 0.01) * 0.8);
-		float h = haze_amount * (0.45 + 0.9 * n) * mix(1.1, 0.75, uv.y);
-		c = mix(c, haze_color, clamp(h, 0.0, 0.9));
+		// (12/11 : avant, un voile laiteux sur tout l'écran, pirate compris. La vraie brume est maintenant dans la 3D
+		// (profondeur + ras de l'eau, voir SkyCycle) ; ici il ne reste que des bancs de brume qui dérivent, en lambeaux, plus
+		// présents vers les bords et le haut de l'écran (le lointain), jamais sur le centre où se tient le pirate.)
+		vec2 q = uv * vec2(2.4, 1.4) + vec2(TIME * 0.022, TIME * 0.006);
+		float n = fbm(q + fbm(q * 0.6 + TIME * 0.012) * 0.9);
+		float banks = smoothstep(0.42, 0.78, n);
+		float away = smoothstep(0.12, 0.6, length((uv - vec2(0.5, 0.55)) * vec2(1.5, 1.0)));
+		float far = mix(1.0, 0.55, uv.y);
+		float h = haze_amount * banks * away * far * 1.6;
+		c = mix(c, haze_color, clamp(h, 0.0, 0.75));
 	}
 	vec2 d = (uv - 0.5) * vec2(1.0, 1.1);
 	c *= 1.0 - vignette * smoothstep(0.3, 0.95, length(d));

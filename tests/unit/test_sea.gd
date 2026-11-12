@@ -61,7 +61,7 @@ func _test_trim() -> void:
 	for k in 300:
 		fast.step(0.05)
 		slow.step(0.05)
-	_check(fast.speed > slow.speed * 1.3 and slow.speed > 0.35 * slow.max_speed, "des voiles bien réglées vont plus vite, mais mal réglées le bateau ne s'arrête pas (%.1f contre %.1f m/s)" % [fast.speed, slow.speed])
+	_check(fast.speed > slow.speed * 1.3 and slow.speed > 0.2 * slow.max_speed, "(12/11 : le vent compte plus) des voiles bien réglées vont plus vite, mais mal réglées le bateau ne s'arrête pas (%.1f contre %.1f m/s)" % [fast.speed, slow.speed])
 	# vent debout : rien à régler
 	var head := ShipSim.new()
 	head.yaw = PI

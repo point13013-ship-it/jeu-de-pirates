@@ -142,7 +142,7 @@ func step(dt: float) -> void:
 	position += forward() * speed * dt * screen_comp()
 
 
-const MIN_SAIL_EFF := 0.4    ## rendement minimal des voiles (vent debout + vergues mal réglées) : le vent ralentit, il n'arrête jamais le bateau
+const MIN_SAIL_EFF := 0.22   ## (12/11 : 0,4 ; « il faudrait plus de différence avec ou sans vent dans les voiles ») rendement minimal des voiles (vent debout + vergues mal réglées) : le vent ralentit, il n'arrête jamais le bateau
 
 ## Rendement total des voiles, de MIN_SAIL_EFF (très mauvais vent / réglage) à 1 (vent arrière, vergues au mieux).
 func sail_efficiency() -> float:

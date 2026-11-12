@@ -30,7 +30,7 @@ rnd = random.Random(5)
 CFG = {
     "sloop": dict(L=9.6, WID=3.4, DEP=2.6, castle=1, cannons=2, ports=3, bow_castle=False,
                   masts=[(0.5, 7.6, [(2.4, 5.2, 4.4, 1.0, True), (5.5, 7.0, 3.2, 0.6, False)])],
-                  jib=True, gaff=None, flag_mast=0, anchor=(1.9, 0.0)),
+                  jib=True, gaff=None, flag_mast=0, anchor=(2.55, 0.0)),   # (12/11 : avancée, trop de postes au milieu)
     "brigantin": dict(L=12.6, WID=4.3, DEP=3.0, castle=2, cannons=3, ports=4, bow_castle=False,
                       masts=[(3.0, 8.6, [(2.9, 5.9, 5.0, 1.0, False), (6.2, 8.0, 3.8, 0.6, False)]),
                              (-1.2, 9.6, [(3.0, 6.6, 6.0, 1.1, True), (6.9, 9.0, 4.6, 0.7, False)])],
@@ -40,7 +40,7 @@ CFG = {
                           (0.4, 12.0, [(3.4, 7.0, 7.4, 1.3, True), (7.3, 9.9, 5.8, 0.9, False),
                                        (10.2, 11.6, 4.0, 0.5, False)]),
                           (-1.6, 9.0, [(3.0, 6.0, 4.6, 0.9, False)])],
-                   jib=True, gaff=(-1.6, 8.4, -7.6), flag_mast=1, anchor=(3.6, 0.0)),
+                   jib=True, gaff=(-1.6, 8.4, -7.6), flag_mast=1, anchor=(4.1, 0.0)),
 }[SHIP]
 # canons (abscisses d'origine, un par bord à chaque abscisse) et échelle de coque : repris des réglages faits à la main
 CFG["cannon_x"] = {"sloop": [1.3], "brigantin": [-1.0, 1.72], "galion": [-2.0, -0.5, 1.0]}[SHIP]
@@ -420,13 +420,19 @@ if SHIP != "sloop":
 # tonneau de boulets et pile de caisses : rangés contre le plat-bord, de part et d'autre de la barre, hors des couloirs
 _bx = HELM[0] + 0.2
 _bxs = station((_bx + L / 2) / L)
-_by = _bxs[1] - 0.14 - 0.55
+_by = _bxs[1] - 0.14 - 0.36
 _bdz = _bxs[2]
-OBST_CIRCLES.append((_bx, _by, 0.47))
-cyl("barrel", _bx, _by, _bdz + 0.42, 0.42, 0.7, "hull_l")
-cyl("barrel_b", _bx, _by, _bdz + 0.45, 0.45, 0.1, "iron")
-for k in range(3):  # boulets empilés sur le tonneau
-    sphere("ball", _bx + (k - 1) * 0.2, _by + (0.1 if k == 1 else -0.08), _bdz + 0.84 + (0.14 if k == 1 else 0.0), 0.11, "iron")
+# 12/11 : un vrai coffre à boulets (avant : un gros tonneau avec trois boulets posés dessus), plus petit : caisse de bois
+# cerclée de fer, couvercle, poignées, et une pyramide de boulets sur le couvercle
+OBST_BOXES.append((_bx - 0.36, _by - 0.27, _bx + 0.36, _by + 0.27))
+box("ammo_chest", _bx, _by, _bdz + 0.2, 0.66, 0.48, 0.4, "hull_l")
+box("ammo_lid", _bx, _by, _bdz + 0.44, 0.7, 0.52, 0.1, "hull")
+for dx in (-0.22, 0.22):
+    box("ammo_band", _bx + dx, _by, _bdz + 0.25, 0.06, 0.5, 0.42, "iron")
+for sy in (-1, 1):
+    box("ammo_handle", _bx, _by + sy * 0.26, _bdz + 0.3, 0.2, 0.04, 0.05, "iron")
+for k, (dx, dy, dz) in enumerate([(-0.13, -0.09, 0), (0.13, -0.09, 0), (-0.13, 0.11, 0), (0.13, 0.11, 0), (0.0, 0.01, 0.15)]):
+    sphere("ball", _bx + dx, _by + dy, _bdz + 0.6 + dz, 0.105, "iron")
 _cx = HELM[0] + 0.2
 _cy = -(_bxs[1] - 0.14 - 0.42)
 OBST_BOXES.append((_cx - 0.36, _cy - 0.34, _cx + 0.36, _cy + 0.34))
@@ -441,6 +447,19 @@ box("crate", _cx, _cy, _bdz + 0.32, 0.7, 0.65, 0.64, "deck_l")
 for k in range(3):
     box("crate_plank", _cx + 0.12, _cy - 0.2 + k * 0.2, _bdz + 0.7 + k * 0.05, 1.05, 0.16, 0.05, "deck" if k % 2 else "hull_l",
         rot=(0, math.radians(-8 + 6 * k), math.radians(4 * (k - 1))))
+
+# tableau arrière (12/11) : la face plate de la poupe, sous la cabine, était un grand aplat sombre qui ressemblait à un vide
+# derrière la cabine. Elle est maintenant habillée comme sur les vrais navires : bordage clair, frise dorée et rouge, deux
+# fenêtres de galerie, et le gouvernail.
+x_t, hw_t, dz_t, dp_t = station(0.0)
+xt = x_t - 0.035
+box("stern_panel", xt, 0, dz_t - 0.42, 0.06, hw_t * 2 * 0.94, 0.84, "hull_l")
+box("stern_band_g", xt - 0.01, 0, dz_t - 0.1, 0.06, hw_t * 2 * 0.96, 0.12, "gold")
+box("stern_band_r", xt - 0.01, 0, dz_t - 0.92, 0.06, hw_t * 2 * 0.86, 0.14, "red")
+for sy in (-1, 1):
+    window("stern_win", xt - 0.03, sy * hw_t * 0.42, dz_t - 0.5, True, w=0.42, h=0.34)
+box("rudder", x_t - 0.12, 0, dz_t - 0.95 - dp_t * 0.35, 0.14, 0.12, dp_t * 0.7 + 0.5, "mast")
+box("rudder_blade", x_t - 0.32, 0, dz_t - 1.2 - dp_t * 0.4, 0.4, 0.1, dp_t * 0.6, "mast")
 
 # figure de proue : tête de mort ; beaupré
 x_b, hw_b, dz_b, _ = station(1.0)

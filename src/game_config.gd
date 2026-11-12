@@ -108,7 +108,7 @@ const MUSIC_STORM_AT := 0.5          ## force de la tempête (0…1) à partir d
 
 ## Actions longues (règle commune) : durées en secondes.
 const ACTION_TIMES := {
-	"anchor": 3.5,    # lever / jeter l'ancre (3 à 4 s)
+	"anchor": 2.8,    # lever / jeter l'ancre (12/11 : 3,5 s, -20 %)
 	"repair": 2.5,    # boucher une voie d'eau avec une planche (2 à 3 s par trou)
 	"bail": 1.5,      # un seau : remplir puis vider
 	"hoist": 1.6,     # hisser un camarade hors de l'eau
@@ -124,7 +124,7 @@ const LADDER_STEP_EVERY := 0.28       ## s entre deux pas sur l'échelle
 
 ## 3.6 Navigation du bateau des joueurs (les ennemis ne changent pas ici : lot 5).
 const PLAYER_SHIP_SPEED_MULT := 1.1          ## +10 % de vitesse
-const PLAYER_UPWIND_PENALTY_SCALE := 0.75    ## malus de mauvais vent (vent debout, voiles mal réglées) réduit de 25 %
+const PLAYER_UPWIND_PENALTY_SCALE := 0.9     ## malus de mauvais vent réduit de 10 % (12/11 : 25 %, le vent ne faisait pas assez de différence)
 
 ## 3.7 Houle (SkyCycle.swell : 0 calme … 1 tempête).
 const SWELL_FROM_RAIN := 0.35         ## la pluie seule donne cette houle ; l'orage, la houle maximale
@@ -196,13 +196,14 @@ const MOB_HEAL_SAFE := 4.0            ## … et que personne n'est à moins de c
 
 const DOWNED_TIME := 25.0             ## s « à terre » avant de mourir si personne ne relève (plage 20 à 30 s)
 const REVIVED_HP := 3                 ## cœurs rendus à un pirate relevé
-const RESPAWN_TIME := 10.0            ## s avant de réapparaître sur le bateau
+const RESPAWN_TIME := 15.0            ## s avant de réapparaître sur le bateau (12/11 : 10, +5 s)
 const RESPAWN_INVULNERABLE := 3.0     ## s d'invulnérabilité à la réapparition
 const REVIVE_REACH := 1.6             ## m : distance pour relever un camarade
 const SIREN_AFTER := 20.0             ## s dans l'eau avant qu'une sirène vienne
 const SIREN_DISTANCE := 22.0          ## m : elle apparaît à cette distance (12/11 : 3 m, « toujours collée à nous »), du côté du bateau ;
                                       ## sa traînée de lumière se voit de loin, on nage jusqu'à elle et on la touche (E) à moins de 1,6 m
 const SIREN_REACH := 1.6
+const SIREN_BEAM_HEIGHT := 26.0       ## m : colonne de lumière au-dessus de la sirène (on la repère de loin, sous tous les angles)
 const SHARKS_AFTER := 45.0            ## s : les requins rôdent
 const SHARK_ATTACK_AFTER := 60.0      ## s : première morsure
 const SHARK_BITE_EVERY := 6.0         ## s entre deux morsures
@@ -217,9 +218,9 @@ const SHARK_CIRCLE_MIN := 5.0         ## s de ronde avant une charge (tiré entr
 const SHARK_CIRCLE_MAX := 10.0
 const SHARK_RETREAT_DIST := 14.0      ## m : après une morsure (ou un coup de sabre), ils s'éloignent jusque-là
 const SHARK_SPEED_APPROACH := 5.0     ## m/s
-const SHARK_SPEED_CIRCLE := 3.6
-const SHARK_SPEED_ATTACK := 8.0
-const SHARK_TURN := 2.4               ## rad/s : vitesse à laquelle ils changent de cap
+const SHARK_SPEED_CIRCLE := 3.2       ## (vitesse quand il rôde : il passe et repasse à quelques mètres)
+const SHARK_SPEED_ATTACK := 6.4       ## (12/11 : 8, « baisse un peu la vitesse de sprint des requins »)
+const SHARK_TURN := 1.6               ## rad/s : vitesse à laquelle ils changent de cap (12/11 : 2,4 ; virages plus larges)
 const DROWN_AFTER := 90.0             ## s : noyade (mort directe, sans passer à terre)
 const DROWN_WARNING := 15.0           ## s : l'alerte s'affiche dans les dernières secondes
 const DOWNED_SQUASH := 0.45           ## un pirate à terre est tassé de 45 % (provisoire, faute d'image « au sol »)
@@ -262,10 +263,10 @@ const WIND_STREAK_ALPHA := 0.18        ## opacité (très légères ; 0,32 au d�
 const WIND_STREAK_BOX := Vector3(26.0, 4.5, 20.0)   ## m : demi-taille de la zone où elles naissent (au vent du bateau)
 const WIND_STREAK_HEIGHT := 5.5        ## m au-dessus de l'eau : à hauteur des voiles
 const SAIL_FADE := false               ## voiles transparentes quand elles cachent le pirate (abandonné le 12/11 : clignotait)
-const SAIL_BULGE_SLACK := 0.35        ## creux des voiles qui ne prennent pas le vent (x le creux du modèle)
-const SAIL_BULGE_FULL := 1.3           ## creux des voiles gonflées (vent bien pris)
+const SAIL_BULGE_SLACK := 0.08        ## (12/11 : 0,35 ; plus de contraste) creux des voiles qui ne prennent pas le vent (x le creux du modèle)
+const SAIL_BULGE_FULL := 1.75          ## (12/11 : 1,3) creux des voiles gonflées (vent bien pris)
 const SAIL_LUFF_AT := 0.5              ## en dessous de ce rendement, des voiles hissées battent (faseyent)
-const SAIL_LUFF_FLAP := 0.22           ## amplitude du battement
+const SAIL_LUFF_FLAP := 0.38           ## (12/11 : 0,22) amplitude du battement
 const SAIL_FILL_SOUND_AT := 0.6        ## rendement qu'on franchit en montant : « vlouf » des voiles qui se gonflent
 const SAIL_FILL_SMOOTH := 1.2          ## s pour que le gonflement suive le rendement (pas de saut)
 
@@ -284,12 +285,15 @@ const REEF_FROM_SHORE_MAX := 30.0
 const REEF_SPACING := 26.0             ## m entre deux récifs au moins
 const REEF_PORT_CLEAR := 120.0         ## m autour du port sans aucun récif
 const SWIM_STROKE_EVERY := 0.8       ## s entre deux brassées entendues quand on nage
+const SWIM_LOOP_VOL := 0.32          ## volume du remous continu quand on nage (sans Maj)
+const SWIM_ROLL := 0.17              ## rad : roulis du corps à chaque brassée (faute d'images de nage dessinées)
 const SAND_BAND := 3.4               ## m du rivage d'une île où l'on marche dans le sable (au-delà : l'herbe)
 
 ## Caméra (12/11) : molette enfoncée + haut/bas pour l'incliner entre ces angles (°, 40 = vue de base) ; trois clics de molette
 ## en moins de CAM_RESET_CLICK_GAP s entre chaque pour revenir à la vue de base.
-const CAM_ELEV_MIN := 24.0
+const CAM_ELEV_MIN := 16.0             ## (12/11 : 24 ; plus bas, on voit loin devant, presque à hauteur d'yeux)
 const CAM_ELEV_MAX := 72.0
+const CAM_LOOKAHEAD := 7.0             ## m : de combien la caméra glisse devant l'étrave à pleine vitesse (x2 en vue rasante)
 const CAM_RESET_CLICK_GAP := 0.4
 ## Touche M (essais) : le pirate vole au-dessus de la carte, vite, pour aller voir les îles.
 const FLY_SPEED := 45.0                ## m/s

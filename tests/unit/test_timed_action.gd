@@ -7,7 +7,7 @@ var _failed := 0
 
 
 func _initialize() -> void:
-	_check("durée de l'ancre : 3 à 4 s", TimedAction.duration_of("anchor") >= 3.0 and TimedAction.duration_of("anchor") <= 4.0)
+	_check("durée de l'ancre : 2,5 à 3,5 s (12/11 : -20 %)", TimedAction.duration_of("anchor") >= 2.5 and TimedAction.duration_of("anchor") <= 3.5)
 	_check("durée d'une réparation : 2 à 3 s", TimedAction.duration_of("repair") >= 2.0 and TimedAction.duration_of("repair") <= 3.0)
 	_check("durée d'un seau : environ 1,5 s", absf(TimedAction.duration_of("bail") - 1.5) < 0.3)
 	_check("durée pour relever un allié : 4 s", is_equal_approx(TimedAction.duration_of("revive"), 4.0))

@@ -12,6 +12,7 @@ extends Control
 
 signal use_item(kind: String, id: String)
 signal alt_item(kind: String, id: String)   ## Q / clic droit sur une arme : en faire l'arme secondaire
+signal place_weapon(id: String, slot: int)  ## une arme glissée sur l'emplacement 1 (clic gauche) ou 2 (clic droit)
 signal closed
 
 const SLOT := 64
@@ -31,6 +32,7 @@ var _foot: Label
 var _info_name: Label
 var _info_sub: Label
 var _info_desc: Label
+var _purse: HBoxContainer
 
 
 func _init() -> void:
@@ -44,8 +46,17 @@ func _init() -> void:
 	var v := VBoxContainer.new()
 	v.add_theme_constant_override("separation", 10)
 	_panel.add_child(v)
+	# en-tête : le titre à gauche, la bourse à droite (or et provisions : 12/11, « on ne les voit que sac ouvert »)
+	var top := HBoxContainer.new()
+	top.add_theme_constant_override("separation", 14)
+	v.add_child(top)
 	_title = UiTheme.label("Sac du pirate", 28, UiTheme.BRASS, 5)
-	v.add_child(_title)
+	_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	top.add_child(_title)
+	_purse = HBoxContainer.new()
+	_purse.add_theme_constant_override("separation", 12)
+	_purse.alignment = BoxContainer.ALIGNMENT_END
+	top.add_child(_purse)
 	var cols := HBoxContainer.new()
 	cols.add_theme_constant_override("separation", 22)
 	cols.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -82,7 +93,7 @@ func _init() -> void:
 
 
 ## Change le titre et la ligne d'aide (le panneau sert aussi de coffre de cabane) ; sans argument : ceux du sac.
-func set_texts(title: String = "Sac du pirate", foot: String = "Survol / flèches : choisir     Clic / E : utiliser     Clic droit / Q : arme secondaire     + / − : taille     Tab / R : fermer") -> void:
+func set_texts(title: String = "Sac du pirate", foot: String = "Glisse une arme sur l'emplacement 1 (clic gauche) ou 2 (clic droit)     Clic / E : utiliser     Q : en 2     X : échanger 1 et 2     Tab : fermer") -> void:
 	_title.text = title
 	_foot.text = foot
 
@@ -91,10 +102,18 @@ func set_texts(title: String = "Sac du pirate", foot: String = "Survol / flèche
 func _process(_delta: float) -> void:
 	if not visible or _panel == null:
 		return
+	_fit()
+
+
+## Centre la fenêtre et lui donne sa taille d'écran. (12/11 : la taille n'était posée qu'après le fondu d'ouverture ; le sac
+## s'ouvrait en tout petit puis sautait à sa vraie taille. Elle est maintenant posée dès l'ouverture, et le fondu n'anime plus
+## que la transparence.)
+func _fit() -> void:
+	_panel.reset_size()
 	_panel.position = (size - _panel.size) / 2.0
 	_panel.pivot_offset = _panel.size / 2.0
 	var f := DisplaySettings.window_factor(get_viewport_rect().size, _panel.size)
-	if not is_equal_approx(_panel.scale.x, f) and _panel.modulate.a >= 1.0:
+	if not is_equal_approx(_panel.scale.x, f):
 		_panel.scale = Vector2.ONE * f
 
 
@@ -107,7 +126,10 @@ func open(rows: Array) -> void:
 	visible = true
 	_sel = 0
 	set_rows(rows)
-	UiTheme.appear(_panel)
+	_panel.modulate.a = 0.0
+	_fit()
+	var tw := _panel.create_tween()
+	tw.tween_property(_panel, "modulate:a", 1.0, UiTheme.ANIM)
 
 
 func close() -> void:
@@ -124,7 +146,7 @@ func set_rows(rows: Array) -> void:
 	_items.clear()
 	for i in _rows.size():
 		var r: Dictionary = _rows[i]
-		if not bool(r.get("head", false)) and str(r.get("kind", "none")) != "none":
+		if not bool(r.get("head", false)) and not (str(r.get("kind", "none")) in ["none", "purse", "weapon_empty"]):
 			_items.append(i)
 	_sel = clampi(_sel, 0, maxi(_items.size() - 1, 0))
 	_rebuild()
@@ -189,10 +211,15 @@ func _rebuild() -> void:
 	for c in _right.get_children():
 		c.queue_free()
 	_slot_nodes.clear()
+	for c in _purse.get_children():
+		c.queue_free()
 	var grid: GridContainer = null
 	var target := _left
 	for i in _rows.size():
 		var r: Dictionary = _rows[i]
+		if str(r.get("kind", "")) == "purse":   # la bourse, dans l'en-tête : une icône et un nombre
+			_purse.add_child(_purse_entry(r))
+			continue
 		if bool(r.get("head", false)):
 			var is_craft := str(r["label"]).begins_with("Fabrication")
 			target = _right if is_craft else _left
@@ -214,6 +241,9 @@ func _rebuild() -> void:
 			grid.add_theme_constant_override("h_separation", GAP)
 			grid.add_theme_constant_override("v_separation", GAP)
 			target.add_child(grid)
+		if kind == "weapon_empty":   # emplacement d'arme libre : on peut y déposer une arme
+			grid.add_child(_empty_weapon_slot(r))
+			continue
 		var s := _slot(i, r)
 		grid.add_child(s)
 		_slot_nodes[i] = s
@@ -248,14 +278,73 @@ func _slot(i: int, r: Dictionary) -> Control:
 		cl.size = Vector2(SLOT - 9, 20)
 		cl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		p.add_child(cl)
-	var right := str(r.get("right", ""))
-	if str(r.get("kind", "")) == "weapon" and (right.begins_with("principale") or right.begins_with("secondaire")):
-		var tag := UiTheme.label("1" if right.begins_with("principale") else "2", 13, UiTheme.BRASS, 3)
-		tag.position = Vector2(5, 2)
-		tag.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		p.add_child(tag)
+	if str(r.get("kind", "")) == "weapon":
+		var slot_n := int(r.get("slot", 0))
+		if slot_n > 0:
+			_slot_tag(p, slot_n)
+		_wire_weapon_drag(p, str(r["id"]), slot_n)
 	_wire_mouse(p, i)
 	return p
+
+
+## Le numéro de l'emplacement (1 : clic gauche, 2 : clic droit), en laiton dans le coin.
+func _slot_tag(p: Control, slot_n: int) -> void:
+	var tag := UiTheme.label(str(slot_n), 13, UiTheme.BRASS, 3)
+	tag.position = Vector2(5, 2)
+	tag.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	p.add_child(tag)
+
+
+## Glisser-déposer des armes (12/11) : on prend la vignette d'une arme et on la lâche sur l'emplacement 1 ou 2 ; les deux
+## armes échangent leur place (et donc leur bouton de souris).
+func _wire_weapon_drag(p: Control, id: String, slot_n: int) -> void:
+	p.set_drag_forwarding(
+		func(_at: Vector2) -> Variant:
+			var preview := TextureRect.new()
+			preview.texture = ItemIcons.icon("weapon", id)
+			preview.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+			preview.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+			preview.size = Vector2(SLOT, SLOT) * _panel.scale.x
+			preview.modulate.a = 0.85
+			set_drag_preview(preview)
+			return {"weapon": id, "from": slot_n},
+		func(_at: Vector2, data: Variant) -> bool:
+			return slot_n > 0 and data is Dictionary and (data as Dictionary).has("weapon") and str(data["weapon"]) != id,
+		func(_at: Vector2, data: Variant) -> void:
+			place_weapon.emit(str(data["weapon"]), slot_n))
+
+
+func _empty_weapon_slot(r: Dictionary) -> Control:
+	var p := Panel.new()
+	p.custom_minimum_size = Vector2(SLOT, SLOT)
+	p.add_theme_stylebox_override("panel", UiTheme.slot(false, true))
+	var slot_n := int(r.get("slot", 2))
+	_slot_tag(p, slot_n)
+	p.tooltip_text = str(r.get("label", ""))
+	p.set_drag_forwarding(Callable(),
+		func(_at: Vector2, data: Variant) -> bool:
+			return data is Dictionary and (data as Dictionary).has("weapon"),
+		func(_at: Vector2, data: Variant) -> void:
+			place_weapon.emit(str(data["weapon"]), slot_n))
+	return p
+
+
+## Une entrée de la bourse : petite icône et nombre (l'or en laiton).
+func _purse_entry(r: Dictionary) -> Control:
+	var h := HBoxContainer.new()
+	h.add_theme_constant_override("separation", 4)
+	h.tooltip_text = str(r.get("label", ""))
+	var ic := TextureRect.new()
+	ic.texture = ItemIcons.icon("item", str(r["id"]))
+	ic.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	ic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	ic.custom_minimum_size = Vector2(28, 28)
+	h.add_child(ic)
+	var gold := str(r["id"]) == "gold"
+	var l := UiTheme.label(str(int(r.get("count", 0))), 20 if gold else 17, UiTheme.BRASS if gold else UiTheme.CREAM, 3)
+	l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	h.add_child(l)
+	return h
 
 
 ## Une fiche de recette : icône, nom, ingrédients (vert : on les a ; rouge : il en manque).
@@ -295,7 +384,9 @@ func _wire_mouse(c: Control, row_index: int) -> void:
 			_sel = k
 			_refresh_selection())
 	c.gui_input.connect(func(ev: InputEvent) -> void:
-		if ev is InputEventMouseButton and (ev as InputEventMouseButton).pressed:
+		# au relâchement (et pas pendant un glisser-déposer) : appuyer puis glisser une arme ne doit pas l'utiliser
+		if ev is InputEventMouseButton and not (ev as InputEventMouseButton).pressed \
+				and (ev as InputEventMouseButton).button_index in [MOUSE_BUTTON_LEFT, MOUSE_BUTTON_RIGHT] and not c.get_viewport().gui_is_dragging():
 			var k := _items.find(row_index)
 			if k >= 0:
 				_sel = k

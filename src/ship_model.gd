@@ -521,7 +521,11 @@ func is_walkable(bp: Vector2) -> bool:
 	var u := (bp.x + length * 0.5) / length
 	if u < 0.03 or bp.x > bow_x:
 		return false
-	if not inside_cabin(bp) and absf(bp.y) > maxf(half_width(bp.x) - RAIL_MARGIN, MIN_LANE):
+	# (12/11 : le couloir minimal MIN_LANE laissait marcher plus loin que la coque à la pointe de l'étrave : le pirate
+	# s'affichait au-dessus de l'eau. Il ne dépasse plus jamais le plat-bord, et la pointe trop étroite n'est plus praticable.)
+	var hw := half_width(bp.x)
+	var lane := maxf(hw - RAIL_MARGIN, minf(MIN_LANE, hw - 0.3))
+	if not inside_cabin(bp) and (absf(bp.y) > lane or lane < 0.15):
 		return false
 	for b: Array in boxes:
 		if bp.x > float(b[0]) - r and bp.x < float(b[2]) + r and bp.y > float(b[1]) - r and bp.y < float(b[3]) + r:

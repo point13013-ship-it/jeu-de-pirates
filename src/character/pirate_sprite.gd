@@ -98,9 +98,13 @@ shader_type spatial;
 render_mode unshaded, cull_disabled;
 uniform sampler2D tex : source_color, filter_nearest;
 uniform float push = 0.6;
+uniform float roll = 0.0;          // à la nage : le corps roule d'un côté à l'autre à chaque brassée (rad)
+uniform float roll_pivot = 0.8;    // m au-dessus des pieds : l'axe du roulis (la surface de l'eau)
 uniform float clip_below = -10000.0;   // à la nage : rien sous la surface de l'eau (on ne voit que la tête et les épaules)
 varying float world_y;
-void vertex() {%s}
+void vertex() {
+	vec2 rp = VERTEX.xy - vec2(0.0, roll_pivot);
+	VERTEX.xy = vec2(cos(roll) * rp.x - sin(roll) * rp.y, sin(roll) * rp.x + cos(roll) * rp.y) + vec2(0.0, roll_pivot);%s}
 void fragment() {
 	vec4 t = texture(tex, UV);
 	if (t.a * COLOR.a < 0.5 || world_y < clip_below) { discard; }
@@ -112,10 +116,14 @@ shader_type spatial;
 render_mode unshaded, cull_disabled, depth_test_inverted, depth_draw_never, blend_mix;
 uniform sampler2D tex : source_color, filter_nearest;
 uniform float push = 0.6;
+uniform float roll = 0.0;          // à la nage : le corps roule d'un côté à l'autre à chaque brassée (rad)
+uniform float roll_pivot = 0.8;    // m au-dessus des pieds : l'axe du roulis (la surface de l'eau)
 uniform vec4 xray_color : source_color = vec4(0.85, 0.9, 1.0, 0.4);
 uniform float clip_below = -10000.0;
 varying float world_y;
-void vertex() {%s}
+void vertex() {
+	vec2 rp = VERTEX.xy - vec2(0.0, roll_pivot);
+	VERTEX.xy = vec2(cos(roll) * rp.x - sin(roll) * rp.y, sin(roll) * rp.x + cos(roll) * rp.y) + vec2(0.0, roll_pivot);%s}
 void fragment() {
 	vec4 t = texture(tex, UV);
 	if (t.a * COLOR.a < 0.5 || world_y < clip_below) { discard; }
@@ -159,6 +167,16 @@ func set_water_clip(y: float) -> void:
 	if _main_mat != null:
 		_main_mat.set_shader_parameter("clip_below", y)
 		_xray_mat.set_shader_parameter("clip_below", y)
+
+
+## À la nage (12/11) : roulis du corps, en radians (0 : droit). Faute d'images de nage dessinées, le pirate roule d'une
+## épaule à l'autre à chaque brassée, autour de la surface de l'eau (`pivot`, m au-dessus des pieds).
+func set_roll(angle: float, pivot: float = 0.8) -> void:
+	if _main_mat != null:
+		_main_mat.set_shader_parameter("roll", angle)
+		_main_mat.set_shader_parameter("roll_pivot", pivot)
+		_xray_mat.set_shader_parameter("roll", angle)
+		_xray_mat.set_shader_parameter("roll_pivot", pivot)
 
 
 ## Recopie l'image en cours dans les deux matières (l'image de base et la silhouette).
@@ -456,7 +474,10 @@ static func _compose_now(p_look: Dictionary, a: String, weapon_sheets: Dictionar
 	vp.size = Vector2i(frames * int(frame_size[0]), 8 * int(frame_size[1]))
 	vp.transparent_bg = true
 	vp.disable_3d = true
-	vp.render_target_update_mode = SubViewport.UPDATE_ONCE
+	# (12/11 : UPDATE_ALWAYS et plusieurs images avant la capture. Avec UPDATE_ONCE, la toute première feuille de la partie (le
+	# repos) sortait sans le visage, la ceinture ni les bords du chapeau : le premier rendu ne dessinait pas encore toutes les
+	# couches. Le pirate n'avait plus de visage à l'arrêt et le retrouvait en marchant.)
+	vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	vp.canvas_item_default_texture_filter = Viewport.DEFAULT_CANVAS_ITEM_TEXTURE_FILTER_NEAREST
 	# l'ordre des pièces, puis (animations de tir) l'arme par-dessus tout : elle ne fait pas partie de l'apparence du joueur
 	var sequence: Array = []
@@ -490,7 +511,8 @@ static func _compose_now(p_look: Dictionary, a: String, weapon_sheets: Dictionar
 		vp.add_child(front_rect)
 	var tree := Engine.get_main_loop() as SceneTree
 	tree.root.add_child.call_deferred(vp)
-	await tree.process_frame
+	for i in 3:
+		await tree.process_frame
 	await RenderingServer.frame_post_draw
 	var img := vp.get_texture().get_image()
 	vp.queue_free()

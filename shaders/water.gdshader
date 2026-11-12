@@ -66,10 +66,21 @@ vec2 hull_dist(vec2 p) {
 	return vec2(length(max(vec2(dx, dy), vec2(0.0))) + min(max(dx, dy), 0.0), uc);
 }
 
+// Forme d'une vague de houle (12/11, « un vrai système de vagues ») : au lieu d'une sinusoïde ronde, une vague « exp-sinus »
+// à crête pointue et creux large, comme la vraie houle (et comme les mers de jeux à la Sea of Thieves), sans déplacement
+// horizontal : la même formule exacte sert à la flottaison (SailingGame._wave_height). Moyenne nulle, crête à +1,4, creux à -0,7.
+const float WAVE_K = 1.5;
+float wave_shape(float th) {
+	return 2.2 * exp(WAVE_K * (sin(th) - 1.0)) - 0.8;
+}
+float wave_slope(float th) {   // dérivée de wave_shape
+	return 2.2 * WAVE_K * cos(th) * exp(WAVE_K * (sin(th) - 1.0));
+}
+
 float waves_at(vec2 p) {
 	float h = 0.0;
 	for (int i = 0; i < 4; i++) {
-		h += waves[i].x * sin(p.x * waves[i].y + p.y * waves[i].z + sea_time * waves[i].w);
+		h += waves[i].x * wave_shape(p.x * waves[i].y + p.y * waves[i].z + sea_time * waves[i].w);
 	}
 	return h;
 }
@@ -78,7 +89,7 @@ float waves_at(vec2 p) {
 vec3 slope_at(vec2 p, float t_ripple) {
 	vec2 g = vec2(0.0);
 	for (int i = 0; i < 4; i++) {
-		g += waves[i].x * cos(p.x * waves[i].y + p.y * waves[i].z + sea_time * waves[i].w) * waves[i].yz;
+		g += waves[i].x * wave_slope(p.x * waves[i].y + p.y * waves[i].z + sea_time * waves[i].w) * waves[i].yz;
 	}
 	float hr = 0.0;
 	// déformation lente du motif : les crêtes ondulent au lieu de former une grille régulière
@@ -150,10 +161,16 @@ void fragment() {
 	// 4 tons selon l'orientation de la surface vers le soleil (écart à une mer parfaitement plate)
 	// le ton moyen domine ; creux, faces éclairées et crêtes sont des accents
 	float lit = dot(n, sun_dir) - sun_dir.y;
+	float tone = step(-band_width * 2.2, lit) + step(band_width * 0.9, lit) + step(band_width * 2.6, lit);   // 0..3
+	// la houle se lit d'un coup d'œil (12/11) : sur le haut d'une vague, l'eau monte d'un ton ; au fond du creux, elle
+	// descend d'un ton. On voit les rangées de vagues avancer, en restant dans les quatre tons peints de la mer.
+	float amp = max(waves[0].x + waves[1].x + waves[2].x + waves[3].x, 0.01);
+	float rel = wave_h / amp;   // -0,7 (creux) .. 1,4 (crête)
+	tone = clamp(tone + step(0.55, rel) - step(rel, -0.42), 0.0, 3.0);
 	vec3 col = c_trough;
-	col = mix(col, c_side, step(-band_width * 2.2, lit));
-	col = mix(col, c_lit, step(band_width * 0.9, lit));
-	col = mix(col, c_crest, step(band_width * 2.6, lit));
+	col = mix(col, c_side, step(0.5, tone));
+	col = mix(col, c_lit, step(1.5, tone));
+	col = mix(col, c_crest, step(2.5, tone));
 	// reflet du ciel sur les pentes nettement tournées vers la caméra
 	float facing = dot(n, view_dir) - view_dir.y;
 	col = mix(col, c_sky, step(band_width * 2.4, facing) * step(lit, band_width * 0.9));
@@ -162,8 +179,9 @@ void fragment() {
 	float spec = dot(n, half_v) - half_v.y;
 	col = mix(col, c_glint, step(band_width * 3.2, spec));
 	// moutons d'écume sur les plus hautes crêtes (houle + vaguelettes)
-	float cap = wave_h * 0.6 + s.z;
-	col = mix(col, foam_color, step(0.24, cap) * step(0.15, lit + 0.12));
+	// (12/11 : sur les crêtes de houle, des traînées d'écume qui se déchirent avec les vaguelettes)
+	float cap = rel * 0.5 + s.z * 3.0 + 0.12 * sin(wp.x * 1.7 + wp.z * 0.9 + st);
+	col = mix(col, foam_color, step(0.66, cap) * step(0.15, lit + 0.12));
 
 	// ombre du pont sur l'eau (l'eau transparente ne reçoit pas les ombres du moteur)
 	float shade = smoothstep(0.35, -0.35, hull_dist(wp.xz - shadow_offset).x);

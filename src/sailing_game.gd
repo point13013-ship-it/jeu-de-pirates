@@ -276,6 +276,8 @@ const SEA_MESH_STEP := 0.25       ## m entre deux sommets de la surface (le mail
 
 func _ready() -> void:
 	_args = _parse_args()
+	if _args.has("nofocus"):   # essais automatiques : la fenêtre ne prend pas le clavier de celui qui travaille sur le PC
+		DisplayServer.window_set_flag(DisplayServer.WINDOW_FLAG_NO_FOCUS, true)
 	# Synchronisation verticale : une image par rafraîchissement de l'écran. Sans elle, le jeu tournait
 	# à ~1 450 images/s et l'écran affichait des morceaux de plusieurs images à la fois (déchirures
 	# horizontales qui font « vibrer » tout ce qui défile).
@@ -713,10 +715,11 @@ func _load_sea() -> void:
 
 
 ## Hauteur de la houle (m, autour du niveau de la mer) au point (x, z) du monde. Lot 3 (3.7) : multipliée par la force de la mer.
+## (12/11 : vagues « exp-sinus », crête pointue et creux large : la même formule que l'eau dessinée, shaders/water.gdshader)
 func _wave_height(p: Vector2) -> float:
 	var h := 0.0
 	for w: Vector4 in _waves:
-		h += w.x * sin(p.x * w.y + p.y * w.z + _sea_t * w.w)
+		h += w.x * (2.2 * exp(1.5 * (sin(p.x * w.y + p.y * w.z + _sea_t * w.w) - 1.0)) - 0.8)
 	return h * _wave_amp
 
 
@@ -1298,6 +1301,7 @@ func _build_hud() -> void:
 	_inventory.use_item.connect(_on_inventory_use)
 	_inventory.closed.connect(_on_inventory_closed)
 	_inventory.alt_item.connect(_on_inventory_alt)
+	_inventory.place_weapon.connect(_on_inventory_place_weapon)
 	add_child(_inventory)
 	_weapon_label = Label.new()
 	_weapon_label.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
@@ -2429,6 +2433,7 @@ func _try_attack(secondary: bool = false) -> void:
 		return
 	if _loc == Loc.SWIM and _atk_cd <= 0.0 and not _sharks.is_empty():   # lot 4 (5.7) : à la nage, un coup de sabre chasse un requin
 		_atk_cd = 0.6
+		_sfx.play_at(Synth.recorded("sword_swing"), _my_scene_pos() + Vector3.UP * 0.4, 0.8)
 		if not _scare_shark():
 			_splash_burst(_lpos)
 		return
@@ -2447,6 +2452,8 @@ func _try_attack(secondary: bool = false) -> void:
 		return
 	_atk_cd = float(_islands.player_cfg.get("swing_cooldown", 0.45))
 	_sprite.play_action("slash_sabre", _screen_of_face(_face))   # le coup de sabre : bras levé, coup, retour
+	# (12/11 : le sifflement de la lame, une prise au hasard parmi onze, sans répéter la précédente ; un coup lourd de temps en temps)
+	_sfx.play_at(Synth.recorded("sword_swing"), _my_scene_pos() + Vector3.UP * 0.9, 0.85)
 	_islands.spawn_slash(_lpos, _face)
 	var sk := WeaponSkins.def_of("sabre", _profile.skin_of("sabre"))
 	WeaponFx.slash(_world_fixed, _lpos, _face, sk, _lh + 0.95)
@@ -2520,10 +2527,13 @@ func apply_action(peer: int, kind: String, arg: String, pos: Vector2, dir: Vecto
 			_remote_act(peer, kind, arg)
 		"down", "up", "dead", "water":   # lot 4 : son état (à terre, relevé, mort, temps dans l'eau)
 			_remote_state_event(peer, kind, arg)
+		"sword_hit":   # l'hôte a vu un coup porter : le choc s'entend chez tous
+			_sword_hit_sound(arg == "prop", _world_fixed.to_global(Vector3(pos.x, height + 0.9, pos.y)))
 		"slash":
 			var sl := arg.split("|")
 			var ssk := WeaponSkins.def_of("sabre", sl[1] if sl.size() > 1 else WeaponSkins.CLASSIC)
 			sprite.play_action("slash_sabre", screen)
+			_sfx.play_at(Synth.recorded("sword_swing"), sprite.global_position + Vector3.UP * 0.9, 0.8)
 			_islands.spawn_slash(pos, dir)
 			WeaponFx.slash(_world_fixed, pos, dir, ssk, height + 0.95)
 		"shot":
@@ -2551,35 +2561,48 @@ func _shot_fx(origin: Vector2, dir: Vector2, def: Dictionary, height: float = IN
 			Color.html(str(def.get("color", "#ffe9a8"))), skin_def, y)
 
 
-## X : l'arme suivante du sac.
+## X : les armes 1 et 2 échangent leur place (12/11 : deux armes en main seulement ; les autres se prennent au râtelier du sac).
 func _cycle_weapon() -> void:
-	_profile.set_main_weapon(Weapons.next_owned(_profile.weapon, _profile.weapons))
+	if _profile.weapons.size() < 2:
+		_say("Une seule arme : achète-en une autre au port", 2.0)
+		return
+	_profile.set_main_weapon(_profile.secondary_weapon())
 	_profile.save()
 	_hand_wid = ""
-	_say("Arme principale (clic gauche) : %s" % Weapons.weapon_name(_profile.weapon), 2.0)
+	_say("1 (clic gauche) : %s     2 (clic droit) : %s" % [Weapons.weapon_name(_profile.weapon), Weapons.weapon_name(_profile.secondary_weapon())], 2.0)
 
 
 # ------------------------------------------------------------------ sac du pirate
 
 ## Les lignes du sac : armes, baies gardées, provisions.
 func _inventory_rows() -> Array:
-	var rows: Array = [{"head": true, "label": "Armes"}]
+	# (12/11 : deux armes en main seulement, emplacement 1 = clic gauche, 2 = clic droit ; les autres attendent au râtelier.
+	# On glisse une vignette sur un emplacement pour l'équiper. L'or et les provisions passent dans la bourse de l'en-tête.)
+	var rows: Array = []
+	for line: Array in [["gold", "Or"], ["balls", "Boulets"], ["planks", "Planches"], ["bullets", "Balles"], ["shells", "Cartouches"]]:
+		rows.append({"kind": "purse", "id": line[0], "label": line[1], "count": int(_profile.get(str(line[0])))})
+	rows.append({"head": true, "label": "Armes en main"})
+	var main_id: String = _profile.weapon
+	var sec_id: String = _profile.secondary_weapon() if _profile.weapons.size() > 1 else ""
+	var rack: Array = []
 	for id in Weapons.order():
-		if not (id in _profile.weapons):
+		if id in _profile.weapons and str(id) != main_id and str(id) != sec_id:
+			rack.append(str(id))
+	for pair: Array in [[main_id, 1], [sec_id, 2]]:
+		var id: String = pair[0]
+		if id == "":
+			rows.append({"kind": "weapon_empty", "slot": int(pair[1]), "label": "Emplacement 2 (clic droit) : glisse une arme ici"})
 			continue
-		var def := Weapons.get_def(str(id))
-		var held: bool = _profile.weapon == str(id)
-		var second: bool = _profile.secondary_weapon() == str(id) and not held
-		var right := "principale (clic gauche)" if held else ("secondaire (clic droit)" if second else "E : principale, Q : secondaire")
-		var ammo := Weapons.ammo_of(str(id))
-		if ammo != "":
-			right += "   (%d %s)" % [_profile.ammo_count(ammo), Weapons.ammo_label(ammo)]
-		rows.append({"kind": "weapon", "id": str(id), "label": str(def.get("name", id)), "right": right, "enabled": not held,
-				"desc": str(def.get("desc", ""))})
+		rows.append(_weapon_row(id, int(pair[1])))
+	if not rack.is_empty():
+		rows.append({"head": true, "label": "Râtelier"})
+		for id: String in rack:
+			rows.append(_weapon_row(id, 0))
+	for id in _profile.weapons:
 		var owned_skins := _profile.skins_for(str(id))
-		if owned_skins.size() > 1:   # des skins gagnés ou achetés : une ligne pour changer l'apparence de cette arme
+		if owned_skins.size() > 1:   # des skins gagnés ou achetés : une case pour changer l'apparence de cette arme
 			var worn := _profile.skin_of(str(id))
-			rows.append({"kind": "wskin", "id": str(id), "label": "      Apparence : %s" % WeaponSkins.skin_name(str(id), worn),
+			rows.append({"kind": "wskin", "id": str(id), "label": "Apparence : %s" % WeaponSkins.skin_name(str(id), worn),
 					"right": "%s   (E : changer)" % WeaponSkins.rarity_label(str(id), worn), "enabled": true,
 					"desc": str(WeaponSkins.def_of(str(id), worn).get("desc", "L'arme d'origine."))})
 	rows.append({"head": true, "label": "Baies des dieux"})
@@ -2603,20 +2626,39 @@ func _inventory_rows() -> Array:
 				else "%s  (E : fabriquer)" % Crafting.cost_text(recipe)
 		rows.append({"kind": "craft", "id": recipe, "label": Crafting.recipe_name(recipe), "right": need, "enabled": lack.is_empty(),
 				"desc": str(Crafting.get_def(recipe).get("desc", ""))})
-	rows.append({"head": true, "label": "Provisions"})
-	# (12/11 : des cases avec une icône et un nombre, comme dans les jeux actuels, au lieu de lignes de texte)
-	for line: Array in [["gold", "Or", _profile.gold, "Pour acheter au port : armes, planches, boulets, apparences."],
-			["balls", "Boulets", _profile.balls, "Pour les canons. Ils sont rangés dans le tonneau de boulets du pont."],
-			["planks", "Planches", _profile.planks, "Pour boucher les voies d'eau (dans la cale) et fabriquer. Rangées dans la caisse à planches."],
-			["bullets", "Balles", _profile.bullets, "Munitions du pistolet et du fusil."],
-			["shells", "Cartouches", _profile.shells, "Munitions du tromblon."]]:
-		rows.append({"kind": "item", "id": line[0], "label": line[1], "count": int(line[2]), "right": "%d" % int(line[2]),
-				"enabled": false, "desc": line[3]})
 	if _carry_kind == "treasure":
+		rows.append({"head": true, "label": "Dans tes bras"})
 		rows.append({"kind": "treasure", "id": _carry_item, "label": "Dans tes bras : %s" % Treasure.name_of(_carry_item),
 				"right": "%d or" % Treasure.value_of(_carry_item), "enabled": false,
 				"desc": "Rapporte-le dans le coffre du capitaine (cabine), puis vends-le à Corbin."})
 	return rows
+
+
+## Une case d'arme du sac. `slot` : 1 (clic gauche), 2 (clic droit) ou 0 (au râtelier).
+func _weapon_row(id: String, slot: int) -> Dictionary:
+	var def := Weapons.get_def(id)
+	var right: String = ["au râtelier : glisse-la sur 1 ou 2", "emplacement 1 (clic gauche)", "emplacement 2 (clic droit)"][slot]
+	var ammo := Weapons.ammo_of(id)
+	if ammo != "":
+		right += "   (%d %s)" % [_profile.ammo_count(ammo), Weapons.ammo_label(ammo)]
+	return {"kind": "weapon", "id": id, "slot": slot, "label": str(def.get("name", id)), "right": right, "enabled": slot != 1,
+			"desc": str(def.get("desc", ""))}
+
+
+## Une arme glissée sur l'emplacement 1 ou 2 du sac.
+func _on_inventory_place_weapon(id: String, slot: int) -> void:
+	if _chest_island >= 0 or not (id in _profile.weapons):
+		return
+	if slot == 1:
+		_profile.set_main_weapon(id)
+	else:
+		if _profile.weapons.size() < 2:
+			return
+		_profile.set_secondary_weapon(id)
+	_profile.save()
+	_hand_wid = ""
+	_say("1 (clic gauche) : %s     2 (clic droit) : %s" % [Weapons.weapon_name(_profile.weapon), Weapons.weapon_name(_profile.secondary_weapon())], 2.5)
+	_inventory.set_rows(_inventory_rows())
 
 
 func _toggle_inventory() -> void:
@@ -2677,7 +2719,14 @@ func _eat_berry(id: String) -> void:
 
 ## Hôte : le coup de `peer` touche-t-il quelqu'un ? L'or des ennemis vaincus va à celui qui frappe.
 func _resolve_swing(peer: int, pos: Vector2, dir: Vector2) -> void:
-	for hit: Dictionary in _islands.swing(pos, dir.normalized()):
+	var hits := _islands.swing(pos, dir.normalized())
+	if not hits.is_empty():   # le coup porte : un choc (chair ou bois), entendu par tout l'équipage
+		var h0: Dictionary = hits[0]
+		var at: Vector2 = h0["at"]
+		var prop := bool(h0.get("prop", false))
+		_sword_hit_sound(prop, _world_fixed.to_global(Vector3(at.x, _lh + 0.9, at.y)))
+		_send_action("sword_hit", "prop" if prop else "", at, Vector2.ZERO)
+	for hit: Dictionary in hits:
 		if int(hit["gold"]) > 0:
 			_give_loot(peer, int(hit["gold"]), hit["at"])
 		if bool(hit.get("prop", false)):
@@ -2993,6 +3042,9 @@ func _process(delta_raw: float) -> void:
 			float(_args.get("sail-fade", "0.3")))
 	if _loc == Loc.SWIM:
 		_swim_effects(delta)
+	elif _swim_loop_gain > 0.0:   # sorti de l'eau : le remous s'éteint vite
+		_swim_loop_gain = move_toward(_swim_loop_gain, 0.0, delta / 0.2)
+		_set_swim_loop(_swim_loop_gain)
 	_update_building_fade(delta)
 	_update_interior()
 	_update_npcs(delta)
@@ -3506,11 +3558,56 @@ func _swim_effects(delta: float) -> void:
 	if _swim_ring_t <= 0.0:
 		_swim_ring_t = 0.55 if swimming else 1.1
 		_splash(Vector3(_lpos.x, SEA_Y + 0.04, _lpos.y))
-	# le bruit de l'eau : une brassée régulière quand on nage, un petit clapotis de temps en temps quand on fait du sur-place
+	# le bruit de l'eau (12/11, retour de Jimmy) :
+	# - dès qu'on se déplace, un remous continu et doux (boucle sans couture), qui monte et descend en fondu ;
+	# - avec Maj (nage rapide), des brassées plus fortes par-dessus, une prise au hasard à chaque fois ;
+	# - sur place, un petit clapotis de temps en temps.
+	var sprint := swimming and Input.is_physical_key_pressed(KEY_SHIFT)
+	# la brassée : le corps roule d'une épaule à l'autre, une main frappe l'eau à chaque demi-tour (plus vite avec Maj)
+	_stroke_amp = move_toward(_stroke_amp, 1.0 if swimming else 0.0, delta * 3.0)
+	if swimming:
+		var before := sin(_stroke_ph)
+		_stroke_ph += delta * PI / (GameConfig.SWIM_STROKE_EVERY * (0.7 if sprint else 1.0))
+		if signf(sin(_stroke_ph)) != signf(before):
+			var side := Vector2(-_face.y, _face.x) * (0.38 if sin(_stroke_ph) > 0.0 else -0.38)
+			var hand := _lpos + side + _face.normalized() * 0.35
+			_splash(Vector3(hand.x, SEA_Y + 0.05, hand.y))
+	_swim_loop_gain = move_toward(_swim_loop_gain, (GameConfig.SWIM_LOOP_VOL if swimming else 0.0), delta / 0.35)
+	_set_swim_loop(_swim_loop_gain)
 	_swim_sound_t -= delta
 	if _swim_sound_t <= 0.0:
-		_swim_sound_t = GameConfig.SWIM_STROKE_EVERY * randf_range(0.85, 1.15) if swimming else randf_range(2.0, 3.5)
-		_sfx.play_at(Synth.recorded("swim_stroke"), _my_scene_pos(), 0.55 if swimming else 0.25)
+		if sprint:
+			_swim_sound_t = GameConfig.SWIM_STROKE_EVERY * 0.75 * randf_range(0.85, 1.15)
+			_sfx.play_at(Synth.recorded("swim_fast"), _my_scene_pos(), 0.6)
+		elif swimming:
+			_swim_sound_t = 0.3
+		else:
+			_swim_sound_t = randf_range(2.0, 3.5)
+			_sfx.play_at(Synth.recorded("swim_stroke"), _my_scene_pos(), 0.22)
+
+
+var _swim_loop_gain := 0.0
+var _swim_loop: AudioStreamPlayer
+var _stroke_ph := 0.0     ## rad : où en est la brassée (roulis et éclaboussures des mains)
+var _stroke_amp := 0.0    ## 0..1 : ampleur de la brassée (0 sur place)
+
+
+## Le remous continu de la nage (non spatialisé : c'est moi qui nage). 0 : coupé.
+func _set_swim_loop(gain: float) -> void:
+	if _swim_loop == null:
+		if gain <= 0.0:
+			return
+		_swim_loop = AudioStreamPlayer.new()
+		_swim_loop.stream = Synth.recorded("swim_loop", true)
+		_swim_loop.bus = AudioSettings.BUS_SFX
+		add_child(_swim_loop)
+	if gain <= 0.001:
+		if _swim_loop.playing:
+			_swim_loop.stop()
+		return
+	if not _swim_loop.playing:
+		_swim_loop.play(randf() * 10.0)
+	_swim_loop.volume_db = linear_to_db(gain)
 
 
 # ------------------------------------------------------------------ vol du canon
@@ -4002,7 +4099,7 @@ func _place_pirate() -> void:
 		Loc.SWIM:
 			# les pieds sous la surface : l'eau opaque cache le bas du corps, on ne voit que buste et tête
 			var wl := SEA_Y + _wave_height(_lpos)
-			gp = _land_point(_lpos, wl - SWIM_DEPTH + sin(_swim_t * 3.4) * 0.05)
+			gp = _land_point(_lpos, wl - SWIM_DEPTH + sin(_swim_t * 3.4) * 0.05 - absf(sin(_stroke_ph)) * 0.07 * _stroke_amp)
 			ground = _land_point(_lpos, wl + 0.03)
 			shadow = false
 		Loc.FLIGHT:
@@ -4019,6 +4116,7 @@ func _place_pirate() -> void:
 	_sprite.global_position = gp
 	# à la nage : le bas du corps est coupé à la surface (l'eau est transparente, on le voyait « marcher » dessous)
 	_sprite.set_water_clip(_land_point(_lpos, SEA_Y + _wave_height(_lpos) + 0.02).y if _loc == Loc.SWIM else -10000.0)
+	_sprite.set_roll(sin(_stroke_ph) * GameConfig.SWIM_ROLL * _stroke_amp if _loc == Loc.SWIM else 0.0, SWIM_DEPTH)
 	_blob.global_position = ground
 	_blob.visible = shadow and not (_loc == Loc.SHIP and _mode == Mode.CANNON)
 	var air := _pz if (_loc == Loc.SHIP or _loc == Loc.LAND) else 0.0
@@ -4679,6 +4777,14 @@ func _camera_target() -> Vector3:
 	var cam_h := _pz if (_loc == Loc.NEST or (_loc == Loc.CLIMB and _climb.get("kind") == "mast")) else 0.0
 	if _loc == Loc.LAND:
 		cam_h = _lh   # la caméra monte avec le pirate (terrasse, escalier, étage)
+	# regard porté vers l'avant (12/11, « voir ce qu'il y a en face de nous quand on navigue ») : la caméra glisse devant
+	# l'étrave, d'autant plus que le bateau va vite et que la vue est inclinée vers l'horizon (molette enfoncée + souris)
+	if _loc == Loc.SHIP or _loc == Loc.NEST or _loc == Loc.RAFT:
+		var hs: ShipSim = _raft.sim if (_loc == Loc.RAFT and _raft != null) else _sim
+		var low := clampf((ELEVATION_DEG + 6.0 - _elev_deg) / 30.0, 0.0, 1.0)   # 0 vue de base, 1 vue rasante
+		var ahead := clampf(hs.speed / maxf(hs.max_speed, 0.1), 0.0, 1.0) * GameConfig.CAM_LOOKAHEAD * (0.5 + 1.5 * low)
+		var fw := hs.forward() * ahead
+		rel += Vector3(fw.x, 0.0, fw.y)
 	return Vector3(rel.x, cam_h, rel.z)
 
 
@@ -4931,9 +5037,10 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif key.physical_keycode == KEY_V:
 		_shoulder = not _shoulder
 		_say("Vue épaule : V pour revenir à la vue normale" if _shoulder else "Vue normale", 2.0)
-	elif key.physical_keycode == KEY_M and key.shift_pressed and _atmo != null:   # (12/11 : M seul sert au vol d'essai)
+	# (12/11 : la lettre M, pas la touche physique : en AZERTY, M est là où le QWERTY a « ; », et le vol ne partait jamais)
+	elif key.keycode == KEY_M and key.shift_pressed and _atmo != null:   # (M seul sert au vol d'essai)
 		_say("Son coupé : Maj+M pour le remettre" if _atmo.toggle_mute() else "Son remis", 2.0)
-	elif key.physical_keycode == KEY_M:
+	elif key.keycode == KEY_M:
 		_toggle_fly()
 	elif key.physical_keycode == KEY_B:
 		_toggle_compass()
@@ -5129,7 +5236,7 @@ func _interact(secondary: bool) -> void:
 			if not secondary:
 				_enter_hold()
 		"ammo":
-			_interact_crate(secondary, "ball")    # le tonneau de boulets : des boulets seulement
+			_interact_crate(secondary, "ball")    # le coffre à boulets : des boulets seulement
 		"crate":
 			_interact_crate(secondary, "plank")   # la caisse du pont : des planches seulement
 		"stash":
@@ -5157,18 +5264,18 @@ const SUPPLY_MAX := 99          ## boulets ou planches que la caisse peut conten
 const FENCE_RANGE := 36.0       ## m : le bateau doit être à quai à cette distance du receleur pour qu'il achète le coffre
 
 ## La caisse de provisions du pont : E prend un boulet (ou range ce qu'on porte), R prend une planche.
-## Le tonneau de boulets ne donne et ne reprend que des boulets ; la caisse du pont, que des planches (12/11 : un tonneau de
+## Le coffre à boulets ne donne et ne reprend que des boulets ; la caisse du pont, que des planches (12/11 : un tonneau de
 ## boulets qui donnait aussi des planches, ce n'était pas logique). `only` : "ball" ou "plank".
 func _interact_crate(_secondary: bool, only: String = "plank") -> void:
 	var what := "un boulet" if only == "ball" else "une planche"
-	var where := "le tonneau de boulets" if only == "ball" else "la caisse à planches"
+	var where := "le coffre à boulets" if only == "ball" else "la caisse à planches"
 	if _carrying:
 		if _carry_kind == only:
 			_put_supply(_carry_kind)
 			_say("Rangé dans %s : %s" % [where, what], 2.0)
 			_drop_carried()
 		elif _carry_kind == "ball" or _carry_kind == "plank":
-			_say("Ça va dans %s" % ("le tonneau de boulets" if _carry_kind == "ball" else "la caisse à planches"), 3.0)
+			_say("Ça va dans %s" % ("le coffre à boulets" if _carry_kind == "ball" else "la caisse à planches"), 3.0)
 		else:
 			_say("Les trésors vont dans le coffre du capitaine (cabine)", 4.0)
 		return
@@ -6131,6 +6238,10 @@ func _cannon_boom(at: Vector3) -> void:
 
 
 ## Un boulet qui arrive : `what` = "hull_hit" (dans une coque, un mob, un récif) ou "ball_splash" (à l'eau).
+func _sword_hit_sound(on_prop: bool, at: Vector3) -> void:
+	_sfx.play_at(Synth.recorded("sword_hit_wood" if on_prop else "sword_hit"), at, 0.9)
+
+
 func _ball_sound(what: String, at: Vector3) -> void:
 	_sfx.play_at(Synth.recorded(what), at, 1.0 if what == "hull_hit" else 0.7, 1.0, true)
 
@@ -6315,11 +6426,15 @@ func _update_hud() -> void:
 	_sail_hud.set_state(hs.wind_relative(), hs.sail_trim, hs.optimal_trim(), hs.trim_efficiency(), hs.sail_level > 0, _mode == Mode.SAILS)
 	if hs != _sim:
 		_hud.text = "Radeau — vitesse %.1f nœuds   Voile : %s   %s" % [hs.speed * 1.944, "hissée" if hs.sail_level > 0 else "affalée", wind]
-	_gold_label.text = "Or : %d\nBoulets : %d   Planches : %d" % [_profile.gold, _profile.balls, _profile.planks]
+	# (12/11 : l'or et les provisions ne s'affichent plus en jeu, seulement dans le sac (Tab) ; il reste ici le coffre du
+	# bateau et le trésor qu'on porte, utiles en pleine action)
+	var extra: Array = []
 	if not _stash.is_empty():
-		_gold_label.text += "\nCoffre : %d trésor(s), %d or" % [_stash.size(), Treasure.total_value(_stash)]
+		extra.append("Coffre : %d trésor(s), %d or" % [_stash.size(), Treasure.total_value(_stash)])
 	if _carry_kind == "treasure":
-		_gold_label.text += "\nTu portes : %s (%d or)" % [Treasure.name_of(_carry_item), Treasure.value_of(_carry_item)]
+		extra.append("Tu portes : %s (%d or)" % [Treasure.name_of(_carry_item), Treasure.value_of(_carry_item)])
+	_gold_label.text = "\n".join(extra)
+	_gold_label.visible = not extra.is_empty()
 	_sync_held_weapon()
 	_weapon_label.visible = _loc == Loc.LAND
 	if _weapon_label.visible:
@@ -7551,7 +7666,16 @@ func _die(why: String) -> void:
 	var lost_berry := _profile.berry
 	if lost_berry != "":
 		_profile.berry = ""
-		_profile.save()
+	# (12/11, demande de Jimmy) on perd aussi toutes ses provisions : boulets, planches, balles, cartouches. L'or est gardé.
+	var lost := []
+	for p: Array in [["balls", "boulets"], ["planks", "planches"], ["bullets", "balles"], ["shells", "cartouches"]]:
+		var n := int(_profile.get(str(p[0])))
+		if n > 0:
+			lost.append("%d %s" % [n, p[1]])
+			_profile.set(str(p[0]), 0)
+	_profile.save()
+	if not lost.is_empty():
+		_say("Perdu en mourant : %s (l'or est sauf)" % ", ".join(lost), 5.0)
 	_dead_t = GameConfig.RESPAWN_TIME
 	_dead_why = why
 	_clear_water_threats()
@@ -7717,11 +7841,15 @@ func _place_water_threats(center: Vector2, siren: Node3D, siren_pos: Vector2, sh
 					state = "circle"
 					s["t"] = 0.0
 					s["dur"] = randf_range(GameConfig.SHARK_CIRCLE_MIN, GameConfig.SHARK_CIRCLE_MAX)
+					s["wp"] = _shark_pass_point(center, pos, can_attack)
 			"circle":
-				if can_attack:   # il resserre son cercle quand la chasse est ouverte
-					s["circle_r"] = maxf(float(s["circle_r"]) - delta * 0.35, GameConfig.SHARK_CIRCLE_TIGHT)
-				var ang := off.angle() + 0.55 * float(s["spin"])
-				target = center + Vector2.from_angle(ang) * float(s["circle_r"])
+				# (12/11 : plus de ronde autour du nageur, « pas naturel ». Il rôde : il passe à quelques mètres, file au-delà,
+				# vire largement et repasse d'un autre côté, comme un requin qui inspecte sa proie. Les passages se rapprochent
+				# quand la chasse est ouverte.)
+				var wp: Vector2 = s.get("wp", center)
+				target = wp
+				if pos.distance_to(wp) < 2.0:
+					s["wp"] = _shark_pass_point(center, pos, can_attack)
 				if can_attack and float(s["t"]) > float(s["dur"]) and not someone_charging:
 					state = "attack"
 					someone_charging = true
@@ -7734,12 +7862,12 @@ func _place_water_threats(center: Vector2, siren: Node3D, siren_pos: Vector2, sh
 					s["t"] = 0.0
 			"retreat":
 				target = center + (off.normalized() if d > 0.1 else Vector2.RIGHT) * GameConfig.SHARK_RETREAT_DIST
-				speed = GameConfig.SHARK_SPEED_ATTACK * 0.8
+				speed = GameConfig.SHARK_SPEED_ATTACK * 0.7
 				if d > GameConfig.SHARK_RETREAT_DIST - 2.0 and float(s["scared"]) <= 0.0:
 					state = "circle"
 					s["t"] = 0.0
-					s["circle_r"] = randf_range(GameConfig.SHARK_CIRCLE_TIGHT + 2.0, GameConfig.SHARK_CIRCLE_R)
 					s["dur"] = randf_range(GameConfig.SHARK_CIRCLE_MIN, GameConfig.SHARK_CIRCLE_MAX)
+					s["wp"] = _shark_pass_point(center, pos, can_attack)
 		s["state"] = state
 		# cap : il tourne vers sa cible à vitesse limitée, en ondulant (la queue qui bat)
 		var want := (target - pos).angle()
@@ -7752,6 +7880,15 @@ func _place_water_threats(center: Vector2, siren: Node3D, siren_pos: Vector2, sh
 		n.position = Vector3(pos.x, SEA_Y + _wave_height(pos) + 0.05 - sink, pos.y)
 		n.rotation.y = PI / 2.0 - head   # l'aileron file dans le sens de sa course
 	return bit
+
+
+## Le prochain point de passage d'un requin qui rôde : de l'autre côté du nageur, en biais (il passe à côté sans foncer
+## dessus), à une distance qui diminue quand la chasse est ouverte.
+func _shark_pass_point(center: Vector2, from: Vector2, hunting: bool) -> Vector2:
+	var side := 1.0 if randf() < 0.5 else -1.0
+	var ang := (from - center).angle() + PI + side * randf_range(0.6, 1.25)
+	var far := randf_range(5.0, 8.0) if hunting else randf_range(7.0, 11.0)
+	return center + Vector2.from_angle(ang) * far
 
 
 ## Un nouveau requin pour un nageur en `center` : il naît au loin, dans une direction au hasard (le k-ième, réparti).
@@ -7909,6 +8046,83 @@ func _siren_trail() -> GPUParticles3D:
 	quad.material = qm
 	p.draw_pass_1 = quad
 	p.position = Vector3(0, 1.0, 0)
+	# (12/11 : « on ne la voit que selon l'angle de la caméra ». Les lueurs seules, petites et vite sorties de l'écran, ne
+	# suffisaient pas. On ajoute une colonne de lumière, comme une fusée éclairante figée, visible de partout, et une fusée
+	# qui monte et éclate en étincelles toutes les quelques secondes.)
+	p.add_child(_siren_beam())
+	p.add_child(_siren_flare())
+	return p
+
+
+const _BEAM_SHADER := """
+shader_type spatial;
+render_mode unshaded, blend_add, cull_disabled, depth_draw_never, shadows_disabled;
+uniform vec4 col : source_color = vec4(0.45, 1.0, 0.9, 1.0);
+void fragment() {
+	float up = 1.0 - UV.y;                       // 0 en bas, 1 en haut
+	float pulse = 0.75 + 0.25 * sin(TIME * 2.6 - up * 14.0);
+	ALBEDO = col.rgb * pulse;
+	ALPHA = pow(1.0 - up, 1.6) * 0.55;
+}
+"""
+
+
+func _siren_beam() -> MeshInstance3D:
+	var mi := MeshInstance3D.new()
+	var cm := CylinderMesh.new()
+	cm.top_radius = 0.06
+	cm.bottom_radius = 0.32
+	cm.height = GameConfig.SIREN_BEAM_HEIGHT
+	cm.radial_segments = 8
+	cm.rings = 1
+	var sh := Shader.new()
+	sh.code = _BEAM_SHADER
+	var m := ShaderMaterial.new()
+	m.shader = sh
+	cm.material = m
+	mi.mesh = cm
+	mi.position = Vector3(0, GameConfig.SIREN_BEAM_HEIGHT * 0.5 - 1.0, 0)
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	mi.custom_aabb = AABB(Vector3(-2, -GameConfig.SIREN_BEAM_HEIGHT, -2), Vector3(4, GameConfig.SIREN_BEAM_HEIGHT * 2.0, 4))
+	return mi
+
+
+## La fusée : une boule de lumière file vers le ciel (gros grain, traînée) puis retombe en étincelles, en boucle.
+func _siren_flare() -> GPUParticles3D:
+	var p := GPUParticles3D.new()
+	p.amount = 36
+	p.lifetime = 3.2
+	p.explosiveness = 0.0
+	p.visibility_aabb = AABB(Vector3(-8, -2, -8), Vector3(16, GameConfig.SIREN_BEAM_HEIGHT + 6.0, 16))
+	p.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var pm := ParticleProcessMaterial.new()
+	pm.direction = Vector3(0, 1, 0)
+	pm.spread = 4.0
+	pm.initial_velocity_min = 9.0
+	pm.initial_velocity_max = 11.0
+	pm.gravity = Vector3(0, -2.4, 0)
+	pm.damping_min = 0.5
+	pm.damping_max = 1.0
+	pm.scale_min = 0.9
+	pm.scale_max = 1.6
+	var ramp := Gradient.new()
+	ramp.set_color(0, Color(1.0, 1.0, 0.9, 1.0))
+	ramp.set_color(1, Color(0.4, 1.0, 0.85, 0.0))
+	ramp.add_point(0.6, Color(0.6, 1.0, 0.9, 0.8))
+	var gt := GradientTexture1D.new()
+	gt.gradient = ramp
+	pm.color_ramp = gt
+	p.process_material = pm
+	var quad := QuadMesh.new()
+	quad.size = Vector2(0.45, 0.45)
+	var qm := StandardMaterial3D.new()
+	qm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	qm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	qm.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	qm.vertex_color_use_as_albedo = true
+	qm.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
+	quad.material = qm
+	p.draw_pass_1 = quad
 	return p
 
 
