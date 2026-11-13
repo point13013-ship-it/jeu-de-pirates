@@ -376,3 +376,7 @@ const BOARD_ANCHOR_REACH := 1.9       ## m : distance au cabestan ennemi pour je
 const NEST_ZOOM := 0.30               ## grossissement de la caméra dans le nid de pie (avant : 0,45)
 const NEST_JUMP_UP := 3.0             ## m/s : élan vers le haut en sautant du nid
 const NEST_JUMP_OUT := 5.5            ## m/s : élan vers l'extérieur
+## Sac et coffre du bateau (13/11) : le sac ne porte que 10 planches et 10 boulets ; le reste est au coffre du bateau, commun à
+## tout l'équipage et tenu par l'hôte (le coffre à boulets, la caisse à planches et l'étagère de la cale ouvrent le même menu).
+const BAG_MAX := 10                   ## planches, et boulets, qu'un pirate porte dans son sac (avant : 99)
+const SHIP_CHEST_STEP := 1            ## ce qu'un clic prend ou range (Maj + clic : tout ce qui rentre)

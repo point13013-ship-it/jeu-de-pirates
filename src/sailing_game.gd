@@ -1327,6 +1327,7 @@ func _build_hud() -> void:
 	# or et quête en cours
 	_profile.persistent = not _args.has("fresh")
 	_profile.load_file()
+	_ship_stock = {"plank": _profile.ship_planks, "ball": _profile.ship_balls}   # (le coffre du bateau de l'hôte ; un client reçoit celui de l'hôte)
 	_quests = QuestLog.new(_profile)
 	_sync_quest_destination()
 	_gold_label = Label.new()
@@ -3261,6 +3262,7 @@ func _axis(neg: Array, pos: Array) -> float:
 
 func _update_player(delta: float) -> void:
 	_update_boarding(delta)
+	_spill_bag_surplus(delta)
 	_update_jump(delta)
 	if _is_down() or _is_dead():
 		return   # lot 4 : à terre on ne bouge plus ; mort, on attend de réapparaître
@@ -4635,7 +4637,8 @@ func ship_state() -> Array:
 	return [_sim.position.x, _sim.position.y, _sim.yaw, _sim.speed, _sim.rudder, _sim.rudder_target,
 			_sim.sail_level, _sim.sail_open, 1 if _sim.anchored else 0, mask, _helm_owner, _time,
 			_hull.leaks, _hull.patched, _hull.water, _sim.sail_trim, _sim.wind_angle, _sim.sail_trim_target, _stash.duplicate(),
-			_grap_state, _grap_hook.x, _grap_hook.y, _grap_target.x, _grap_target.y, Hook.kind_code(_grap_kind), _grap_owner]
+			_grap_state, _grap_hook.x, _grap_hook.y, _grap_target.x, _grap_target.y, Hook.kind_code(_grap_kind), _grap_owner,
+			int(_ship_stock["plank"]), int(_ship_stock["ball"])]
 
 
 ## Client : reçoit l'état du bateau de l'hôte. La position et le cap servent de cible (recalage en
@@ -4644,6 +4647,9 @@ func apply_ship_state(s: Array) -> void:
 	if _ship == null or s.size() < 26:
 		return
 	_stash = (s[18] as Array).duplicate()
+	if s.size() > 27 and (int(s[26]) != int(_ship_stock["plank"]) or int(s[27]) != int(_ship_stock["ball"])):
+		_ship_stock = {"plank": int(s[26]), "ball": int(s[27])}
+		_refresh_chest_ui()
 	if _grap_state == 0 and int(s[19]) != 0:   # le crochet vient de partir : son lancer sert à tracer l'arc
 		_grap_total = maxf(Vector2(float(s[19 + 1]), float(s[19 + 2])).distance_to(Vector2(float(s[22]), float(s[23]))), 1.0)
 	_grap_state = int(s[19])
@@ -5552,10 +5558,10 @@ func _interact_hold(secondary: bool) -> void:
 			else:
 				_say("La cale est sèche", 2.0)
 		"hole":
-			if _carry_kind == "plank":
+			if _carry_kind == "plank" or _profile.planks > 0:   # (13/11 : une planche du sac suffit)
 				_start_action("repair", "Clouer la planche", int(it["slot"]))   # lot 2 (4.2) : la voie d'eau est bouchée à la fin
 			else:
-				_say("Il te faut une planche : l'étagère est au fond, à l'arrière")
+				_say("Il te faut une planche dans ton sac : prends-en au coffre du bateau (étagère au fond, à l'arrière)")
 
 
 ## L'étagère de la cale : E prend une planche, R prend un boulet ; avec une planche ou un boulet en main, E ou R le range.
@@ -5569,11 +5575,7 @@ func _interact_rack(secondary: bool) -> void:
 	if _carrying:
 		_say("L'étagère ne prend que des boulets et des planches", 3.0)
 		return
-	var kind := "ball" if secondary else "plank"
-	if _profile.take_supply(kind):
-		_start_carry(kind)
-	else:
-		_say("Plus de %s : rachètes-en au Magasin Général" % ("boulets" if secondary else "planches"), 3.5)
+	_open_ship_chest()   # (13/11 : l'étagère de la cale ouvre le même coffre)
 
 
 ## Éclaboussure dans la cale quand on écope.
@@ -5751,10 +5753,7 @@ func _interact_crate(_secondary: bool, only: String = "plank") -> void:
 		else:
 			_say("Les trésors vont dans le coffre du capitaine (cabine)", 4.0)
 		return
-	if _profile.take_supply(only):
-		_start_carry(only)
-	else:
-		_say("Plus de %s : rachètes-en au Magasin Général ou casse des tonneaux sur les îles" % ("boulets" if only == "ball" else "planches"), 4.0)
+	_open_ship_chest()   # (13/11 : mains libres, on ouvre le coffre du bateau au lieu de prendre un seul objet)
 
 
 ## Range un boulet ou une planche dans les réserves (la caisse).
@@ -5817,6 +5816,12 @@ func apply_item_got(kind: String) -> void:
 			_profile.add_berry(bid, 1)
 			_popup("+1 %s" % BerryBook.berry_name(bid), here, BerryBook.color_of(bid))
 			_say("%s ramassée : elle est dans ton sac (Tab), mange-la quand tu veux" % BerryBook.berry_name(bid), 5.0)
+	elif kind.begins_with("s:"):   # sorti du coffre du bateau : « s:genre:nombre »
+		var sp := kind.split(":")
+		if sp.size() == 3:
+			_receive_supply(sp[1], int(sp[2]))
+			_profile.save()
+			_refresh_chest_ui()
 	elif kind == "ball" or kind == "plank":
 		_put_supply(kind)
 		_popup("+1 %s" % ("boulet" if kind == "ball" else "planche"), here, Color(0.85, 0.85, 0.95))
@@ -6057,6 +6062,17 @@ func apply_request(peer: int, kind: String, value: int) -> void:
 				_notify_all("Un squelette de l'équipage ennemi est abattu !" if (value % 1000) / 10 > 0 else "Leur timonier est abattu : le bateau est désemparé !")
 		"enemy_anchor":   # abordage : `peer` jette l'ancre de l'ennemi `value`
 			_fleet.drop_anchor(value)
+		"chest_put":   # coffre du bateau : `peer` range (valeur = genre x 1000 + nombre ; 0 planche, 1 boulet)
+			var pk := "plank" if value / 1000 == 0 else "ball"
+			_ship_stock[pk] = int(_ship_stock[pk]) + maxi(value % 1000, 0)
+			_ship_stock_changed()
+		"chest_take":   # coffre du bateau : `peer` prend ; l'hôte donne ce qui reste, dans l'ordre des demandes
+			var tk := "plank" if value / 1000 == 0 else "ball"
+			var got := mini(maxi(value % 1000, 0), int(_ship_stock[tk]))
+			if got > 0:
+				_ship_stock[tk] = int(_ship_stock[tk]) - got
+				_ship_stock_changed()
+				_give_item(peer, "s:%s:%d" % [tk, got])
 		"spill":   # naufrage : le trésor que `peer` portait à bord flotte sur le lieu du naufrage
 			if value >= 0 and Treasure.id_at(value) != "":
 				_loot.spawn("t:" + Treasure.id_at(value), _last_sink_pos + Vector2(randf_range(-4.0, 4.0), randf_range(-4.0, 4.0)), SINK_LOOT_TTL)
@@ -6881,7 +6897,7 @@ func _hold_prompt() -> String:
 		"bucket":
 			return "E : écoper (%d %% d'eau)" % int(_hull.fill() * 100.0) if _hull.water > 0.0 else "La cale est sèche"
 		"hole":
-			return "E : boucher la voie d'eau" if _carry_kind == "plank" else "Il te faut une planche (étagère au fond)"
+			return "E : boucher la voie d'eau" if (_carry_kind == "plank" or _profile.planks > 0) else "Il te faut une planche dans ton sac (coffre du bateau : étagère au fond)"
 	return ""
 
 
@@ -7291,6 +7307,80 @@ func _craft_cabin() -> void:
 	_cabin_send("build", i, "", 0, spot)
 
 
+# --- le coffre du bateau (13/11) : planches et boulets communs à l'équipage, tenus par l'hôte ; même panneau que le coffre de cabane
+
+var _ship_stock := {"plank": 30, "ball": 40}   ## le contenu du coffre du bateau (l'hôte fait autorité ; diffusé avec l'état du bateau)
+var _bag_spill_t := 0.0
+
+
+func _open_ship_chest() -> void:
+	if _inventory.is_open() or _dialog.is_open() or _shop_menu.is_open() or _chart.is_open() or _pause.is_open():
+		return
+	_chest_island = -2
+	_inventory.set_texts("Coffre du bateau — à tout l'équipage",
+			"Clic ou E : ranger / prendre 1     Maj + clic : tout ce qui rentre     R / Échap : fermer")
+	_inventory.open(_chest_rows())
+
+
+func _ship_chest_rows() -> Array:
+	var rows: Array = []
+	var names := {"plank": "Planches", "ball": "Boulets"}
+	rows.append({"head": true, "label": "Dans ton sac (10 au plus) — clic : ranger"})
+	for kind: String in ["plank", "ball"]:
+		var have := _have_of(kind)
+		rows.append({"kind": "cab_put", "id": kind, "label": "%s  %d / %d" % [names[kind], have, GameConfig.BAG_MAX], "count": have,
+				"right": "ranger" if have > 0 else "", "enabled": have > 0,
+				"desc": "Le coffre du bateau est à tout l'équipage. On recharge un canon et on bouche une voie d'eau avec ce qu'on a dans le sac."})
+	rows.append({"head": true, "label": "Dans le coffre du bateau — clic : prendre"})
+	for kind: String in ["plank", "ball"]:
+		var inside := int(_ship_stock.get(kind, 0))
+		var room := _room_for(kind)
+		rows.append({"kind": "cab_take", "id": kind, "label": "%s  x%d" % [names[kind], inside], "count": inside,
+				"right": "prendre" if (inside > 0 and room > 0) else ("coffre vide" if inside <= 0 else "sac plein"),
+				"enabled": inside > 0 and room > 0, "desc": "Ton sac porte %d planches et %d boulets au plus." % [GameConfig.BAG_MAX, GameConfig.BAG_MAX]})
+	return rows
+
+
+## Clic dans le coffre du bateau : je range ou je demande à prendre (l'hôte décide de ce qui sort : pas de doublon possible).
+func _ship_chest_use(kind: String, item: String) -> void:
+	if item != "plank" and item != "ball":
+		return
+	var all := Input.is_key_pressed(KEY_SHIFT)
+	var code := 0 if item == "plank" else 1
+	if kind == "cab_put":
+		var n := _have_of(item) if all else mini(GameConfig.SHIP_CHEST_STEP, _have_of(item))
+		if n > 0:
+			_remove_have(item, n)
+			_request("chest_put", code * 1000 + n)
+	elif kind == "cab_take":
+		var want := _room_for(item) if all else mini(GameConfig.SHIP_CHEST_STEP, _room_for(item))
+		if want > 0:
+			_request("chest_take", code * 1000 + want)
+	_refresh_chest_ui()
+
+
+## Hôte : le coffre du bateau change ; il est gardé dans le profil de l'hôte.
+func _ship_stock_changed() -> void:
+	_profile.ship_planks = int(_ship_stock["plank"])
+	_profile.ship_balls = int(_ship_stock["ball"])
+	_profile.save()
+	_refresh_chest_ui()
+
+
+## Chaque seconde : ce qui dépasse du sac (achats, butin) part au coffre du bateau.
+func _spill_bag_surplus(delta: float) -> void:
+	_bag_spill_t -= delta
+	if _bag_spill_t > 0.0:
+		return
+	_bag_spill_t = 1.0
+	for kind: String in ["plank", "ball"]:
+		var extra := _have_of(kind) - GameConfig.BAG_MAX
+		if extra > 0:
+			_remove_have(kind, extra)
+			_request("chest_put", (0 if kind == "plank" else 1) * 1000 + extra)
+			_say("Sac plein (%d au plus) : le surplus est rangé au coffre du bateau" % GameConfig.BAG_MAX, 3.5)
+
+
 # --- le coffre partagé : le panneau du sac, rempli avec ce qu'on peut ranger et ce que le coffre contient
 
 func _open_cabin_chest(island: int) -> void:
@@ -7307,7 +7397,7 @@ func _on_inventory_closed() -> void:
 
 
 func _refresh_chest_ui() -> void:
-	if _chest_island >= 0 and _inventory.is_open():
+	if (_chest_island >= 0 or _chest_island == -2) and _inventory.is_open():
 		_inventory.set_rows(_chest_rows())
 
 
@@ -7336,9 +7426,9 @@ func _room_for(kind: String) -> int:
 	if kind.begins_with("t:"):
 		return 0 if _carrying else 1
 	if kind == "plank":
-		return SUPPLY_MAX - _profile.planks
+		return maxi(GameConfig.BAG_MAX - _profile.planks, 0)   # (13/11 : le sac porte 10 planches et 10 boulets)
 	if kind == "ball":
-		return SUPPLY_MAX - _profile.balls
+		return maxi(GameConfig.BAG_MAX - _profile.balls, 0)
 	return 1000000
 
 
@@ -7365,6 +7455,8 @@ func _remove_have(kind: String, n: int) -> void:
 
 
 func _chest_rows() -> Array:
+	if _chest_island == -2:
+		return _ship_chest_rows()
 	var rows: Array = []
 	if _chest_island < 0 or _chest_island >= _islands.islands.size():
 		return rows
@@ -7406,6 +7498,9 @@ func _chest_rows() -> Array:
 
 
 func _on_chest_use(kind: String, item: String) -> void:
+	if _chest_island == -2:
+		_ship_chest_use(kind, item)
+		return
 	if _chest_island < 0:
 		return
 	var id := str((_islands.islands[_chest_island] as Dictionary)["id"])
@@ -7734,9 +7829,10 @@ func _apply_action_effect(a: TimedAction) -> void:
 			_request("anchor", 0)
 			_say("L'ancre est jetée" if not _sim.anchored else "L'ancre est levée", 2.0)
 		"repair":
-			if _carry_kind == "plank":
+			if _carry_kind == "plank" or _profile.take_supply("plank"):
 				_request("patch", a.arg)
-				_drop_carried()
+				if _carry_kind == "plank":
+					_drop_carried()
 				_say("Voie d'eau bouchée", 2.0)
 		"bail":
 			_request("bail", 0)
