@@ -2215,10 +2215,28 @@ func _collide_ship_with_land(prev_pos: Vector2, prev_yaw: float) -> void:
 			_sim.speed *= 0.5
 			return
 	if not _touch_enemy_ship(prev_pos, prev_yaw).is_empty():
-		return   # on se touchait déjà (un bateau ennemi vient de nous aborder) : on peut s'en dégager au lieu de rester collé
+		# on se touchait déjà (un bateau ennemi vient de nous aborder) : on peut s'en dégager au lieu de rester collé, mais
+		# seulement en s'ÉLOIGNANT de lui (13/11 : dans n'importe quel sens, on finissait par le traverser)
+		var ec := _nearest_enemy_center(prev_pos)
+		if ec != Vector2.INF and np.distance_to(ec) < prev_pos.distance_to(ec):
+			_sim.position = prev_pos
+			_sim.speed = 0.0
+		return
 	_sim.position = prev_pos
 	_sim.yaw = prev_yaw
 	_sim.speed = 0.0
+
+
+## Le centre du bateau ennemi le plus proche de `pos`, ou Vector2.INF s'il n'y en a pas.
+func _nearest_enemy_center(pos: Vector2) -> Vector2:
+	var best := Vector2.INF
+	for es: Dictionary in _fleet.ships:
+		if es["state"] == "sinking" or es.get("model") == null:
+			continue
+		var c: Vector2 = (es["sim"] as ShipSim).position
+		if best == Vector2.INF or c.distance_to(pos) < best.distance_to(pos):
+			best = c
+	return best
 
 
 ## Ce que la coque touche à cette position : {} si rien, sinon {kind, bx, side}.
@@ -3571,6 +3589,39 @@ func _world_to_ship(w: Vector2) -> Vector2:
 	return Vector2(local.x / ShipModel.SCALE - _ship.shift, -local.z / ShipModel.SCALE)
 
 
+## Les coques ennemies sont solides pour un nageur aussi (13/11 : on les traversait à la nage). Si `p` (monde x/z) tombe dans
+## l'une d'elles, le point est ramené sur son flanc le plus proche. Chaque joueur le calcule pour son pirate, avec les positions
+## des ennemis reçues de l'hôte.
+func _push_out_of_enemy_hulls(p: Vector2) -> Vector2:
+	for es: Dictionary in _fleet.ships:
+		var model := es.get("model") as ShipModel
+		if model == null or es["state"] == "sinking":
+			continue
+		var esim: ShipSim = es["sim"]
+		if esim.position.distance_to(p) > model.length * ShipModel.SCALE:
+			continue
+		var rel := p - esim.position
+		var local := Basis(Vector3.UP, -esim.yaw) * Vector3(rel.x, 0.0, rel.y)
+		var bp := Vector2(local.x / ShipModel.SCALE - model.shift, -local.z / ShipModel.SCALE)
+		if not model.over_hull(bp):
+			continue
+		bp.y = (1.0 if bp.y >= 0.0 else -1.0) * (model.half_width(bp.x) + 0.12)
+		var out := Basis(Vector3.UP, esim.yaw) * Vector3((bp.x + model.shift) * ShipModel.SCALE, 0.0, -bp.y * ShipModel.SCALE)
+		p = esim.position + Vector2(out.x, out.z)
+	return p
+
+
+## Hauteur du sable sous le point `p` (monde x/z) sur la pente de plage d'une île, ou -INF au large.
+func _beach_height(p: Vector2) -> float:
+	var i := _islands.island_at(p, IslandWorld.SLOPE)
+	return IslandWorld.ground_height(_islands.sdf(i, p)) if i >= 0 else -INF
+
+
+## Vrai si le nageur a pied : le sable de la plage le porte plus haut que la nage (il marche dans l'eau, puis sur le sable).
+func _wading() -> bool:
+	return _loc == Loc.SWIM and _beach_height(_lpos) > SEA_Y - SWIM_DEPTH + 0.25
+
+
 ## Nage : les flèches nagent à vitesse égale dans toutes les directions ; sur la terre ferme (plage, quai) on prend pied ;
 ## on ne traverse pas la coque.
 func _update_swim(move: Vector2, delta: float) -> void:
@@ -3583,7 +3634,7 @@ func _update_swim(move: Vector2, delta: float) -> void:
 		_loc = Loc.LAND
 		_lpos = next
 		_lh = _land.walk_height(next, 0.0) if _land.walk_height(next, 0.0) != Land.NO_SURFACE else 0.0
-		_vz = 4.0   # on se hisse hors de l'eau
+		_vz = 0.0 if _beach_height(next) > -INF else 4.0   # on se hisse hors de l'eau (quai) ; sur une plage on sort en marchant
 		_pz = 0.0
 		_splash_burst(next)
 		return
@@ -3593,6 +3644,7 @@ func _update_swim(move: Vector2, delta: float) -> void:
 		var side := 1.0 if bp.y >= 0.0 else -1.0
 		bp.y = side * (_ship.half_width(bp.x) + 0.12)
 		next = _ship_to_world(bp)
+	next = _push_out_of_enemy_hulls(next)
 	_lpos = next
 
 
@@ -4171,7 +4223,11 @@ func _place_pirate() -> void:
 		Loc.SWIM:
 			# les pieds sous la surface : l'eau opaque cache le bas du corps, on ne voit que buste et tête
 			var wl := SEA_Y + _wave_height(_lpos)
-			gp = _land_point(_lpos, wl - SWIM_DEPTH + sin(_swim_t * 3.4) * 0.05 - absf(sin(_stroke_ph)) * 0.07 * _stroke_amp)
+			# 13/11 : sur la pente d'une plage, le sable remonte au-dessus de l'eau avant le bord de la terre praticable : le nageur
+			# passait SOUS le sable et devait sauter pour sortir. Il prend pied sur la pente dès que le fond le porte.
+			var feet := wl - SWIM_DEPTH + sin(_swim_t * 3.4) * 0.05 - absf(sin(_stroke_ph)) * 0.07 * _stroke_amp
+			var beach := _beach_height(_lpos)
+			gp = _land_point(_lpos, maxf(feet, beach + 0.02))
 			ground = _land_point(_lpos, wl + 0.03)
 			shadow = false
 		Loc.FLIGHT:
@@ -4187,8 +4243,8 @@ func _place_pirate() -> void:
 			ground = _ship_point(_ppos, 0.04)
 	_sprite.global_position = gp
 	# à la nage : le bas du corps est coupé à la surface (l'eau est transparente, on le voyait « marcher » dessous)
-	_sprite.set_water_clip(_land_point(_lpos, SEA_Y + _wave_height(_lpos) + 0.02).y if _loc == Loc.SWIM else -10000.0)
-	_sprite.set_roll(sin(_stroke_ph) * GameConfig.SWIM_ROLL * _stroke_amp if _loc == Loc.SWIM else 0.0, SWIM_DEPTH)
+	_sprite.set_water_clip(_land_point(_lpos, SEA_Y + _wave_height(_lpos) + 0.02).y if (_loc == Loc.SWIM and not _wading()) else -10000.0)
+	_sprite.set_roll(sin(_stroke_ph) * GameConfig.SWIM_ROLL * _stroke_amp if (_loc == Loc.SWIM and not _wading()) else 0.0, SWIM_DEPTH)
 	_blob.global_position = ground
 	_blob.visible = shadow and not (_loc == Loc.SHIP and _mode == Mode.CANNON)
 	var air := _pz if (_loc == Loc.SHIP or _loc == Loc.LAND) else 0.0
@@ -4574,7 +4630,7 @@ func _animate_pirates(delta: float) -> void:
 		# tourne vers où il nage (en attendant de vraies images de nage)
 		if move.length() > 0.0005:
 			_sprite.direction = PirateSprite.direction_of(move)
-		_sprite.drive(delta, Vector2.ZERO, _carrying, false, helm_dir, 0, false, climb_face)
+		_sprite.drive(delta, move if _wading() else Vector2.ZERO, _carrying, false, helm_dir, 0, false, climb_face)   # (il a pied sur la plage : il marche)
 	else:
 		_sprite.drive(delta, move, _carrying, _loc == Loc.SHIP and _mode == Mode.HELM, helm_dir, air, climbing, climb_face)
 	_prev_ppos = _ppos
