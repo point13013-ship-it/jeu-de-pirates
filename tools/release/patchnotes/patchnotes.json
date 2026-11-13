@@ -2,6 +2,15 @@
   "_commentaire": "Les nouveautés affichées dans la salle de jeux (bouton Nouveautés, et après chaque mise à jour). La plus récente d'abord. 'version': 'prochaine' est remplacé par le numéro de la version au moment de la publication (publish.ps1). Les images sont les fichiers de ce dossier ; publish.ps1 les envoie avec la version.",
   "versions": [
     {
+      "version": "2026.11.13-1506",
+      "titre": "Écran dégagé, canard en plastique",
+      "points": [
+        "Plus aucun texte au centre de l'écran : ni messages, ni avertissement de combat, ni aide à la nage. Seuls restent le décompte quand on est à terre ou mort, et la touche du poste visé, en petit, tout en bas.",
+        "L'alerte au combat reste sonore : cloche du bord et tambour.",
+        "À la nage, c'est un canard en plastique géant qui vient vous chercher, à la place de la sirène. Il couine."
+      ]
+    },
+    {
       "version": "2026.11.13-1459",
       "titre": "On se bat enfin à bord, alerte au combat",
       "points": [
