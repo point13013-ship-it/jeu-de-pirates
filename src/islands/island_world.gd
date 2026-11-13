@@ -427,7 +427,7 @@ func _settle(i: int, p: Vector2, level: bool = false) -> Vector2:
 	if ((islands[i] as Dictionary)["terrain"] as Dictionary).is_empty():
 		return p
 	var d := 0.0
-	while d <= 14.0:
+	while d <= 40.0:   # (assez loin pour sortir d une crique)
 		for k in (1 if d == 0.0 else 16):
 			var q := p + Vector2.from_angle(TAU * k / 16.0) * d
 			if sdf(i, q) > 1.2 and not too_steep(i, q) and not too_steep(i, q + Vector2(0.6, 0)) and not too_steep(i, q - Vector2(0.6, 0)) 					and not too_steep(i, q + Vector2(0, 0.6)) and not too_steep(i, q - Vector2(0, 0.6)) 					and (not level or _level_enough(i, q)):
