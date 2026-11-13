@@ -22,7 +22,7 @@ const ISLAND_RATE := 12.0   ## fois par seconde : état des ennemis et des coffr
 const LOOT_RATE := 6.0      ## fois par seconde : butin du monde
 const FLEET_RATE := 10.0    ## fois par seconde : bateaux ennemis
 const META_RATE := 2.0      ## fois par seconde : coffres, baies, tonneaux, îles générées
-const PROTOCOL := 15   # 15 : la longue-vue du bord (une par bateau, son détenteur dans l'état du bateau) ; 14 : visée des canons diffusée, trésors du naufrage ; 13 : ventes partagées (message à un seul joueur), rangs des ennemis ; 12 : à terre / relever / mort et réapparition, sirène et requins ; 11 : objet porté envoyé avec la position (trésor compris), hisser un camarade, échelle de coque (lieu 8), actions longues ; 10 : réputation (points envoyés par l'hôte), tir de canon visé (angle dans l'événement de tir) ; 9 : îles capturées et cabanes (coffre partagé) ; 8 : grappin visé, radeaux des joueurs
+const PROTOCOL := 16   # 16 : corde (ligoter, délier, s'attacher au bateau : événements bind, unbind, tether), silex ; 15 : la longue-vue du bord (une par bateau, son détenteur dans l'état du bateau) ; 14 : visée des canons diffusée, trésors du naufrage ; 13 : ventes partagées (message à un seul joueur), rangs des ennemis ; 12 : à terre / relever / mort et réapparition, sirène et requins ; 11 : objet porté envoyé avec la position (trésor compris), hisser un camarade, échelle de coque (lieu 8), actions longues ; 10 : réputation (points envoyés par l'hôte), tir de canon visé (angle dans l'événement de tir) ; 9 : îles capturées et cabanes (coffre partagé) ; 8 : grappin visé, radeaux des joueurs
 
 var game: Node
 var active := false

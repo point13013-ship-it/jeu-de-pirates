@@ -125,6 +125,7 @@ const ACTION_TIMES := {
 	"bail": 1.5,      # un seau : remplir puis vider
 	"hoist": 1.6,     # hisser un camarade hors de l'eau
 	"revive": 4.0,    # relever un camarade à terre (lot 4)
+	"flint": 12.0,    # couper ses liens avec le silex caché (13/11)
 }
 const ACTION_MOVE_TOLERANCE := 0.12   ## de combien (unités du lieu) on peut glisser sans couper l'action (le pont tangue)
 const BAIL_FILL_SHARE := 0.5          ## part de l'écopage passée à remplir le seau (le reste : le vider)
@@ -434,3 +435,8 @@ const SPY_ELEV := 16.0                  ## ° : inclinaison de la vue, l'œil à
 const SPY_AHEAD := 85.0                 ## m : le regard porte à cette distance devant le pirate
 const SPY_ZOOM := 0.9                   ## grossissement (la vue de mer ordinaire est vers 0,55)
 const SPY_PAN := 0.9                    ## rad/s : vitesse de balayage avec Q/D
+## Corde, silex (13/11, 4.2 à 4.4).
+const ROPE_REACH := 1.8                 ## m : distance à laquelle on ligote ou délie un autre joueur (touche C)
+const ROPE_LENGTH := 9.0                ## m : longueur de la corde qui relie au bateau (on est traîné au bout, derrière la poupe)
+const BOUND_MAX_TIME := 180.0           ## s : sans silex et sans aide, les liens lâchent au bout de ce temps
+const FLINT_CHEST_CHANCE := 0.35        ## chance de trouver un silex dans un coffre d'île

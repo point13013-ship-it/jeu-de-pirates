@@ -461,12 +461,177 @@ func _back_to_menu() -> void:
 
 
 func _toggle_compass() -> void:
+	if _bound:
+		return
 	if _profile.tool == "spyglass":
 		_toggle_spyglass()
 		return
 	_sprite.compass_enabled = not _sprite.compass_enabled
 	_pause.refresh_compass(_sprite.compass_enabled)
 	_say("Boussole sortie (B pour la ranger)" if _sprite.compass_enabled else "Boussole rangée (B pour la ressortir)", 2.5)
+
+
+## ------------------------------------------------------------------ 13/11 (4.2 à 4.4) : la corde, l'emplacement caché, le silex
+## Chaque pirate a une corde (touche C).
+## - Sur le pont, C : je m'attache au bateau (un tour de corde à la taille). Attaché, si je tombe à l'eau je suis traîné derrière
+##   la poupe au bout de ROPE_LENGTH m : pas de noyade, pas de canard, pas de requins. C de nouveau : je me détache.
+## - Près d'un autre joueur (ROPE_REACH m), C : je le ligote ; C de nouveau, par n'importe qui : il est délié. Ligoté, on ne
+##   marche plus, on ne frappe plus, on ne touche plus à rien (trois tours de corde le montrent chez tout le monde).
+## - L'emplacement caché du sac reste accessible ligoté : avec un silex dedans, E coupe les liens en FLINT_TIME s ; le silex
+##   est consommé. On trouve des silex dans les coffres des îles. Sans silex, les liens lâchent au bout de BOUND_MAX_TIME s.
+## Réseau : ce sont des événements relayés par l'hôte (« bind », « unbind », « tether ») ; celui qui est visé applique l'effet.
+var _tether := false
+var _bound := false
+var _bound_t := 0.0
+var _bound_ids := {}          # joueurs ligotés (pour savoir s'il faut lier ou délier), moi compris
+var _coils := {}              # identifiant -> les tours de corde autour de son pirate
+var _rope_line: MeshInstance3D
+
+
+func _rope_sprite(id: int) -> Node3D:
+	if id == _my_id():
+		return _sprite
+	return (_remotes[id]["sprite"] as Node3D) if _remotes.has(id) else null
+
+
+## Pose `rings` tours de corde autour du pirate `id` (0 : on les retire).
+func _set_coil(id: int, rings: int) -> void:
+	if _coils.has(id) and is_instance_valid(_coils[id]):
+		(_coils[id] as Node).queue_free()
+	_coils.erase(id)
+	var sp := _rope_sprite(id)
+	if rings <= 0 or sp == null:
+		return
+	var root := Node3D.new()
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = Color("cf9c62")
+	mat.roughness = 0.9
+	for k in rings:
+		var mi := MeshInstance3D.new()
+		var tm := TorusMesh.new()
+		tm.inner_radius = 0.2
+		tm.outer_radius = 0.27
+		tm.rings = 12
+		tm.ring_segments = 6
+		mi.mesh = tm
+		mi.material_override = mat
+		mi.position = Vector3(0.0, 0.72 + 0.17 * k, 0.0)
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		root.add_child(mi)
+	sp.add_child(root)
+	_coils[id] = root
+
+
+## Touche C : la corde.
+func _use_rope() -> void:
+	if _bound or _is_down() or _is_dead() or _act != null:
+		return
+	var me := _my_world_pos()
+	var best := 0
+	var best_d := GameConfig.ROPE_REACH
+	for id: int in _remotes:
+		var r: Dictionary = _remotes[id]
+		var p: Vector2 = r["pos"]
+		if int(r["loc"]) == 0:
+			p = _ship_to_world(p)
+		elif int(r["loc"]) != 1:
+			continue
+		if me.distance_to(p) < best_d:
+			best_d = me.distance_to(p)
+			best = id
+	if best != 0 and (_loc == Loc.SHIP or _loc == Loc.LAND):
+		var free := _bound_ids.has(best)
+		_send_action("unbind" if free else "bind", str(best), me, _face)
+		_apply_bind(best, not free)
+		_sfx.play_at(Synth.recorded("rope"), _my_scene_pos(), 0.9)
+		return
+	if _tether or (_loc == Loc.SHIP and _mode == Mode.WALK):
+		_set_tether(not _tether)
+
+
+func _set_tether(on: bool) -> void:
+	if on == _tether:
+		return
+	_tether = on
+	_send_action("tether", "1" if on else "0", _my_world_pos(), _face)
+	_set_coil(_my_id(), 1 if on else 0)
+	_sfx.play_at(Synth.recorded("rope"), _my_scene_pos(), 0.8)
+	if not on and _rope_line != null:
+		_rope_line.visible = false
+
+
+## Chez tout le monde : `id` est ligoté ou délié.
+func _apply_bind(id: int, on: bool) -> void:
+	if on:
+		_bound_ids[id] = true
+	else:
+		_bound_ids.erase(id)
+	_set_coil(id, 3 if on else 0)
+	if id != _my_id():
+		return
+	_bound = on
+	_bound_t = 0.0
+	if on:
+		if _tether:
+			_tether = false
+		if _spy:
+			_toggle_spyglass()
+		_sprite.compass_enabled = false
+		if _act != null:
+			_cancel_action()
+		if _carrying:
+			_drop_to_ground()
+		_sfx.play_at(Synth.recorded("rope"), _my_scene_pos(), 1.0)
+
+
+## Ligoté : le temps passe ; les liens finissent par lâcher tout seuls.
+func _bound_tick(delta: float) -> void:
+	_bound_t += delta
+	if _bound_t >= GameConfig.BOUND_MAX_TIME:
+		_send_action("unbind", str(_my_id()), _my_world_pos(), _face)
+		_apply_bind(_my_id(), false)
+
+
+## Ligoté, E : je coupe mes liens avec le silex de l'emplacement caché.
+func _try_flint() -> void:
+	if _profile.hidden != "flint" or _act != null:
+		_sfx.play_at(Synth.recorded("rope"), _my_scene_pos(), 0.5, 1.3)   # on tire sur les liens, en vain
+		return
+	_start_action("flint", "Couper ses liens")
+
+
+## Chaque image : la corde qui me relie au bateau quand je suis à l'eau, et le pirate traîné au bout.
+func _update_tether() -> void:
+	if not _tether:
+		return
+	if _loc == Loc.LAND or _loc == Loc.RAFT or _loc == Loc.FLIGHT:
+		_set_tether(false)   # (à terre, sur un radeau, tiré par le canon : la corde ne suit pas)
+		return
+	if _loc != Loc.SWIM:
+		if _rope_line != null:
+			_rope_line.visible = false
+		return
+	var anchor := _ship_to_world(Vector2(-_ship.length * 0.5 + 0.4, 0.0))
+	var d := _lpos - anchor
+	if d.length() > GameConfig.ROPE_LENGTH:
+		_lpos = anchor + d.normalized() * GameConfig.ROPE_LENGTH   # (le bateau avance : je suis traîné)
+	if _rope_line == null:
+		_rope_line = MeshInstance3D.new()
+		var bm := BoxMesh.new()
+		bm.size = Vector3(0.06, 0.06, 1.0)
+		_rope_line.mesh = bm
+		var m := StandardMaterial3D.new()
+		m.albedo_color = Color("cf9c62")
+		_rope_line.material_override = m
+		_rope_line.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		_world_fixed.add_child(_rope_line)
+	var a := Vector3(anchor.x, _ship.position.y + 1.0, anchor.y)
+	var b := Vector3(_lpos.x, SEA_Y + 0.25, _lpos.y)
+	_rope_line.visible = true
+	_rope_line.position = (a + b) * 0.5
+	_rope_line.scale = Vector3(1.0, 1.0, maxf(a.distance_to(b), 0.05))
+	if a.distance_to(b) > 0.05:
+		_rope_line.look_at_from_position((a + b) * 0.5, b, Vector3.UP)
 
 
 ## 13/11 (4.1) — la longue-vue. On a en poche la boussole OU la longue-vue (échange au coffre du bateau : il faut se parler).
@@ -1904,6 +2069,12 @@ func _apply_test_args() -> void:
 	if _args.has("water-time"):   # essai : --water-time=85 (avec --swim) : déjà ce temps passé dans l'eau
 		get_tree().create_timer(0.4).timeout.connect(func() -> void: _water_t = float(_args["water-time"]))
 	_profile.tool = "compass"   # (la longue-vue du bord est au coffre au début de chaque partie)
+	if _args.has("flint"):   # essais : --flint=1 (un silex, glissé dans l'emplacement caché), --bind=6 (ligoté à cet instant),
+		_profile.hidden = "flint"   # --tether=4 (attaché au bateau à cet instant)
+	if _args.has("bind"):
+		get_tree().create_timer(float(_args["bind"])).timeout.connect(func() -> void: _apply_bind(_my_id(), true))
+	if _args.has("tether"):
+		get_tree().create_timer(float(_args["tether"])).timeout.connect(func() -> void: _set_tether(true))
 	if _args.has("tool") and str(_args["tool"]) == "spyglass":   # essai : --tool=spyglass la met en poche (--press=B@6 : à l'œil)
 		_spy_holder = _my_id()
 		_profile.tool = "spyglass"
@@ -2907,7 +3078,7 @@ func _try_attack(secondary: bool = false) -> void:
 	if _act != null:
 		_cancel_action()   # frapper coupe l'action en cours
 		return
-	if _is_down() or _is_dead():
+	if _is_down() or _is_dead() or _bound:
 		return
 	if _loc == Loc.SWIM and _atk_cd <= 0.0 and not _sharks.is_empty():   # lot 4 (5.7) : à la nage, un coup de sabre chasse un requin
 		_atk_cd = 0.6
@@ -3053,6 +3224,13 @@ func apply_action(peer: int, kind: String, arg: String, pos: Vector2, dir: Vecto
 	match kind:
 		"enemy_repair":   # un équipage ennemi répare sa coque
 			_enemy_repair_fx(pos)
+		"bind":   # `peer` ligote le joueur dont l'identifiant est dans `arg` (moi, peut-être)
+			_apply_bind(int(arg), true)
+		"unbind":
+			_apply_bind(int(arg), false)
+		"tether":   # `peer` s'attache au bateau, ou se détache
+			if not _bound_ids.has(peer):
+				_set_coil(peer, 1 if arg == "1" else 0)
 		"ball_hit":   # l'hôte a vu un boulet toucher un ennemi (bateau ou mob) : le choc s'entend chez tous
 			_ball_sound("hull_hit", _world_fixed.to_global(Vector3(pos.x, SEA_Y + 0.6, pos.y)))
 		"act", "act_end":   # lot 2 : une action longue commence ou finit
@@ -3126,6 +3304,15 @@ func _inventory_rows() -> Array:
 			rows.append({"kind": "weapon_empty", "slot": int(pair[1]), "label": "Emplacement 2 (clic droit) : achète une deuxième arme au port"})
 			continue
 		rows.append(_weapon_row(id, int(pair[1])))
+	# 13/11 (4.3, 4.4) : le silex et l'emplacement caché (accessible même ligoté)
+	rows.append({"head": true, "label": "Emplacement caché — clic : y glisser ou reprendre un silex"})
+	var hid := _profile.hidden == "flint"
+	rows.append({"kind": "hidden", "id": "flint", "label": "Silex caché" if hid else "Vide", "count": 1 if hid else 0,
+			"right": "le reprendre" if hid else ("y cacher un silex" if _profile.flint > 0 else "pas de silex"),
+			"enabled": hid or _profile.flint > 0,
+			"desc": "Personne ne fouille là. Ligoté, appuie sur E : le silex caché coupe tes liens en %d s, et il est usé. On trouve des silex dans les coffres des îles." % int(GameConfig.ACTION_TIMES["flint"])})
+	rows.append({"kind": "item", "id": "flint", "label": "Silex", "count": _profile.flint, "right": "%d" % _profile.flint, "enabled": false,
+			"desc": "Une pierre tranchante, à usage unique. Glisse-la dans l'emplacement caché avant d'en avoir besoin."})
 	rows.append({"head": true, "label": "Provisions"})
 	for line: Array in [["balls", "Boulets", "Pour les canons. Ils sont rangés dans le coffre à boulets du pont."],
 			["planks", "Planches", "Pour boucher les voies d'eau (dans la cale) et fabriquer. Rangées dans la caisse à planches."],
@@ -3214,6 +3401,18 @@ func _on_inventory_alt(kind: String, id: String) -> void:
 
 
 func _on_inventory_use(kind: String, id: String) -> void:
+	if kind == "hidden":
+		if _profile.hidden == "flint":
+			_profile.hidden = ""
+			_profile.flint += 1
+		elif _profile.flint > 0:
+			_profile.flint -= 1
+			_profile.hidden = "flint"
+		_profile.save()
+		_inventory.open(_inventory_rows())
+		return
+	if _bound:
+		return   # ligoté : le reste du sac est hors de portée
 	if _chest_island >= 0 or _chest_island == -2:   # le panneau montre le coffre d'une cabane, ou celui du bateau (-2)
 		_on_chest_use(kind, id)
 		return
@@ -3707,6 +3906,10 @@ func _update_player(delta: float) -> void:
 	_update_jump(delta)
 	if _is_down() or _is_dead():
 		return   # lot 4 : à terre on ne bouge plus ; mort, on attend de réapparaître
+	_update_tether()
+	if _bound:
+		_bound_tick(delta)
+		return   # ligoté : on ne bouge plus
 	var move := Vector2(_axis([KEY_A, KEY_LEFT], [KEY_D, KEY_RIGHT]), _axis([KEY_W, KEY_UP], [KEY_S, KEY_DOWN]))
 	if _test_move != Vector2.ZERO:
 		move = _test_move
@@ -4093,7 +4296,7 @@ func _splash_burst(w: Vector2) -> void:
 
 
 func _try_jump() -> void:
-	if _is_down() or _is_dead():
+	if _is_down() or _is_dead() or _bound:
 		return
 	if _board_id >= 0:
 		_leave_board()   # du pont ennemi, Espace : on plonge
@@ -6004,6 +6207,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		_toggle_inventory()
 	elif key.physical_keycode == KEY_X:
 		_cycle_weapon()
+	elif key.physical_keycode == KEY_C:
+		_use_rope()
 	elif key.physical_keycode == KEY_T:
 		_try_unstick()
 	elif key.physical_keycode == KEY_V:
@@ -6100,6 +6305,10 @@ func _splash_bucket() -> void:
 func _interact(secondary: bool) -> void:
 	if _loc == Loc.CLIMB or _loc == Loc.FLIGHT or _is_down() or _is_dead():
 		return
+	if _bound:
+		if not secondary:
+			_try_flint()
+		return   # ligoté : on ne touche à rien, sauf au silex caché
 	if not secondary and _loc == Loc.SWIM and _try_siren():
 		return   # lot 4 (5.6) : la sirène me ramène à bord
 	if not secondary and (_loc == Loc.LAND or (_loc == Loc.SHIP and _mode == Mode.WALK)):
@@ -6335,6 +6544,10 @@ func apply_item_got(kind: String) -> void:
 	elif kind == "ball" or kind == "plank":
 		_put_supply(kind)
 		_popup("+1 %s" % ("boulet" if kind == "ball" else "planche"), here, Color(0.85, 0.85, 0.95))
+	elif kind == "flint":
+		_profile.flint += 1
+		_profile.save()
+		_atmo.audio.play_chime()
 	elif kind.begins_with("g:"):
 		var n := int(kind.substr(2))
 		_profile.gold += n
@@ -6504,6 +6717,8 @@ func apply_request(peer: int, kind: String, value: int) -> void:
 				_give_rep(peer, int(Reputation.gain("chest")), "coffre ouvert")
 				# et un trésor à rapporter : plus le coffre est gardé (gros magot), plus il peut être rare
 				_give_item(peer, "t:" + Treasure.roll(_rng, maxf(float(gold) / 45.0, 0.6)))
+				if _rng.randf() < GameConfig.FLINT_CHEST_CHANCE:   # (13/11 : un silex au fond du coffre, parfois)
+					_give_item(peer, "flint")
 		"helm_take":
 			if _helm_owner == 0 or _helm_owner == peer:
 				_helm_owner = peer
@@ -8467,6 +8682,11 @@ func _end_action(ok: bool) -> void:
 ## L'effet d'une action menée à son terme : on le demande à l'hôte, qui fait autorité.
 func _apply_action_effect(a: TimedAction) -> void:
 	match a.kind:
+		"flint":   # les liens sont coupés ; le silex est usé
+			_profile.hidden = ""
+			_profile.save()
+			_send_action("unbind", str(_my_id()), _my_world_pos(), _face)
+			_apply_bind(_my_id(), false)
 		"anchor":
 			_request("anchor", 0)
 			_say("L'ancre est jetée" if not _sim.anchored else "L'ancre est levée", 2.0)
@@ -8966,9 +9186,10 @@ func _update_lot4(delta: float) -> void:
 ## 5.6 à 5.9 : le temps passé dans l'eau. Sirène, puis requins qui rôdent et mordent, puis noyade ; tout s'efface dès qu'on
 ## remonte à bord (échelle, hissé par un camarade, radeau) ou qu'on prend pied.
 func _update_water(delta: float) -> void:
-	if _loc != Loc.SWIM:
+	if _loc != Loc.SWIM or _tether:   # (attaché au bateau : ni noyade, ni canard, ni requins)
 		if _water_t > 0.0:
 			_water_t = 0.0
+			_water_stage = 0
 			_clear_water_threats()
 		return
 	_water_t += delta
