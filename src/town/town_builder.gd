@@ -4,12 +4,14 @@ extends RefCounted
 ## taverne (salle, bar, escalier, galerie). L'intérieur est une « coupe » : pas de toit, pas de mur côté
 ## caméra ; il remplace le bâtiment du port tant que le pirate est dedans (voir sailing_game.gd).
 
-const STONE := Color(0.60, 0.57, 0.54)
-const WOOD := Color(0.58, 0.40, 0.24)
-const WOOD_D := Color(0.32, 0.21, 0.13)
-const WOOD_L := Color(0.80, 0.62, 0.38)
-const PLASTER := Color(0.76, 0.64, 0.48)
-const IRON := Color(0.22, 0.22, 0.27)
+# 13/11 (niveau 2, intérieurs) : les couleurs de la charte v1 (design/bible-v2.md), les mêmes que les rues et les maisons.
+# Avant : des bruns et des gris choisis à l'œil, plus ternes que le reste de la ville.
+const STONE := Color("7d7488")
+const WOOD := Color("9c6a43")
+const WOOD_D := Color("3a2630")
+const WOOD_L := Color("cf9c62")
+const PLASTER := Color("e8c9a0")
+const IRON := Color("2e2a44")
 
 
 ## Terrasses et marches de l'extérieur.
@@ -179,7 +181,7 @@ static func build_tavern(it: Dictionary) -> Node3D:
 		var lamp := ProcKit.ball(root, 0.13, ProcKit.w(float(lp[0]), float(lp[1]), float(lp[2])), ProcKit.glow(Color(1.0, 0.85, 0.5)))
 		lamp.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		var light := OmniLight3D.new()
-		light.light_color = Color(1.0, 0.66, 0.30)
+		light.light_color = GameConfig.LAMP_LIGHT   # (la même lumière que les lanternes des rues)
 		light.light_energy = 1.4
 		light.omni_range = 7.0
 		light.shadow_enabled = false
@@ -292,6 +294,16 @@ static func _shell(it: Dictionary) -> Node3D:
 	ProcKit.box(root, Vector3(w, ceil_h, 0.3), ProcKit.w(cx, y1 - 0.15, ceil_h * 0.5), wall_mat)
 	ProcKit.box(root, Vector3(0.3, ceil_h, d), ProcKit.w(x0 + 0.15, cy, ceil_h * 0.5), wall_mat)
 	ProcKit.box(root, Vector3(0.3, ceil_h, d), ProcKit.w(x1 - 0.15, cy, ceil_h * 0.5), wall_mat)
+	# 13/11 : un soubassement de bois sur les trois murs (lambris à hauteur d'appui, sa cimaise sombre, une plinthe) : les murs
+	# n'étaient que de grands aplats d'enduit
+	var panel := ProcKit.wood(WOOD, Vector2(maxf(w, d) * 0.5, 1.0))
+	var rail := ProcKit.flat(WOOD_D)
+	var ph := 1.05
+	ProcKit.box(root, Vector3(w - 0.6, ph, 0.06), ProcKit.w(cx, y1 - 0.33, top + ph * 0.5), panel)
+	ProcKit.box(root, Vector3(w - 0.6, 0.09, 0.1), ProcKit.w(cx, y1 - 0.35, top + ph + 0.045), rail)
+	for sx: float in [x0 + 0.33, x1 - 0.33]:
+		ProcKit.box(root, Vector3(0.06, ph, d - 0.6), ProcKit.w(sx, cy, top + ph * 0.5), panel)
+		ProcKit.box(root, Vector3(0.1, 0.09, d - 0.6), ProcKit.w(sx + (0.02 if sx < cx else -0.02), cy, top + ph + 0.045), rail)
 	# colombages sur le mur du fond
 	var bx := x0 + 1.0
 	while bx < x1:
