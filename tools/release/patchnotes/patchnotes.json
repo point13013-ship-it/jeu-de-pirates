@@ -2,6 +2,15 @@
   "_commentaire": "Les nouveautés affichées dans la salle de jeux (bouton Nouveautés, et après chaque mise à jour). La plus récente d'abord. 'version': 'prochaine' est remplacé par le numéro de la version au moment de la publication (publish.ps1). Les images sont les fichiers de ce dossier ; publish.ps1 les envoie avec la version.",
   "versions": [
     {
+      "version": "2026.11.13-1528",
+      "titre": "Cordages attachés, lampadaires jaune paille",
+      "points": [
+        "Les cordages des mâts (haubans) s'attachent maintenant sur le bord du bateau, au lieu de finir dans le vide à l'extérieur.",
+        "Lampadaires : leur lumière est jaune paille, plus blanche. Ceux de la ville éclairent vraiment le quai la nuit.",
+        "La nuit ne bleuit plus ce qu'une lampe éclaire : les lumières chaudes gardent leur couleur."
+      ]
+    },
+    {
       "version": "2026.11.13-1506",
       "titre": "Écran dégagé, canard en plastique",
       "points": [
