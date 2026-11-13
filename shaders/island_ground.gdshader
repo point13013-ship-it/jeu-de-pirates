@@ -13,6 +13,9 @@ uniform vec3 grass_high = vec3(0.560, 0.700, 0.300);
 uniform vec3 flower_a = vec3(0.98, 0.82, 0.33);
 uniform vec3 flower_b = vec3(0.84, 0.33, 0.36);
 uniform float flowers = 1.0;
+// 13/11 (îles à relief) : hauteur du plus haut sommet de l'île (0 : île plate). L'herbe s'éclaircit et jaunit par paliers
+// avec l'altitude, et les hauts sont plus secs : on lit le relief d'en haut.
+uniform float relief_top = 0.0;
 
 varying vec3 op;
 
@@ -122,6 +125,14 @@ void fragment() {
 		col = rock(op);
 	} else if (grass_amt > 0.5) {
 		col = grass(p);
+		if (relief_top > 0.5) {
+			float alt = clamp(op.y / relief_top, 0.0, 1.0);
+			float band = floor(alt * 5.0 + vn(p * 0.35) * 0.6) / 5.0;
+			col = mix(col * vec3(0.90, 0.95, 0.92), col * vec3(1.16, 1.12, 0.86) + vec3(0.03, 0.03, 0.0), band);
+			if (band > 0.75 && vn(p * 0.9) > 0.55) {
+				col = mix(col, vec3(0.63, 0.60, 0.47), 0.75);   // l'herbe rase et les cailloux des hauts
+			}
+		}
 		// sentier : terre nue, bord rongé par de petites touffes
 		float edge = path + (vn(p * 3.0) - 0.5) * 0.5;
 		if (edge > 0.55) {

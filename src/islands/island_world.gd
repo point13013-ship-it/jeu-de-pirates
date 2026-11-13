@@ -94,6 +94,7 @@ func _register_island(d: Dictionary, proc: bool) -> int:
 		"id": str(d["id"]), "name": str(d["name"]), "blurb": str(d.get("blurb", "")), "danger": int(d.get("danger", 1)),
 		"center": c, "lobes": [], "radius": 0.0, "items": [], "props": d.get("props", []),
 		"scatter": _scatter_of(d), "cliffs": float(d.get("cliffs", 0.0)), "tone": str(d.get("tone", "lush")), "plateaus": _plateaus_of(d, c),
+		"terrain": _terrain_of(d, c),
 		"blockers_c": [], "blockers_r": [], "chests": [], "enemies": [], "proc": proc, "node": null, "breakable_ids": [],
 	}
 	var bound := 0.0
@@ -104,12 +105,12 @@ func _register_island(d: Dictionary, proc: bool) -> int:
 	isl["radius"] = bound
 	islands.append(isl)
 	for e: Dictionary in d.get("enemies", []):
-		var at := c + Vector2(float(e["at"][0]), float(e["at"][1]))
+		var at := _settle(i, c + Vector2(float(e["at"][0]), float(e["at"][1])))
 		var en := IslandEnemy.create(enemies.size(), str(e["kind"]), i, at, kinds[str(e["kind"])])
 		enemies.append(en)
 		(isl["enemies"] as Array).append(en.id)
 	for ch: Dictionary in d.get("chests", []):
-		var at := c + Vector2(float(ch["at"][0]), float(ch["at"][1]))
+		var at := _settle(i, c + Vector2(float(ch["at"][0]), float(ch["at"][1])), true)
 		var rec := {"island": i, "pos": at, "gold": int(ch["gold"]), "open": false, "timer": 0.0, "node": null, "lid": null,
 				"pile": null, "glint": null, "lid_angle": 0.0}
 		(isl["chests"] as Array).append(chests.size())
@@ -157,6 +158,11 @@ static func _scaled_island(d: Dictionary, s: float) -> Dictionary:
 			(pl["ramp"] as Dictionary)["len"] = float((pl["ramp"] as Dictionary).get("len", 0.0)) * s
 		# ni ennemi, ni coffre, ni tonneau sur un plateau ou sa rampe
 		placed.append([Vector2(float(pl["at"][0]), float(pl["at"][1])), float(pl["r"]) + float((pl.get("ramp", {}) as Dictionary).get("len", 0.0)) + 2.0])
+	if out.has("terrain"):   # le relief suit la terre agrandie (les hauteurs, elles, sont en mètres)
+		for hl: Dictionary in (out["terrain"] as Dictionary).get("hills", []):
+			hl["at"] = [float(hl["at"][0]) * s, float(hl["at"][1]) * s]
+			hl["r"] = float(hl["r"]) * s
+			hl["flat"] = float(hl.get("flat", 0.0)) * s
 	var sc: Dictionary = out.get("scatter", {})
 	for k: String in sc:
 		sc[k] = int(round(float(sc[k]) * s * s * 0.8))
@@ -339,10 +345,116 @@ func _plateaus_of(d: Dictionary, c: Vector2) -> Array:
 	return out
 
 
+# ------------------------------------------------------------------ relief (13/11, refonte des îles)
+# Une île « à relief » décrit son terrain dans data/islands.json :
+#   "terrain": {"seed": 7, "noise": 0.8, "beach": 6, "hills": [{"at": [x, z], "r": 30, "h": 20, "steep": 0.7, "steep_dir": 40,
+#               "flat": 3, "coast": false}]}
+# Le sol n'est plus plat : chaque colline est une bosse lisse de rayon `r` et de hauteur `h` (mètres), avec un sommet plat de
+# rayon `flat` ; `steep` (0…1) resserre la bosse du côté `steep_dir` (degrés) : ce flanc devient une falaise, l'autre reste
+# une pente qu'on gravit. Un bruit de `noise` m bosselle le tout, et une plage plate de `beach` m borde l'île (sauf pour
+# une colline « coast », dont la falaise tombe dans la mer). On ne marche pas sur une pente plus raide que WALK_SLOPE.
+const WALK_SLOPE := 0.85     ## pente maximale où l'on tient debout (rapport hauteur / distance : environ 40°)
+
+
+func _terrain_of(d: Dictionary, c: Vector2) -> Dictionary:
+	if not d.has("terrain"):
+		return {}
+	var t: Dictionary = d["terrain"]
+	var hills: Array = []
+	var top := 0.0
+	for hl: Dictionary in t.get("hills", []):
+		hills.append({"c": c + Vector2(float(hl["at"][0]), float(hl["at"][1])), "r": float(hl["r"]), "h": float(hl["h"]),
+				"steep": float(hl.get("steep", 0.0)), "dir": deg_to_rad(float(hl.get("steep_dir", 0.0))), "flat": float(hl.get("flat", 0.0)),
+				"coast": bool(hl.get("coast", false))})
+		top = maxf(top, float(hl["h"]))
+	return {"seed": float(t.get("seed", 1.0)), "noise": float(t.get("noise", 0.6)), "beach": float(t.get("beach", 5.0)), "hills": hills,
+			"top": top}
+
+
+static func _vhash(p: Vector2) -> float:
+	return fposmod(sin(p.dot(Vector2(127.1, 311.7))) * 43758.5453, 1.0)
+
+
+## Bruit de valeur lissé (0…1), le même dessin pour tous les joueurs.
+static func _vnoise(p: Vector2) -> float:
+	var i := p.floor()
+	var f := p - i
+	f = f * f * (Vector2(3.0, 3.0) - 2.0 * f)
+	return lerpf(lerpf(_vhash(i), _vhash(i + Vector2(1, 0)), f.x), lerpf(_vhash(i + Vector2(0, 1)), _vhash(i + Vector2(1, 1)), f.x), f.y)
+
+
+## Hauteur du relief de l'île `i` en `p` (0 en mer et sur la plage).
+func _terrain_h(i: int, p: Vector2) -> float:
+	var t: Dictionary = (islands[i] as Dictionary)["terrain"]
+	var s := sdf(i, p)
+	if s <= 0.0:
+		return 0.0
+	var beach: float = t["beach"]
+	var inland := smoothstep(beach * 0.5, beach + 7.0, s)
+	var shore := smoothstep(0.0, 2.0, s)
+	var h := 0.0
+	for hl: Dictionary in t["hills"]:
+		var d: Vector2 = p - (hl["c"] as Vector2)
+		var dist := d.length()
+		var r: float = hl["r"]
+		if float(hl["steep"]) > 0.0 and dist > 0.01:
+			var k := maxf(cos(d.angle() - float(hl["dir"])), 0.0)
+			r *= 1.0 - float(hl["steep"]) * 0.62 * k * k
+		var flat: float = hl["flat"]
+		var u := clampf(1.0 - maxf(dist - flat, 0.0) / maxf(r - flat, 0.1), 0.0, 1.0)
+		h += float(hl["h"]) * u * u * (3.0 - 2.0 * u) * (shore if bool(hl["coast"]) else inland)
+	var seed: float = t["seed"]
+	var amp: float = t["noise"]
+	h += ((_vnoise(p * 0.085 + Vector2(seed, seed * 1.7)) - 0.5) * 2.0 * amp + (_vnoise(p * 0.24 + Vector2(seed * 3.1, 5.0)) - 0.5) * amp * 0.7) * inland
+	return maxf(h, 0.0)
+
+
+## Le sol est-il presque plat autour de `q` (un coffre s'y pose droit) ?
+func _level_enough(i: int, q: Vector2) -> bool:
+	var h0 := _terrain_h(i, q)
+	for off: Vector2 in [Vector2(1.5, 0), Vector2(-1.5, 0), Vector2(0, 1.5), Vector2(0, -1.5)]:
+		if absf(_terrain_h(i, q + off) - h0) > 0.2:
+			return false
+	return true
+
+
+## Sur une île à relief, ramène `p` au point le plus proche où l'on tient debout (un ennemi ou un coffre ne se pose pas sur une
+## falaise) ; ailleurs, `p` tel quel.
+func _settle(i: int, p: Vector2, level: bool = false) -> Vector2:
+	if ((islands[i] as Dictionary)["terrain"] as Dictionary).is_empty():
+		return p
+	var d := 0.0
+	while d <= 14.0:
+		for k in (1 if d == 0.0 else 16):
+			var q := p + Vector2.from_angle(TAU * k / 16.0) * d
+			if sdf(i, q) > 1.2 and not too_steep(i, q) and not too_steep(i, q + Vector2(0.6, 0)) and not too_steep(i, q - Vector2(0.6, 0)) 					and not too_steep(i, q + Vector2(0, 0.6)) and not too_steep(i, q - Vector2(0, 0.6)) 					and (not level or _level_enough(i, q)):
+				return q
+		d += 0.5
+	return p
+
+
+## La pente est-elle trop raide pour tenir debout en `p` sur l'île `i` ? (toujours faux sur une île sans relief)
+func too_steep(i: int, p: Vector2) -> bool:
+	if ((islands[i] as Dictionary)["terrain"] as Dictionary).is_empty():
+		return false
+	var e := 0.45
+	var gx := (_terrain_h(i, p + Vector2(e, 0)) - _terrain_h(i, p - Vector2(e, 0))) / (2.0 * e)
+	var gz := (_terrain_h(i, p + Vector2(0, e)) - _terrain_h(i, p - Vector2(0, e))) / (2.0 * e)
+	return gx * gx + gz * gz > WALK_SLOPE * WALK_SLOPE
+
+
+## Pour Land : vrai si `p` (monde) est sur une pente d'île trop raide pour y marcher.
+func steep_at(p: Vector2) -> bool:
+	var i := island_at(p)
+	return i >= 0 and too_steep(i, p)
+
+
 ## Hauteur du sol de l'île `i` en `p` : 0 en plaine, la hauteur du plateau dessus, une pente douce sur la rampe.
 ## Le bord d'un plateau est une falaise à pic (on ne la monte pas), sauf là où se trouve la rampe.
 func height(i: int, p: Vector2) -> float:
 	var h := 0.0
+	if not ((islands[i] as Dictionary)["terrain"] as Dictionary).is_empty():
+		h = _terrain_h(i, p)
 	for pl: Dictionary in (islands[i] as Dictionary)["plateaus"]:
 		var d: Vector2 = p - (pl["c"] as Vector2)
 		var dist := d.length()
@@ -364,8 +476,9 @@ func ground_h(p: Vector2) -> float:
 ## Le terrain est-il assez plat autour de `p` (rayon `r`) pour y poser un objet ?
 func is_flat(i: int, p: Vector2, r: float) -> bool:
 	var h0 := height(i, p)
+	var tol := 0.05 if ((islands[i] as Dictionary)["terrain"] as Dictionary).is_empty() else 0.05 + 0.28 * r   # (relief : une pente douce suffit)
 	for off: Vector2 in [Vector2(r, 0), Vector2(-r, 0), Vector2(0, r), Vector2(0, -r)]:
-		if absf(height(i, p + off) - h0) > 0.05:
+		if absf(height(i, p + off) - h0) > tol:
 			return false
 	return true
 
@@ -392,6 +505,8 @@ func sdf(i: int, p: Vector2) -> float:
 ## Un point de rayon `r` peut-il se tenir ici (sur la terre, hors des obstacles) ?
 func walkable(i: int, p: Vector2, r: float) -> bool:
 	if sdf(i, p) < r:
+		return false
+	if too_steep(i, p):
 		return false
 	var isl: Dictionary = islands[i]
 	for b: Vector3 in isl["blockers_c"]:
@@ -454,6 +569,7 @@ func build(parent: Node3D, land: Land) -> void:
 	_land_ref = land
 	land.island_discs = walk_discs()
 	land.island_height = ground_h
+	land.island_steep = steep_at
 	_ground_mat = ShaderMaterial.new()
 	_ground_mat.shader = load("res://shaders/island_ground.gdshader") as Shader
 	for i in islands.size():
@@ -479,6 +595,8 @@ func _build_island(i: int) -> void:
 	var mi := MeshInstance3D.new()
 	mi.mesh = _terrain_mesh(i)
 	mi.material_override = _ground_material(_ground_mat, str(isl["tone"]))
+	if not (isl["terrain"] as Dictionary).is_empty():   # relief : l'herbe change de teinte avec l'altitude
+		(mi.material_override as ShaderMaterial).set_shader_parameter("relief_top", float((isl["terrain"] as Dictionary)["top"]))
 	node.add_child(mi)
 	var sh := MeshInstance3D.new()
 	sh.mesh = _shallows_mesh(i)
@@ -615,7 +733,8 @@ func _terrain_mesh(i: int) -> ArrayMesh:
 	var c: Vector2 = isl["center"]
 	var ext: float = float(isl["radius"]) + SLOPE + 1.0
 	# les grandes îles (agrandies) ont un maillage un peu plus lâche : sinon le calcul au lancement serait trop long
-	var grid := GRID * clampf(ext / 40.0, 1.0, 2.0)
+	var relief := not (isl["terrain"] as Dictionary).is_empty()
+	var grid := GRID * clampf(ext / 40.0, 1.0, 2.6 if relief else 2.0)
 	var n := int(ceil(ext * 2.0 / grid)) + 1
 	var verts := PackedVector3Array()
 	var norms := PackedVector3Array()
@@ -660,7 +779,7 @@ func _terrain_mesh(i: int) -> ArrayMesh:
 			var steep := 0.0
 			for nb: int in [iz * n + ix - 1, iz * n + ix + 1, (iz - 1) * n + ix, (iz + 1) * n + ix]:
 				steep = maxf(steep, absf((verts[nb] as Vector3).y - hc))
-			if steep > 0.45 and sdfs[iz * n + ix] > 0.0:
+			if steep > (WALK_SLOPE * grid if relief else 0.45) and sdfs[iz * n + ix] > 0.0:
 				var col := cols[iz * n + ix]
 				col.a = 1.0
 				col.b = 0.0
