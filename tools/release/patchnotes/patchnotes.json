@@ -2,6 +2,13 @@
   "_commentaire": "Les nouveautés affichées dans la salle de jeux (bouton Nouveautés, et après chaque mise à jour). La plus récente d'abord. 'version': 'prochaine' est remplacé par le numéro de la version au moment de la publication (publish.ps1). Les images sont les fichiers de ce dossier ; publish.ps1 les envoie avec la version.",
   "versions": [
     {
+      "version": "2026.11.13-1722",
+      "titre": "Une vraie pluie",
+      "points": [
+        "La pluie est maintenant un vrai enregistrement : une pluie légère et calme, avec des gouttes sur un toit de bois."
+      ]
+    },
+    {
       "version": "2026.11.13-1705",
       "titre": "Intérieurs aux couleurs de la ville",
       "points": [
