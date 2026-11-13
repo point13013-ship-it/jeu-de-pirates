@@ -171,7 +171,17 @@ static func fire() -> AudioStreamWAV:
 
 
 ## La pluie : un grésillement constant.
-static func rain() -> AudioStreamWAV:
+## 13/11 (second retour de Jimmy : la pluie fabriquée « fait plutôt tempête avec du vent ») : la pluie est maintenant un vrai
+## enregistrement (Epidemic Sound), assets/audio/sfx/rain_1.ogg : une pluie légère et calme en forêt, mêlée plus bas à des gouttes
+## sur un toit de bois, en boucle de 40 s. La pluie fabriquée ci-dessous ne sert plus que si le fichier manque.
+static func rain() -> AudioStream:
+	var rec := recorded("rain", true)
+	if rec != null:
+		return rec
+	return _rain_synth()
+
+
+static func _rain_synth() -> AudioStreamWAV:
 	# 13/11 (retour de Jimmy : « insupportable, on dirait du sable secoué dans une bouteille en plastique »). L'ancienne pluie
 	# était un bruit blanc dont on ne gardait que les aigus (au-dessus de 1 800 Hz), en boucle de 3 s : un chuintement sec.
 	# La nouvelle est faite comme une pluie qu'on écoute pour s'endormir :
