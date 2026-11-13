@@ -6,6 +6,7 @@ extends RefCounted
 ## Tout est en coordonnées du fichier du port (x, y) ; le monde de jeu est (x, -y), comme l'ancienne ville.
 
 const GRASS := Color("5a9440")
+const GROUND := Color(0.011, 0.022, 0.033)   ## repère : les surfaces qui reçoivent le sol peint (TownGround), pas une couleur
 const SAND := Color("d9b077")
 const PAVE := Color("b9ad9c")
 const PAVE_MAIN := Color("cfc3ae")
@@ -39,9 +40,8 @@ static func build(parent: Node3D, plan: Dictionary) -> Dictionary:
 
 	# la terre, son mur de quai, la plage
 	var land := Land._poly(plan.get("land", []))
-	_fill(acc, GRASS, land, 0.0)
+	_fill(acc, GROUND, land, 0.0)   # (un seul sol, peint par TownGround : herbe, pavés, sable ; plus de dalles empilées)
 	_skirt(acc, STONE, land, 0.0, SEA_FLOOR)
-	_fill(acc, SAND, Land._poly(plan.get("sand", [])), 0.03)
 
 	# terrasses (haute ville, cap) : entaillées par les rampes qui y montent
 	for lvl: Dictionary in levels:
@@ -56,7 +56,7 @@ static func build(parent: Node3D, plan: Dictionary) -> Dictionary:
 		for piece: PackedVector2Array in pieces:
 			if Geometry2D.is_polygon_clockwise(piece):
 				continue   # (un trou : aucune rampe n'en fait, par sécurité)
-			_fill(acc, PAVE if str(lvl.get("style", "")) == "fort" else TERRACE, piece, h)
+			_fill(acc, GROUND, piece, h)
 			_skirt(acc, STONE, piece, h, 0.0)
 
 	# rampes et escaliers
@@ -65,39 +65,19 @@ static func build(parent: Node3D, plan: Dictionary) -> Dictionary:
 		var h0 := float(r["h0"])
 		var h1 := float(r["h1"])
 		var col := STONE_DARK if bool(r.get("stairs", false)) else PAVE_MAIN
-		_quad(acc, col, _w(q[0], h0 + 0.02), _w(q[1], h1 + 0.02), _w(q[2], h1 + 0.02), _w(q[3], h0 + 0.02), Vector3.UP)
+		_quad(acc, GROUND, _w(q[0], h0 + 0.02), _w(q[1], h1 + 0.02), _w(q[2], h1 + 0.02), _w(q[3], h0 + 0.02), Vector3.UP)
+		if bool(r.get("stairs", false)):   # les nez de marche d'un escalier : une arête sombre tous les 50 cm
+			var steps := maxi(int(q[0].distance_to(q[1]) / 0.5), 2)
+			for k in range(1, steps):
+				var u := float(k) / steps
+				var a5 := q[0].lerp(q[1], u)
+				var b5 := q[3].lerp(q[2], u)
+				var hh := lerpf(h0, h1, u) + 0.03
+				var along := (q[1] - q[0]).normalized() * 0.05
+				_quad(acc, col, _w(a5, hh), _w(a5 + along, hh), _w(b5 + along, hh), _w(b5, hh), Vector3.UP)
 		# les deux joues, pour qu'on ne voie pas dessous
 		_quad(acc, STONE, _w(q[0], h0), _w(q[1], h1), _w(q[1], 0.0), _w(q[0], 0.0), Vector3.ZERO)
 		_quad(acc, STONE, _w(q[3], h0), _w(q[2], h1), _w(q[2], 0.0), _w(q[3], 0.0), Vector3.ZERO)
-
-	# rues : des dalles posées tous les 1,5 m le long du tracé, à la hauteur du sol où elles passent
-	for s: Dictionary in plan.get("streets", []):
-		var pts := Land._poly(s["pts"])
-		var width := float(s["width"])
-		var col2 := PAVE_MAIN if str(s["id"]) in ["quai", "grand_rue"] else PAVE
-		for i in pts.size() - 1:
-			var a := pts[i]
-			var b := pts[i + 1]
-			var n := maxi(int(ceil(a.distance_to(b) / 1.5)), 1)
-			var side := (b - a).normalized().orthogonal() * width * 0.5
-			for k in n:
-				var p0 := a.lerp(b, float(k) / n)
-				var p1 := a.lerp(b, float(k + 1) / n)
-				var mid := (p0 + p1) * 0.5
-				if _on_ramp(ramps, mid):
-					continue
-				var y := _level_h(levels, mid) + 0.04
-				_quad(acc, col2, _w(p0 + side, y), _w(p1 + side, y), _w(p1 - side, y), _w(p0 - side, y), Vector3.UP)
-			_disc(acc, col2, b, width * 0.5, width * 0.5, _level_h(levels, b) + 0.04)
-	for pth: Dictionary in plan.get("paths", []):   # sentiers des maisons en retrait, de la porte à la rue
-		var a4 := Vector2(float(pth["pts"][0][0]), float(pth["pts"][0][1]))
-		var b4 := Vector2(float(pth["pts"][1][0]), float(pth["pts"][1][1]))
-		var side4 := (b4 - a4).normalized().orthogonal() * float(pth["width"]) * 0.5
-		var y4 := _level_h(levels, a4) + 0.035
-		_quad(acc, PAVE, _w(a4 + side4, y4), _w(b4 + side4, y4), _w(b4 - side4, y4), _w(a4 - side4, y4), Vector3.UP)
-	for pl: Dictionary in plan.get("plazas", []):
-		var c := Vector2(float(pl["x"]), float(pl["y"]))
-		_disc(acc, PAVE_MAIN, c, float(pl["rx"]), float(pl["ry"]), _level_h(levels, c) + 0.05)
 
 	# pontons et leurs pieux
 	for pt: Dictionary in plan.get("pontoons", []):
@@ -167,7 +147,7 @@ static func build(parent: Node3D, plan: Dictionary) -> Dictionary:
 	for col3: Color in acc:
 		var mi := MeshInstance3D.new()
 		mi.mesh = (acc[col3] as SurfaceTool).commit()
-		mi.material_override = _mat(col3)
+		mi.material_override = TownGround.material(plan) if col3 == GROUND else _mat(col3)
 		mi.name = "decor_%s" % col3.to_html(false)
 		root.add_child(mi)
 	# lanternes : leur pied arrête comme un poteau
