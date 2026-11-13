@@ -402,13 +402,14 @@ const TOWN_V3 := false                ## true : la nouvelle ville (maquette gris
 const LADDER_EXIT_REACH := 2.0        ## m : dans la ville v3, un nageur sort de l'eau à moins de cette distance d'une échelle (ou par la grève)
 const LAMP_EVERY_MAIN := 13.0          ## m entre deux lanternes sur le quai et la Grand-Rue
 const LAMP_EVERY := 21.0               ## … et sur les autres rues
-const LAMP_ENERGY := 9.0               ## force d'une lanterne, la nuit
+const LAMP_ENERGY := 4.2               ## force d'une lanterne, la nuit
 const LAMP_RANGE := 9.0                ## m : portée de sa lumière
 const LAMP_CULL := 60.0                ## m : au-delà de cette distance du pirate, une lanterne n'éclaire plus (elle brille encore)
 const LAMP_SHADOWS := 2                ## nombre de lanternes qui portent des ombres (les plus proches du pirate)
 const LAMP_REFLECTION_LENGTH := 6.5    ## m : longueur du reflet d'une lanterne sur l'eau
-const WINDOW_GLOW := 3.0               ## force des fenêtres allumées, la nuit
+const WINDOW_GLOW := 1.5               ## force des fenêtres allumées, la nuit
 const TOWN_SHELTER := Vector3(5.0, -45.0, 85.0)   ## (x, z, rayon) : la houle tombe à SHORE_SWELL dans ce cercle autour de la ville v3 (bassin compris)
 const TOWN_LABELS := false             ## les noms numérotés au-dessus des bâtiments de la ville v3 (repères de chantier)
 ## Bugs de la liste du 13/11.
 const WATER_EXIT_STEP := 0.9          ## m : en sortant de l'eau sur un quai ou un ponton, le pirate est posé à cette distance du bord
+const WARM_GLOW := Color(1.0, 0.66, 0.26)   ## teinte des fenêtres, vitrines et lanternes allumées (avant : blanc)

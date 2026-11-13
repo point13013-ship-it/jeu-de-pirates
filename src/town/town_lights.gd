@@ -9,8 +9,8 @@ extends Node3D
 ## - reflets : sous chaque lanterne du bord de l'eau, une traînée dorée en tirets qui danse sur la mer.
 ## Tout suit `night` (0 le jour, 1 la nuit) : rien n'est allumé à midi.
 
-const WARM := Color(1.0, 0.72, 0.24)   # (plus jaune que la palette : l'étalonnage bleu de la nuit le ramène vers l'orange)
-const WARM_LIGHT := Color("ffe2a0")
+const WARM := Color(1.0, 0.68, 0.22)   # (plus jaune que la palette : l'étalonnage bleu de la nuit le ramène vers l'orange)
+const WARM_LIGHT := Color("ffc56a")
 const POST := Color("2e2a44")
 const LAMP_HEIGHT := 3.1
 
@@ -253,7 +253,7 @@ func update(night: float, focus: Vector3, player: Vector3, delta: float) -> void
 			_beam_mat.albedo_color = Color(on, on, on)
 		for g: Array in _glass:
 			var lit: bool = g[2]
-			var base := Color("2e2a44").lerp(Color("ffb24a"), on) if lit else Color("2e2a44")
+			var base := Color("2e2a44").lerp(GameConfig.WARM_GLOW, on) if lit else Color("2e2a44")
 			for m: ShaderMaterial in [g[0], g[1]]:
 				m.set_shader_parameter("base", base)
 				m.set_shader_parameter("emit", (GameConfig.WINDOW_GLOW * on) if lit else 0.0)

@@ -179,7 +179,7 @@ static func build_tavern(it: Dictionary) -> Node3D:
 		var lamp := ProcKit.ball(root, 0.13, ProcKit.w(float(lp[0]), float(lp[1]), float(lp[2])), ProcKit.glow(Color(1.0, 0.85, 0.5)))
 		lamp.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		var light := OmniLight3D.new()
-		light.light_color = Color(1.0, 0.74, 0.45)
+		light.light_color = Color(1.0, 0.66, 0.30)
 		light.light_energy = 1.4
 		light.omni_range = 7.0
 		light.shadow_enabled = false

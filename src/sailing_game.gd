@@ -964,7 +964,8 @@ func _build_port() -> void:
 				mat = ShaderMaterial.new()
 				mat.shader = surface_shader
 				mat.set_shader_parameter("kind", 4)
-				mat.set_shader_parameter("base", src.albedo_color)
+				# 13/11 (2.1) : fenêtres, vitrines et lanternes éclairées étaient blanches ; elles prennent une teinte chaude
+				mat.set_shader_parameter("base", GameConfig.WARM_GLOW if src.emission_enabled else src.albedo_color)
 				mat.set_shader_parameter("emit", 1.0 if src.emission_enabled else 0.0)
 			if mat == null:
 				continue

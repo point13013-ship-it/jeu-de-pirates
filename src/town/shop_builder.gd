@@ -34,7 +34,7 @@ static func _lamps(root: Node3D, pts: Array) -> void:
 		var lamp := ProcKit.ball(root, 0.13, ProcKit.w(float(lp[0]), float(lp[1]), float(lp[2])), ProcKit.glow(Color(1.0, 0.85, 0.5)))
 		lamp.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		var light := OmniLight3D.new()
-		light.light_color = Color(1.0, 0.78, 0.5)
+		light.light_color = Color(1.0, 0.68, 0.32)
 		light.light_energy = 1.3
 		light.omni_range = 6.5
 		light.shadow_enabled = false
