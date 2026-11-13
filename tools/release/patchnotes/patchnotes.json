@@ -2,6 +2,13 @@
   "_commentaire": "Les nouveautés affichées dans la salle de jeux (bouton Nouveautés, et après chaque mise à jour). La plus récente d'abord. 'version': 'prochaine' est remplacé par le numéro de la version au moment de la publication (publish.ps1). Les images sont les fichiers de ce dossier ; publish.ps1 les envoie avec la version.",
   "versions": [
     {
+      "version": "prochaine",
+      "titre": "De vrais palmiers",
+      "points": [
+        "Les palmiers de la ville sont de vrais modèles (quatre formes différentes)."
+      ]
+    },
+    {
       "version": "2026.11.13-2103",
       "titre": "Palmiers et lumières",
       "points": [

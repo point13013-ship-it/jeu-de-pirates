@@ -71,10 +71,19 @@ static func add(root: Node3D, acc: Dictionary, circles: Array, plan: Dictionary,
 		circles.append([p2.x, p2.y, 0.32])
 		shades.append([p2, 2.3])
 		if (sand.size() >= 3 and Geometry2D.is_point_in_polygon(p2, sand)) or p2.y < 16.0:
-			# 13/11 (Jimmy : « le modèle du palmier est vraiment moche, refais-en un vrai ») : le palmier des îles (tronc courbé
-			# en anneaux, palmes à folioles, noix), un peu plus grand, à la place des boîtes et des pans plats
-			var palm := IslandDecor.make(root, "palm", Vector2(p2.x, -p2.y), rng.randf() * TAU, rng.randi() % 100000, {}, h)
-			palm.scale = Vector3.ONE * rng.randf_range(1.25, 1.6)
+			# 13/11 (Jimmy : « le modèle du palmier est vraiment moche », puis le choix du lot nature de Quaternius, CC0) : quatre
+			# vrais modèles de palmiers (assets/models/nature/PalmTree_1 à 4, recolorés dans la palette), tirés au sort, tournés
+			# et agrandis ; le palmier des îles sert de secours si un fichier manque
+			var scene := load("res://assets/models/nature/PalmTree_%d.glb" % (1 + rng.randi() % 4)) as PackedScene
+			if scene != null:
+				var palm := scene.instantiate() as Node3D
+				palm.position = Vector3(p2.x, h, -p2.y)
+				palm.rotation.y = rng.randf() * TAU
+				palm.scale = Vector3.ONE * rng.randf_range(1.45, 1.9)
+				root.add_child(palm)
+			else:
+				var spare := IslandDecor.make(root, "palm", Vector2(p2.x, -p2.y), rng.randf() * TAU, rng.randi() % 100000, {}, h)
+				spare.scale = Vector3.ONE * rng.randf_range(1.25, 1.6)
 		else:
 			_tree(root, acc, p2, h, rng, ball, leaf_mats)
 
