@@ -2,7 +2,7 @@
   "_commentaire": "Les nouveautés affichées dans la salle de jeux (bouton Nouveautés, et après chaque mise à jour). La plus récente d'abord. 'version': 'prochaine' est remplacé par le numéro de la version au moment de la publication (publish.ps1). Les images sont les fichiers de ce dossier ; publish.ps1 les envoie avec la version.",
   "versions": [
     {
-      "version": "prochaine",
+      "version": "2026.11.13-2145",
       "titre": "Deltaplane, et Le Croc plus naturel",
       "points": [
         "Deltaplane : en l'air, appuie une seconde fois sur Espace pour déployer une aile et planer. Essaie depuis le sommet du Croc.",
