@@ -2,6 +2,15 @@
   "_commentaire": "Les nouveautés affichées dans la salle de jeux (bouton Nouveautés, et après chaque mise à jour). La plus récente d'abord. 'version': 'prochaine' est remplacé par le numéro de la version au moment de la publication (publish.ps1). Les images sont les fichiers de ce dossier ; publish.ps1 les envoie avec la version.",
   "versions": [
     {
+      "version": "2026.11.13-1459",
+      "titre": "On se bat enfin à bord, alerte au combat",
+      "points": [
+        "Sur le pont, le clic frappe et tire : clic gauche pour l'arme principale, clic droit pour la secondaire, vers le pointeur. Avant, seule la touche F marchait à bord.",
+        "Alerte au combat : quand un navire ennemi vous prend en chasse, la cloche du bord sonne trois fois sur des coups de tambour, et un message l'annonce.",
+        "La musique de combat arrive fort, puis redescend en une quinzaine de secondes ; elle joue aussi plus fort que les autres musiques."
+      ]
+    },
+    {
       "version": "2026.11.13-1441",
       "titre": "Coque fermée, armes contre les bateaux, équilibrage",
       "points": [
