@@ -56,7 +56,8 @@ void fragment() {
 		if (hash(gc + floor(TIME * 1.5 + hash(gc) * 6.0)) > 0.975 && fract(p.x * 2.2) < 0.5 && fract(p.y * 2.2) < 0.5) {
 			col = foam;
 		}
-	} else if (d < 6.2 + n * 0.8) {
+	// 13/11 : le bord extérieur n'est plus un arc parfait : de grandes langues d'eau claire, qui respirent lentement
+	} else if (d < 4.9 + vn(p * 0.16 + seed * 0.7) * 3.0 + n * 0.5 + sin(TIME * 0.35 + n * 2.0) * 0.25) {
 		col = mid;
 		float ripple = sin((p.x - p.y) * 1.1 - TIME * 0.5 + n * 6.0);
 		if (ripple > 0.96) {

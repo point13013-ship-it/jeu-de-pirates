@@ -17,6 +17,7 @@ uniform float normal_threshold = 0.45;       // écart de normales qui fait une 
 uniform vec3 outline_tint : source_color = vec3(0.50, 0.44, 0.66);   // multiplicateur du trait : sombre, tiré vers le violet
 uniform vec3 highlight : source_color = vec3(0.16, 0.13, 0.08);       // ajout du reflet : chaud
 uniform float sea_y = -1.45;                 // sous l'eau, pas de trait (l'eau ne s'écrit pas dans la profondeur)
+uniform float shallow_y = -1.05;             // la nappe d'eau claire des rivages (IslandWorld.SHALLOW_Y) : pas de trait sur son bord
 uniform float fade_far = 90.0;               // m : au-delà, les traits s'estompent (pas de « bruit » au loin)
 
 void vertex() {
@@ -54,7 +55,7 @@ void fragment() {
 		normal_edge = max(normal_edge, convex * step(normal_threshold, diff));
 	}
 	float far_fade = 1.0 - smoothstep(fade_far * 0.6, fade_far, depth);
-	float under = step(world.y, sea_y - 0.35);
+	float under = max(step(world.y, sea_y - 0.35), step(abs(world.y - shallow_y), 0.04));
 	float sky = step(0.9999, texture(depth_tex, SCREEN_UV).r) + step(texture(depth_tex, SCREEN_UV).r, 0.00001);
 	if (mode == 0) {
 		float e = depth_edge * far_fade * (1.0 - under);

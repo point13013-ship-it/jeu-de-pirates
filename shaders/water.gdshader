@@ -25,6 +25,12 @@ uniform float contact_foam = 0.32;   // m : en dessous de cette épaisseur d'eau
 uniform float band_width = 0.05;     // écart d'éclairement entre deux tons
 
 uniform vec4 waves[4];               // houle : (amplitude m, kx, kz, pulsation) — voir data/sea.json
+// 13/11 : à l'abri des îles, la houle s'apaise (elle ne traverse plus la nappe d'eau claire du rivage). Même formule que
+// SailingGame._shelter_at : (x, z, rayon) des îles proches, en coordonnées monde.
+uniform vec3 shelters[8];
+uniform int shelter_count = 0;
+uniform float shore_swell = 0.2;     // part de la houle qui reste au bord d'une île
+uniform float shelter_width = 30.0;  // m : distance sur laquelle la houle reprend toute sa hauteur
 uniform float sea_time = 0.0;        // temps de la houle, par paliers (même valeur que la flottaison)
 uniform vec3 sun_dir = vec3(0.4, 0.75, 0.5);     // vers le soleil, unitaire (envoyé par le jeu)
 uniform vec3 view_dir = vec3(0.0, 0.788, 0.616); // vers la caméra, unitaire (envoyé par le jeu)
@@ -77,12 +83,22 @@ float wave_slope(float th) {   // dérivée de wave_shape
 	return 2.2 * WAVE_K * cos(th) * exp(WAVE_K * (sin(th) - 1.0));
 }
 
+float shelter_at(vec2 p) {
+	float f = 1.0;
+	for (int i = 0; i < 8; i++) {
+		if (i < shelter_count) {
+			f = min(f, mix(shore_swell, 1.0, smoothstep(0.0, shelter_width, distance(p, shelters[i].xy) - shelters[i].z)));
+		}
+	}
+	return f;
+}
+
 float waves_at(vec2 p) {
 	float h = 0.0;
 	for (int i = 0; i < 4; i++) {
 		h += waves[i].x * wave_shape(p.x * waves[i].y + p.y * waves[i].z + sea_time * waves[i].w);
 	}
-	return h;
+	return h * shelter_at(p);
 }
 
 // pente de la surface (houle + vaguelettes) et hauteur des vaguelettes
@@ -91,6 +107,7 @@ vec3 slope_at(vec2 p, float t_ripple) {
 	for (int i = 0; i < 4; i++) {
 		g += waves[i].x * wave_slope(p.x * waves[i].y + p.y * waves[i].z + sea_time * waves[i].w) * waves[i].yz;
 	}
+	g *= shelter_at(p);
 	float hr = 0.0;
 	// déformation lente du motif : les crêtes ondulent au lieu de former une grille régulière
 	vec2 q = p + vec2(sin(p.y * 0.23 + p.x * 0.11) * 1.6, sin(p.x * 0.19 - p.y * 0.07) * 1.1);

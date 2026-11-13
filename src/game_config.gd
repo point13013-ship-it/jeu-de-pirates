@@ -394,3 +394,6 @@ const SHIP_SKINS_ENABLED := false
 const RAIN_VOL := 0.5                 ## volume de la pluie (x l'ancien : -50 %) ; son intensité varie en plus (averses, accalmies)
 const WORK_PITCH_VAR := 1.08          ## écoper, réparer : hauteur tirée entre 1/1,08 et 1,08 à chaque coup
 const WORK_VOL_VAR := 0.25            ## … et volume tiré entre 75 % et 100 %
+## Refonte graphique, eau (13/11).
+const SHORE_SWELL := 0.2              ## part de la houle qui reste au bord d'une île (1 = comme au large)
+const SHELTER_WIDTH := 30.0           ## m : distance au bord de l'île sur laquelle la houle reprend toute sa hauteur

@@ -776,7 +776,41 @@ func _wave_height(p: Vector2) -> float:
 	var h := 0.0
 	for w: Vector4 in _waves:
 		h += w.x * (2.2 * exp(1.5 * (sin(p.x * w.y + p.y * w.z + _sea_t * w.w) - 1.0)) - 0.8)
-	return h * _wave_amp
+	return h * _wave_amp * _shelter_at(p)
+
+
+## 13/11 : à l'abri des îles, la houle s'apaise. Les îles proches du bateau, (x, z, rayon) ; envoyées aussi à l'eau dessinée
+## (shaders/water.gdshader, shelter_at : la même formule). Elles sont au même endroit chez tous les joueurs.
+var _shelters: Array[Vector3] = []
+
+
+func _shelter_at(p: Vector2) -> float:
+	var f := 1.0
+	for s: Vector3 in _shelters:
+		f = minf(f, lerpf(GameConfig.SHORE_SWELL, 1.0, smoothstep(0.0, GameConfig.SHELTER_WIDTH, Vector2(s.x, s.y).distance_to(p) - s.z)))
+	return f
+
+
+func _update_shelters(around: Vector2) -> void:
+	var near: Array = []
+	for isl: Dictionary in _islands.islands:
+		var c: Vector2 = isl["center"]
+		var d := c.distance_to(around) - float(isl["radius"])
+		if d < 260.0:
+			near.append([d, Vector3(c.x, c.y, float(isl["radius"]))])
+	near.sort_custom(func(a: Array, b: Array) -> bool: return float(a[0]) < float(b[0]))
+	_shelters.clear()
+	var sent: Array[Vector3] = []
+	for k in 8:
+		if k < near.size():
+			_shelters.append(near[k][1])
+			sent.append(near[k][1])
+		else:
+			sent.append(Vector3.ZERO)
+	_water_mat.set_shader_parameter("shelters", sent)
+	_water_mat.set_shader_parameter("shelter_count", _shelters.size())
+	_water_mat.set_shader_parameter("shore_swell", GameConfig.SHORE_SWELL)
+	_water_mat.set_shader_parameter("shelter_width", GameConfig.SHELTER_WIDTH)
 
 
 var _helm_turning := false
@@ -1032,6 +1066,7 @@ func _float_ship() -> void:
 	var c2 := Vector2(center.x, center.z)
 	var f2 := Vector2(fwd3.x, fwd3.z)
 	var l2 := Vector2(left3.x, left3.z)
+	_update_shelters(c2)
 	var h_bow := _wave_height(c2 + f2 * hl)
 	var h_stern := _wave_height(c2 - f2 * hl)
 	var h_port := _wave_height(c2 + l2 * hb)
