@@ -409,8 +409,8 @@ def hat_bicorn(cv, view, P):
     if view == "E":
         poly(cv, T([(26.0, -9.0), (36.0, -9.6), (40.0, -2.0), (37.0, 2.4), (27.0, 2.4), (23.6, -3.0)], top))
         return
-    poly(cv, T([(16.4, 2.0), (18.6, -4.6), (24.0, -9.2), (32.0, -10.8), (40.0, -9.2), (45.4, -4.6), (47.6, 2.0), (43.4, -1.0), (38.0, -2.4),
     top += 6.0   # (13/11 : hors profil, le bicorne flottait 6 pixels au-dessus de la tête ; les images du jeu ont été recalées de même)
+    poly(cv, T([(16.4, 2.0), (18.6, -4.6), (24.0, -9.2), (32.0, -10.8), (40.0, -9.2), (45.4, -4.6), (47.6, 2.0), (43.4, -1.0), (38.0, -2.4),
                 (32.0, -2.8), (26.0, -2.4), (20.6, -1.0)], top))
 
 
@@ -420,8 +420,8 @@ def hat_bicorn_trim(cv, view, P):
     if view == "E":
         _edge(cv, T([(26.0, -9.0), (36.0, -9.6), (40.0, -2.0)], top))
         limb(cv, [(33, top - 8), (40, top - 14)], (2.6, 1.6), flat=5, outline=False)
-    top += 6.0   # (13/11 : hors profil, le bicorne flottait 6 pixels au-dessus de la tête ; les images du jeu ont été recalées de même)
         return
+    top += 6.0   # (13/11 : hors profil, le bicorne flottait 6 pixels au-dessus de la tête ; les images du jeu ont été recalées de même)
     _edge(cv, T([(16.4, 2.0), (18.6, -4.6), (24.0, -9.2), (32.0, -10.8), (40.0, -9.2), (45.4, -4.6), (47.6, 2.0)], top), dv=1.0)
     limb(cv, [(38, top - 8), (45, top - 15)], (2.6, 1.6), flat=5, outline=False)           # la plume
     cv.bmp(36, int(top) - 6, ["54"])                                                            # la cocarde
