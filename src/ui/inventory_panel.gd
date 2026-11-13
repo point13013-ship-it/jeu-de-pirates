@@ -363,7 +363,7 @@ func _purse_entry(r: Dictionary) -> Control:
 ## d'avancement, récompense. Remplie, la carte s'éclaire : un clic touche l'or.
 func _contract_card(i: int, r: Dictionary) -> Control:
 	var tier_col := Color(str(r.get("tier_color", "b9ad9c")))
-	var done := bool(r.get("enabled", false))
+	var done := bool(r.get("done", r.get("enabled", false)))
 	var p := PanelContainer.new()
 	p.custom_minimum_size = Vector2(400, 96)
 	var sb := UiTheme.slot(false).duplicate() as StyleBoxFlat
@@ -425,8 +425,10 @@ func _contract_card(i: int, r: Dictionary) -> Control:
 	bar.add_theme_stylebox_override("background", bg)
 	bar.add_theme_stylebox_override("fill", fg)
 	v.add_child(bar)
-	v.add_child(UiTheme.label("Rempli : clique pour toucher l'or" if done else "%d / %d" % [int(r.get("have", 0)), int(r.get("need", 1))], 13,
-			UiTheme.GREEN if done else UiTheme.MUTED, 2))
+	var status := str(r.get("status", ""))
+	if status == "":
+		status = "Rempli : clique pour toucher l'or" if done else "%d / %d" % [int(r.get("have", 0)), int(r.get("need", 1))]
+	v.add_child(UiTheme.label(status, 13, UiTheme.GREEN if done else (UiTheme.BRASS if bool(r.get("offer", false)) else UiTheme.MUTED), 2))
 	for c in [h, frame, ic, v, top, title, bar]:
 		(c as Control).mouse_filter = Control.MOUSE_FILTER_IGNORE
 	for c2 in v.get_children() + top.get_children():

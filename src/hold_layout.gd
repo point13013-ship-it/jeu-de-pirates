@@ -115,6 +115,11 @@ func tools_pos() -> Vector2:
 	return Vector2(hatch_x - 1.7, -(FLOOR_HALF + RUN * 0.8))
 
 
+## 13/11 (Jimmy) : le tableau des missions acceptées, contre le mur du fond, à droite de l'échelle.
+func board_pos() -> Vector2:
+	return Vector2(hatch_x + 1.7, -(FLOOR_HALF + RUN * 0.8))
+
+
 ## Le seau pour écoper, sur le fond.
 func bucket_pos() -> Vector2:
 	return Vector2(hatch_x - 1.9, 0.3)
@@ -132,6 +137,7 @@ func items() -> Array:
 		{"kind": "rack", "pos": rack_pos()},
 		{"kind": "bucket", "pos": bucket_pos()},
 		{"kind": "tools", "pos": tools_pos()},
+		{"kind": "missions", "pos": board_pos()},
 	]
 	for s in hull.slot_count():
 		out.append({"kind": "hole", "pos": hole_pos(s), "slot": s})

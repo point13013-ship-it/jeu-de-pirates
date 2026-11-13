@@ -269,6 +269,7 @@ func _bar(color: Color, size: Vector2, p: Vector3, prio: int) -> MeshInstance3D:
 	var m := StandardMaterial3D.new()
 	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	m.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+	m.billboard_keep_scale = true   # (13/11 : sans ça, l'échelle du rectangle est ignorée : la barre restait toujours pleine)
 	m.albedo_color = color
 	m.no_depth_test = true
 	m.render_priority = 10 + prio
@@ -520,9 +521,12 @@ func update_visual(delta: float, time: float, authority: bool) -> void:
 	_bar_back.visible = show_bar
 	_bar_fill.visible = show_bar
 	if show_bar:
-		var frac := clampf(float(hp) / float(max_hp), 0.0, 1.0)
-		_bar_fill.scale = Vector3(maxf(frac, 0.001), 1.0, 1.0)
-		_bar_fill.position.x = -0.42 * (1.0 - frac)
+		# 13/11 (Jimmy : « la barre reste pleine, puis le mob meurt d'un coup ») : la barre se vide vraiment, par la droite.
+		# Le rectangle est rétréci en largeur et décalé dans son propre maillage (qui fait toujours face à la caméra), et non
+		# déplacé dans le repère de l'ennemi, qui tourne avec lui.
+		var frac := clampf(float(hp) / float(max_hp), 0.001, 1.0)
+		(_bar_fill.mesh as QuadMesh).center_offset = Vector3(-0.42 * (1.0 - frac) / frac, 0.0, 0.0)
+		_bar_fill.position.x = 0.0
 	# la barre ne doit pas grossir avec l'échelle de l'ennemi
 	var inv := 1.0 / sc
 	_bar_back.scale = Vector3(inv, inv, inv)

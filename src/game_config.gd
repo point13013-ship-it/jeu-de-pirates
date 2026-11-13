@@ -502,6 +502,7 @@ const BOARD_TIER_NAMES := ["Commune", "Rare", "Épique", "Légendaire"]
 const BOARD_TIER_CHANCE := [55, 28, 13, 4]
 const BOARD_TIER_BONUS := [1.0, 1.3, 1.7, 2.4]
 const BOARD_TIER_COLORS := ["b9ad9c", "5f8fd0", "b56be0", "ffb030"]
+const BOARD_ACTIVE_MAX := 4              ## missions acceptées en même temps (elles s'affichent sur le tableau de la cale)
 const BOARD_CONTRACTS := 7              ## contrats affichés en même temps
 const SIGN_RANGE := 16.0                ## m : un panneau indicateur se lit à moins de cette distance
 const TOWN_SPOT_NEAR := 6.0

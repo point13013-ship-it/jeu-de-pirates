@@ -2355,6 +2355,11 @@ func _apply_test_args() -> void:
 				_enter_swim(_enemy_deck_world(s0, Vector2(float(l0[0]), float(l0[3]))))
 				_try_board_enemy()
 				break
+	if _args.has("accept"):   # essai : --accept=t ouvre le tableau des quêtes à cet instant et accepte les deux premières missions
+		get_tree().create_timer(float(_args["accept"])).timeout.connect(func() -> void:
+			_open_quest_board()
+			_board_use("contract", "0")
+			_board_use("contract", "1"))
 	if _args.has("gun"):   # essai : --gun=0 prend le canon 0 au bout de 3 s (puis --move pour régler pivot et hausse)
 		get_tree().create_timer(3.0).timeout.connect(func() -> void: _gun_enter(int(_args["gun"])))
 	if _args.has("where"):   # essai : --where=t écrit où est le pirate à cet instant
@@ -2584,6 +2589,7 @@ func _setup_hull() -> void:
 	ToonLook.apply_tree(_hold)   # (refonte v2 : la cale aussi, en lumière à paliers)
 	_hold.visible = false
 	_hold_items = _hold_layout.items()
+	_fill_contracts()   # (les missions du tableau, et leurs affiches dans la cale)
 	if _has_port():
 		_build_town()
 	_interactables.append({"kind": "hatch", "pos": _ship.hatch_pos()})
@@ -3687,6 +3693,8 @@ func _resolve_shot(peer: int, wid: String, pos: Vector2, dir: Vector2) -> void:
 	for hit: Dictionary in _islands.shoot(pos, dir.normalized(), def):
 		if int(hit["gold"]) > 0:
 			_give_loot(peer, int(hit["gold"]), hit["at"])
+			if bool(hit.get("killed", false)):
+				_give_fact(peer, "ennemi tué")
 		if bool(hit.get("prop", false)):
 			_spawn_prop_loot(str(hit["kind"]), hit["at"])
 
@@ -3939,6 +3947,8 @@ func _on_inventory_use(kind: String, id: String) -> void:
 			_set_playing(_profile.instrument)
 		_inventory.open(_inventory_rows())
 		return
+	if _chest_island == -4:   # le tableau de la cale : on lit seulement
+		return
 	if _chest_island == -3:   # le tableau des quêtes
 		_board_use(kind, id)
 		return
@@ -4037,6 +4047,8 @@ func _resolve_swing(peer: int, pos: Vector2, dir: Vector2) -> void:
 	for hit: Dictionary in hits:
 		if int(hit["gold"]) > 0:
 			_give_loot(peer, int(hit["gold"]), hit["at"])
+			if bool(hit.get("killed", false)):
+				_give_fact(peer, "ennemi tué")
 		if bool(hit.get("prop", false)):
 			_spawn_prop_loot(str(hit["kind"]), hit["at"])
 
@@ -4126,6 +4138,8 @@ func _resolve_cast(peer: int, spell: Dictionary, pos: Vector2, dir: Vector2) -> 
 	for hit: Dictionary in _islands.cast(spell, pos, dir):
 		if int(hit["gold"]) > 0:
 			_give_loot(peer, int(hit["gold"]), hit["at"])
+			if bool(hit.get("killed", false)):
+				_give_fact(peer, "ennemi tué")
 		if bool(hit.get("prop", false)):
 			_spawn_prop_loot(str(hit["kind"]), hit["at"])
 
@@ -4179,6 +4193,14 @@ func apply_loot(gold: int, at: Vector2) -> void:
 
 
 ## Hôte (ou solo) : `n` points de réputation pour `peer`, qui les voit s'ajouter à sa barre.
+## Un fait qui compte pour les missions de `peer` sans donner de réputation (un ennemi abattu).
+func _give_fact(peer: int, why: String) -> void:
+	if peer == _my_id():
+		_contract_event(why)
+	elif _net != null and _net.active:
+		_net.send_rep(peer, 0, why)
+
+
 func _give_rep(peer: int, n: int, why: String) -> void:
 	if n <= 0:
 		return
@@ -7037,6 +7059,8 @@ func _interact_hold(secondary: bool) -> void:
 			_interact_rack(secondary)
 		"tools":
 			_swap_tool()
+		"missions":
+			_open_hold_board()
 		"bucket":
 			if _hull.water > 0.0:
 				_start_action("bail", "Écoper")   # lot 2 (4.3) : remplir le seau, puis le vider ; l'eau baisse à la fin
@@ -8437,6 +8461,8 @@ func _hold_prompt() -> String:
 			return "Tu as les mains prises" if _carrying else "E : prendre une planche (%d)   R : prendre un boulet (%d)" % [_profile.planks, _profile.balls]
 		"bucket":
 			return "E : écoper (%d %% d'eau)" % int(_hull.fill() * 100.0) if _hull.water > 0.0 else "La cale est sèche"
+		"missions":
+			return "E : lire les missions en cours"
 		"tools":
 			if _spy_holder == _my_id():
 				return "E : reprendre la boussole"
@@ -9063,6 +9089,7 @@ const CONTRACT_KINDS := {
 	"sales": {"why": "trésors vendus", "label": "Vends des trésors au receleur, %d fois", "need": [1, 2, 4, 6], "gold": 55},
 	"capture": {"why": "île capturée", "label": "Capture %d île%s", "need": [1, 1, 2, 3], "gold": 160},
 	"discover": {"why": "", "label": "Découvre %d île%s que tu ne connais pas", "need": [1, 2, 3, 5], "gold": 70},
+	"kills": {"why": "ennemi tué", "label": "Abats %d ennemi%s sur les îles", "need": [5, 10, 18, 30], "gold": 14},
 }
 var _signposts: Array = []          ## {pos (monde), label, lines: [[nom, position monde]]}
 var _sign_t := 0.0
@@ -9106,8 +9133,21 @@ func _fill_contracts() -> void:
 		var def: Dictionary = CONTRACT_KINDS[kind]
 		var need := int((def["need"] as Array)[tier])
 		var reward := int(round(float(def["gold"]) * need * float(GameConfig.BOARD_TIER_BONUS[tier]) / 5.0)) * 5
-		_profile.contracts.append({"kind": kind, "tier": tier, "need": need, "have": 0, "reward": reward, "base": _profile.discovered.size()})
+		_profile.contracts.append({"kind": kind, "tier": tier, "need": need, "have": 0, "reward": reward, "base": _profile.discovered.size(),
+				"taken": false})
 	_profile.save()
+	_refresh_posters()
+
+
+## Le tableau de la cale montre une affiche par mission acceptée.
+func _refresh_posters() -> void:
+	if _hold == null:
+		return
+	var cols: Array = []
+	for c: Dictionary in _profile.contracts:
+		if bool(c.get("taken", false)):
+			cols.append(str(GameConfig.BOARD_TIER_COLORS[clampi(int(c.get("tier", 0)), 0, 3)]))
+	_hold.set_posters(cols)
 
 
 func _contract_label(c: Dictionary) -> String:
@@ -9129,11 +9169,11 @@ func _contract_event(why: String) -> void:
 	var changed := false
 	for c: Dictionary in _profile.contracts:
 		var def: Dictionary = CONTRACT_KINDS.get(str(c["kind"]), {})
-		if str(def.get("why", "")) == why and why != "" and int(c["have"]) < int(c["need"]):
-			c["have"] = int(c["have"]) + 1
+		if str(def.get("why", "")) == why and why != "" and int(c["have"]) < int(c["need"]) and bool(c.get("taken", false)):
+			c["have"] = int(c["have"]) + 1   # (seules les missions acceptées avancent)
 			changed = true
 			if int(c["have"]) >= int(c["need"]):
-				_popup("Contrat rempli : va au tableau", _my_world_pos(), Color(1.0, 0.85, 0.35))
+				_popup("Mission remplie : va au tableau du port", _my_world_pos(), Color(1.0, 0.85, 0.35))
 	if changed:
 		_profile.save()
 
@@ -9147,21 +9187,42 @@ func _open_quest_board() -> void:
 	_inventory.open(_board_rows())
 
 
-func _board_rows() -> Array:
-	var rows: Array = [{"head": true, "label": "Missions — elles avancent toutes seules ; reviens ici toucher l'or"}]
+## `only_taken` : le tableau de la cale ne montre que les missions acceptées, sans rien y cliquer.
+func _board_rows(only_taken: bool = false) -> Array:
+	var taken_n := 0
+	for c0: Dictionary in _profile.contracts:
+		if bool(c0.get("taken", false)):
+			taken_n += 1
+	var rows: Array = [{"head": true, "label": ("Missions en cours — %d sur %d" % [taken_n, GameConfig.BOARD_ACTIVE_MAX]) if only_taken
+			else "Clique sur une mission pour l'accepter (%d sur %d en cours) — reviens toucher l'or une fois remplie" % [taken_n, GameConfig.BOARD_ACTIVE_MAX]}]
 	var order: Array = range(_profile.contracts.size())
-	order.sort_custom(func(a: int, b: int) -> bool:   # les plus rares d'abord
-		return int((_profile.contracts[a] as Dictionary)["tier"]) > int((_profile.contracts[b] as Dictionary)["tier"]))
+	order.sort_custom(func(a: int, b: int) -> bool:   # les missions acceptées d'abord, puis les plus rares
+		var ca: Dictionary = _profile.contracts[a]
+		var cb: Dictionary = _profile.contracts[b]
+		if bool(ca.get("taken", false)) != bool(cb.get("taken", false)):
+			return bool(ca.get("taken", false))
+		return int(ca["tier"]) > int(cb["tier"]))
 	for i: int in order:
 		var c: Dictionary = _profile.contracts[i]
-		var have := _contract_have(c)
-		var done := have >= int(c["need"])
+		var taken := bool(c.get("taken", false))
+		if only_taken and not taken:
+			continue
+		var have := _contract_have(c) if taken else 0
+		var done := taken and have >= int(c["need"])
 		var tier := clampi(int(c.get("tier", 0)), 0, 3)
+		var status := ""
+		if not taken:
+			status = "Clique pour accepter" if taken_n < GameConfig.BOARD_ACTIVE_MAX else "Trop de missions en cours"
+		elif done and only_taken:
+			status = "Remplie : touche l'or au tableau du port"
 		rows.append({"kind": "contract", "id": str(i), "label": _contract_label(c), "have": have, "need": int(c["need"]),
 				"reward": int(c["reward"]), "tier_name": str(GameConfig.BOARD_TIER_NAMES[tier]), "tier_color": str(GameConfig.BOARD_TIER_COLORS[tier]),
-				"icon": "m_" + str(c["kind"]), "enabled": done,
-				"desc": "Mission %s : %s. Avancement : %d sur %d. Récompense : %d or.%s" % [str(GameConfig.BOARD_TIER_NAMES[tier]).to_lower(),
-						_contract_label(c), have, int(c["need"]), int(c["reward"]), " Clique pour toucher ta récompense." if done else ""]})
+				"icon": "m_" + str(c["kind"]), "done": done, "offer": not taken, "status": status,
+				"enabled": not only_taken and (done or (not taken and taken_n < GameConfig.BOARD_ACTIVE_MAX)),
+				"desc": "Mission %s : %s. %s Récompense : %d or." % [str(GameConfig.BOARD_TIER_NAMES[tier]).to_lower(), _contract_label(c),
+						("Avancement : %d sur %d." % [have, int(c["need"])]) if taken else "Pas encore acceptée.", int(c["reward"])]})
+	if only_taken and taken_n == 0:
+		rows.append({"kind": "none", "id": "", "label": "Aucune mission en cours : accepte-en au tableau des quêtes du port.", "right": "", "enabled": false, "desc": ""})
 	return rows
 
 
@@ -9172,6 +9233,21 @@ func _board_use(kind: String, id: String) -> void:
 	if i < 0 or i >= _profile.contracts.size():
 		return
 	var c: Dictionary = _profile.contracts[i]
+	if not bool(c.get("taken", false)):   # on accepte la mission : elle part de zéro, et son affiche va sur le tableau de la cale
+		var taken_n := 0
+		for c0: Dictionary in _profile.contracts:
+			if bool(c0.get("taken", false)):
+				taken_n += 1
+		if taken_n >= GameConfig.BOARD_ACTIVE_MAX:
+			return
+		c["taken"] = true
+		c["have"] = 0
+		c["base"] = _profile.discovered.size()
+		_profile.save()
+		_refresh_posters()
+		_sfx.play_at(Synth.thump(), _my_scene_pos(), 0.6)
+		_inventory.set_rows(_board_rows())
+		return
 	if _contract_have(c) < int(c["need"]):
 		return
 	_profile.gold += int(c["reward"])
@@ -9182,8 +9258,38 @@ func _board_use(kind: String, id: String) -> void:
 	_inventory.set_rows(_board_rows())
 
 
+## E devant le tableau de la cale : on relit ses missions en cours et où l'on en est.
+func _open_hold_board() -> void:
+	if _inventory.is_open() or _dialog.is_open() or _shop_menu.is_open() or _chart.is_open() or _pause.is_open():
+		return
+	_fill_contracts()
+	_chest_island = -4
+	_inventory.set_texts("Missions en cours", "On accepte les missions et on touche l'or au tableau des quêtes du port     R / Échap : fermer")
+	_inventory.open(_board_rows(true))
+
+
 ## Les panneaux indicateurs : un poteau et une étiquette sur chaque place et au débarcadère, qui donne la direction des boutiques.
+var _board_tag: Label3D
+
+
 func _build_signposts() -> void:
+	# 13/11 (Jimmy) : le nom du tableau des quêtes au-dessus de lui, dans le style des noms des marchands
+	var bp := _quest_board_pos()
+	if bp != Vector2.INF:
+		_board_tag = Label3D.new()
+		_board_tag.text = "Tableau des quêtes
+— missions —"
+		_board_tag.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		_board_tag.font_size = 24
+		_board_tag.pixel_size = 0.0065
+		_board_tag.modulate = Color(1.0, 0.82, 0.42)
+		_board_tag.outline_size = 7
+		_board_tag.outline_modulate = Color(0.12, 0.06, 0.02)
+		_board_tag.no_depth_test = true
+		_board_tag.render_priority = 6
+		_board_tag.position = Vector3(bp.x, 3.4, bp.y)
+		_board_tag.visible = false
+		_world_fixed.add_child(_board_tag)
 	var shops: Array = []
 	for b: Dictionary in _town_plan.get("buildings", []):
 		if str(b.get("kind", "")) == "service" and b.get("name") != null:
@@ -9224,6 +9330,8 @@ func _build_signposts() -> void:
 
 ## Deux fois par seconde : le panneau le plus proche montre où sont les boutiques (flèche selon l'écran, distance en mètres).
 func _update_signposts(delta: float) -> void:
+	if _board_tag != null:
+		_board_tag.visible = _loc == Loc.LAND and _interior_active < 0 and _lpos.distance_to(_quest_board_pos()) < GameConfig.NPC_NAME_RANGE
 	if _signposts.is_empty():
 		return
 	_sign_t -= delta

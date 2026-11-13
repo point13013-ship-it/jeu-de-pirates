@@ -49,6 +49,7 @@ static func icon(kind: String, id: String) -> Texture2D:
 				"shells", "shell": _shells(img)
 				"flint": _flint(img)
 				"m_ships": _m_ship(img)
+				"m_kills": _m_skull(img)
 				"m_chests": _chest(img)
 				"m_sales": _coins(img)
 				"m_capture": _m_flag(img)
@@ -94,6 +95,19 @@ static func _m_ship(img: Image) -> void:
 		_rect(img, 14 - w + 1, y, 14, y, PAPER.darkened(0.12))
 	_rect(img, 15, 2, 20, 4, Color("c4553f"))   # la flamme
 	_rect(img, 2, 28, 29, 29, Color("5f8fb0"))   # la mer
+
+
+## Un crâne et deux os croisés : une mission où il faut abattre des ennemis.
+static func _m_skull(img: Image) -> void:
+	_line(img, Vector2(5, 26), Vector2(26, 13), 2.2, PAPER.darkened(0.15))
+	_line(img, Vector2(26, 26), Vector2(5, 13), 2.2, PAPER.darkened(0.15))
+	_disc(img, 15.5, 12.5, 9.0, PAPER, false)
+	_rect(img, 11, 19, 20, 23, PAPER)
+	_rect(img, 10, 10, 13, 14, OUT)
+	_rect(img, 18, 10, 21, 14, OUT)
+	_rect(img, 15, 15, 16, 17, OUT)
+	for x in [12, 15, 18]:
+		_rect(img, x, 21, x, 23, OUT)
 
 
 static func _m_flag(img: Image) -> void:

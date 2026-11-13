@@ -51,6 +51,7 @@ func build(p_layout: HoldLayout) -> void:
 	_ladder()
 	_rack()
 	_tools_cabinet()
+	_mission_board()
 	_bucket()
 	# (12/11, refonte v2) le pont au-dessus : invisible, il porte l'ombre ; le soleil n'entre que par l'écoutille (aim_sun)
 	_deck_shadow()
@@ -253,6 +254,7 @@ func _portholes() -> void:
 	var avoid: Array[float] = [layout.hatch_x, layout.rack_pos().x]
 	avoid.append_array(_hammock_xs)
 	avoid.append(layout.tools_pos().x)   # (l'armoire aux instruments)
+	avoid.append(layout.board_pos().x)   # (le tableau des missions)
 	var x := -layout.half_len + 1.6
 	var k := 0
 	while x < layout.half_len - 1.4:
@@ -438,6 +440,42 @@ func _tools_cabinet() -> void:
 	# la longue-vue posée sur la tablette
 	var tube := _cylinder(0.07, 0.6, Vector3(p.x - 0.1, y + 1.03, wall_z + 0.1), brass)
 	tube.rotation.z = PI * 0.5
+
+
+## 13/11 (Jimmy) : le tableau des missions de la cale. Un panneau de liège dans un cadre de bois ; une affiche de papier par
+## mission acceptée (quatre au plus), avec un bandeau à la couleur de sa rareté. Le jeu appelle set_posters.
+var _posters: Array = []   ## [papier, bandeau]
+
+
+func _mission_board() -> void:
+	var p := layout.board_pos()
+	var wall_z := -(HoldLayout.FLOOR_HALF + HoldLayout.RUN) + 0.12
+	var y := HoldLayout.RISE + 1.25
+	_box(Vector3(1.9, 1.3, 0.08), Vector3(p.x, y, wall_z), _flat(WOOD_RIB))
+	_box(Vector3(1.74, 1.14, 0.04), Vector3(p.x, y, wall_z + 0.05), _flat(Color("b98552")))
+	for k in 4:
+		var px := p.x - 0.6 + 0.4 * k
+		var py := y + (0.12 if k % 2 == 0 else -0.1)
+		var paper := _box(Vector3(0.34, 0.5, 0.015), Vector3(px, py, wall_z + 0.085), _flat(Color("ead9b0")), Vector3(0, 0, 0.06 * (k - 1.5)))
+		var band := _box(Vector3(0.34, 0.1, 0.02), Vector3(px, py + 0.2, wall_z + 0.09), _flat(Color.WHITE), Vector3(0, 0, 0.06 * (k - 1.5)))
+		for line in 3:
+			_box(Vector3(0.24, 0.02, 0.005), Vector3(0.0, 0.05 - 0.09 * line, 0.01), _flat(Color("6a4532")), Vector3.ZERO, paper)
+		paper.visible = false
+		band.visible = false
+		_posters.append([paper, band])
+
+
+## Les affiches du tableau : une par couleur de `colors` (les missions acceptées), les autres emplacements restent vides.
+func set_posters(colors: Array) -> void:
+	for k in _posters.size():
+		var on := k < colors.size()
+		(_posters[k][0] as MeshInstance3D).visible = on
+		(_posters[k][1] as MeshInstance3D).visible = on
+		if on:
+			var m := StandardMaterial3D.new()
+			m.albedo_color = Color(str(colors[k]))
+			m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+			(_posters[k][1] as MeshInstance3D).material_override = m
 
 
 func _bucket() -> void:
