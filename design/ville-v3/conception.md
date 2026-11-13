@@ -215,3 +215,24 @@ Règles ajoutées, vérifiées par le test :
 - **Pas encore dans la maquette** : les intérieurs (taverne, magasin, tailleur : on parle aux marchands à leur porte), la
   colline du moulin (à plat), la pente de la grève (à plat, à la hauteur du quai), les lanternes, les figurants et les sons.
 - L'ancienne ville reste celle du jeu publié.
+
+## 12. Niveau 2 : la ville passe de la maquette au décor (demande de Jimmy, 13/11 au soir)
+
+« On a posé la structure. Maintenant il faut revoir l'entièreté de la ville et la passer à un niveau vraiment supérieur. »
+Ordre de travail, du plus visible au plus fin ; chaque point est publié dès qu'il est jouable.
+
+| # | Chantier | État |
+|---|---|---|
+| 1 | **Sol** : un seul sol peint (pavés, terre battue, herbe, sable), croisements propres, plus de dalles empilées (`TownGround`, `town_ground.gdshader`) | fait |
+| 2 | **Bord de l'eau** : vraies échelles de bois, pontons en planches, murs de quai en pierre de taille, quai pavé jusqu'au bord | fait |
+| 3 | **Relief** : colline du moulin, grève en pente douce vers l'eau, talus au pied des terrasses au lieu de murs nus | à faire |
+| 4 | **Habillage** : bittes d'amarrage, caisses, tonneaux, filets, étals garnis, linge, bancs, puits, jardins clos, arbres et palmiers | à faire (kit CC0 à valider avec Jimmy) |
+| 5 | **Maisons** : encorbellements, lucarnes, enseignes peintes, portes et volets variés, façades salies au pied, toits affaissés | à faire |
+| 6 | **Intérieurs** refaits dans la charte v1 : taverne, magasin, tailleur (aujourd'hui ce sont ceux de l'ancienne ville) | à faire |
+| 7 | **Lumière** : ombres de contact sous les objets, ombres de nuages, lune avec ombres, lanternes aux portes, reflets sur pavés mouillés après la pluie | à faire |
+| 8 | **Vie** : figurants à routine, enfants, animaux, sons par lieu | à faire |
+| 9 | **Bascule** : la nouvelle ville remplace l'ancienne pour tout le monde (`TOWN_V3`), essais à plusieurs | à faire |
+
+Rappel sur l'« illumination globale comme le HDRP » : SDFGI et VoxelGI ne fonctionnent pas avec une caméra orthographique
+(§ 7). Ce qu'on fait à la place, point 7 : chaque source éclaire vraiment son coin, les ombres ancrent les objets, les
+reflets sont dessinés. C'est une limite du moteur avec notre caméra, pas un choix de paresse.

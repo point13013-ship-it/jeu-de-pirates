@@ -32,6 +32,18 @@ static func material(plan: Dictionary) -> ShaderMaterial:
 		var main := str(s["id"]) in ["quai", "grand_rue"]
 		for i in pts.size() - 1:
 			_segment(data, w, h, lo, pts[i], pts[i + 1], float(s["width"]), main)
+	# le quai est pavé jusqu'à son bord : on pave aussi le long de la côte, entre les deux bouts de la rue du quai (sans cela
+	# une bande d'herbe restait entre les pavés et l'eau)
+	var quay_x := Vector2(INF, -INF)
+	for s2: Dictionary in plan.get("streets", []):
+		if str(s2["id"]) == "quai":
+			for q: Vector2 in Land._poly(s2["pts"]):
+				quay_x = Vector2(minf(quay_x.x, q.x), maxf(quay_x.y, q.x))
+	for i in land.size() - 1:
+		var c0 := land[i]
+		var c1 := land[i + 1]
+		if minf(c0.x, c1.x) >= quay_x.x - 1.0 and maxf(c0.x, c1.x) <= quay_x.y + 1.0 and maxf(c0.y, c1.y) < 12.0:
+			_segment(data, w, h, lo, c0, c1, 5.0, true)
 	for pth: Dictionary in plan.get("paths", []):
 		var pp := Land._poly(pth["pts"])
 		_segment(data, w, h, lo, pp[0], pp[1], float(pth["width"]), false)

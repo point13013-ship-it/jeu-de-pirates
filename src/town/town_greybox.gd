@@ -92,9 +92,36 @@ static func build(parent: Node3D, plan: Dictionary) -> Dictionary:
 			for sgn: float in [-1.0, 1.0]:
 				_box(acc, WOOD_DARK, at + side2 * sgn * 1.05, Vector2(0.35, 0.35), 0.0, SEA_FLOOR, 0.5)
 
-	# échelles : un montant rouge contre le quai, du fond de l'eau au-dessus du bord
+	# échelles (niveau 2 : de vraies échelles de bois, plus des cubes rouges) : deux montants plaqués contre le quai ou le ponton,
+	# du fond de l'eau à 60 cm au-dessus du bord, des barreaux, et le haut des montants peint en rouge pour les repérer de loin
+	var walk: Array = [land]
+	for pt2: Dictionary in plan.get("pontoons", []):
+		var pa := Vector2(float(pt2["a"][0]), float(pt2["a"][1]))
+		var pb := Vector2(float(pt2["b"][0]), float(pt2["b"][1]))
+		var ps := (pb - pa).normalized().orthogonal() * float(pt2["width"]) * 0.5
+		walk.append(PackedVector2Array([pa + ps, pb + ps, pb - ps, pa - ps]))
 	for l: Array in plan.get("ladders", []):
-		_box(acc, LADDER, Vector2(float(l[0]), float(l[1])), Vector2(0.7, 0.7), 0.0, -2.2, 0.45)
+		var at := Vector2(float(l[0]), float(l[1]))
+		var out := Vector2.ZERO   # vers l'eau : la moyenne des directions où l'on n'a plus pied
+		for k in 16:
+			var dir := Vector2.from_angle(TAU * k / 16.0)
+			var wet := true
+			for poly: PackedVector2Array in walk:
+				if Geometry2D.is_point_in_polygon(at + dir * 1.1, poly):
+					wet = false
+			if wet:
+				out += dir
+		out = out.normalized() if out.length() > 0.01 else Vector2(0, -1)
+		var ang := out.angle() + PI * 0.5
+		var foot := at + out * 0.12
+		for s3: float in [-1.0, 1.0]:
+			var rail := foot + out.orthogonal() * 0.27 * s3
+			_box(acc, WOOD_DARK, rail, Vector2(0.09, 0.09), ang, -2.4, 0.5)
+			_box(acc, LADDER, rail, Vector2(0.11, 0.11), ang, 0.5, 0.66)
+		var z := -2.2
+		while z < 0.45:
+			_box(acc, WOOD, foot, Vector2(0.54, 0.06), ang, z, z + 0.06)
+			z += 0.34
 
 	# bâtiments
 	var k2 := 0
@@ -148,6 +175,14 @@ static func build(parent: Node3D, plan: Dictionary) -> Dictionary:
 		var mi := MeshInstance3D.new()
 		mi.mesh = (acc[col3] as SurfaceTool).commit()
 		mi.material_override = TownGround.material(plan) if col3 == GROUND else _mat(col3)
+		# (niveau 2 : bois en planches et pierre de taille peints, comme sur les maisons, au lieu d'aplats)
+		var painted := {WOOD: 2, WOOD.darkened(0.25): 2, WOOD_DARK: 2, STONE: 3, STONE_DARK: 3}
+		if painted.has(col3):
+			var sm := ShaderMaterial.new()
+			sm.shader = load("res://shaders/surface.gdshader") as Shader
+			sm.set_shader_parameter("kind", int(painted[col3]))
+			sm.set_shader_parameter("base", col3)
+			mi.material_override = sm
 		mi.name = "decor_%s" % col3.to_html(false)
 		root.add_child(mi)
 	# lanternes : leur pied arrête comme un poteau
