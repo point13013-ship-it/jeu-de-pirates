@@ -402,7 +402,7 @@ const TOWN_V3 := false                ## true : la nouvelle ville (maquette gris
 const LADDER_EXIT_REACH := 2.0        ## m : dans la ville v3, un nageur sort de l'eau à moins de cette distance d'une échelle (ou par la grève)
 const LAMP_EVERY_MAIN := 13.0          ## m entre deux lanternes sur le quai et la Grand-Rue
 const LAMP_EVERY := 21.0               ## … et sur les autres rues
-const LAMP_ENERGY := 4.2               ## force d'une lanterne, la nuit
+const LAMP_ENERGY := 3.4               ## force d'une lanterne, la nuit
 const LAMP_RANGE := 9.0                ## m : portée de sa lumière
 const LAMP_CULL := 60.0                ## m : au-delà de cette distance du pirate, une lanterne n'éclaire plus (elle brille encore)
 const LAMP_SHADOWS := 2                ## nombre de lanternes qui portent des ombres (les plus proches du pirate)
@@ -423,3 +423,9 @@ const AGGRO_STING_VOL := 1.0            ## volume de l'alerte (cloche et tambour
 const HUD_NOTICES := false              ## les messages au milieu de l'écran (« Boulet ! Voie d'eau… ») : éteints, à la demande de Jimmy
 const HUD_KEY_HINT := true              ## la touche du poste visé, « [E] … » : petite, en bas de l'écran (false : rien du tout)
 const HUD_PROMPT_FROM_BOTTOM := 46.0    ## pixels au-dessus du bas de l'écran
+## Lampadaires (13/11) : un jaune paille, ni blanc ni orange. La nuit est étalonnée en bleu : la lumière est un peu plus jaune
+## que ce qu'on veut voir à l'écran, pour qu'elle ne vire pas au rose sur les pavés.
+const LAMP_LIGHT := Color(1.0, 0.80, 0.26)     ## couleur de la lumière jetée au sol et sur les murs
+const LAMP_GLASS := Color(1.0, 0.86, 0.55)     ## couleur du verre de la lanterne
+const LAMP_GLASS_ENERGY := 1.0                 ## force de son éclat (6 dans le modèle : il virait au blanc)
+const NIGHT_WARM_KEEP := 0.85               ## part de la couleur d'origine gardée, la nuit, là où une lumière chaude éclaire (0 : tout est bleui)

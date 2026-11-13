@@ -315,5 +315,6 @@ func _compute_grade(day: float, dusk: float, fog_amount: float) -> void:
 	haze_c = haze_c.lerp(Vector3(0.30, 0.33, 0.40) * lerpf(0.4, 1.0, day), dark * 0.7)
 	grade = {
 		"tint": tint, "shadow": shadow, "high": high, "sat": sat, "contrast": con, "vignette": vig,
+		"warm_keep": GameConfig.NIGHT_WARM_KEEP * (1.0 - day),
 		"haze_color": haze_c, "haze": fog_amount * GameConfig.FOG_SCREEN_BANKS,   # (13/11 : coupés, ils s'amassaient d'un côté en traînées opaques)
 	}

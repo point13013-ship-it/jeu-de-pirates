@@ -9,8 +9,8 @@ extends Node3D
 ## - reflets : sous chaque lanterne du bord de l'eau, une traînée dorée en tirets qui danse sur la mer.
 ## Tout suit `night` (0 le jour, 1 la nuit) : rien n'est allumé à midi.
 
-const WARM := Color(1.0, 0.68, 0.22)   # (plus jaune que la palette : l'étalonnage bleu de la nuit le ramène vers l'orange)
-const WARM_LIGHT := Color("ffc56a")
+const WARM := GameConfig.LAMP_LIGHT   # (plus jaune que la palette : l'étalonnage bleu de la nuit le ramène vers l'orange)
+const WARM_LIGHT := GameConfig.LAMP_GLASS
 const POST := Color("2e2a44")
 const LAMP_HEIGHT := 3.1
 
@@ -112,9 +112,9 @@ func setup(lamps: Array, spills: Array, land: Land, sea_y: float, extras: Dictio
 		spin.add_child(bm)
 		add_child(spin)
 	_lantern_mat = StandardMaterial3D.new()
-	_lantern_mat.albedo_color = WARM_LIGHT
+	_lantern_mat.albedo_color = WARM_LIGHT * 0.12
 	_lantern_mat.emission_enabled = true
-	_lantern_mat.emission = WARM
+	_lantern_mat.emission = WARM_LIGHT
 	_lantern_mat.emission_energy_multiplier = 0.0
 	var posts := SurfaceTool.new()
 	posts.begin(Mesh.PRIMITIVE_TRIANGLES)
@@ -245,7 +245,7 @@ func update(night: float, focus: Vector3, player: Vector3, delta: float) -> void
 		var on := smoothstep(0.35, 0.8, night)   # (les lanternes s'allument au crépuscule, pas en plein après-midi)
 		for l: OmniLight3D in _lights:
 			l.light_energy = GameConfig.LAMP_ENERGY * on
-		_lantern_mat.emission_energy_multiplier = 0.15 + 3.2 * on
+		_lantern_mat.emission_energy_multiplier = 0.15 + GameConfig.LAMP_GLASS_ENERGY * on
 		_spill_mat.albedo_color = Color(on, on, on)
 		_streak_mat.set_shader_parameter("night", on)
 		if _beacon != null:

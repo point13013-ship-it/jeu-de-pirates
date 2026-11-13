@@ -970,6 +970,14 @@ func _build_port() -> void:
 				mat.set_shader_parameter("base", GameConfig.WARM_GLOW if src.emission_enabled else src.albedo_color)
 				mat.set_shader_parameter("emit", 1.0 if src.emission_enabled else 0.0)
 			if mat == null:
+				# 13/11 (retour de Jimmy : « les lampadaires restent blancs ») : leur verre brillait six fois trop fort, donc blanc
+				# quel que soit sa teinte. Il brille maintenant juste assez pour garder sa couleur (LAMP_GLASS, LAMP_GLASS_ENERGY).
+				if src.emission_enabled:
+					var lamp := src.duplicate() as BaseMaterial3D
+					lamp.albedo_color = GameConfig.LAMP_GLASS * 0.12   # (presque noir : seule la lueur compte, sinon la somme vire au blanc)
+					lamp.emission = GameConfig.LAMP_GLASS
+					lamp.emission_energy_multiplier = GameConfig.LAMP_GLASS_ENERGY
+					mi.set_surface_override_material(s, lamp)
 				continue
 			mi.set_surface_override_material(s, mat)
 			if is_building:
@@ -983,6 +991,22 @@ func _build_port() -> void:
 		if is_building and not (record["normal"] as Dictionary).is_empty():
 			_buildings.append(record)
 	ToonLook.apply_tree(_port)   # prototype de refonte : lumière en paliers
+	# les réverbères du quai et la lanterne du ponton éclairent vraiment le sol la nuit (ils ne faisaient que briller)
+	var spots: Array = [Vector3(14.3, 2.7, 29.6)]
+	for lx in range(-38, 40, 8):
+		if lx > 13 and lx < 19:
+			continue
+		spots.append(Vector3(lx, 3.2, -1.4))
+	for at: Vector3 in spots:
+		var l := OmniLight3D.new()
+		l.light_color = GameConfig.LAMP_LIGHT
+		l.light_energy = 0.0
+		l.omni_range = GameConfig.LAMP_RANGE
+		l.omni_attenuation = 1.3
+		l.shadow_enabled = false
+		l.position = at
+		_world_fixed.add_child(l)
+		_port_lamps.append(l)
 	_moor_at_dock()
 
 
@@ -990,6 +1014,7 @@ func _build_port() -> void:
 ## murs, les pontons et la terre qui arrête les bateaux viennent tous du plan (Land.load_plan) : plus rien n'est écrit à la main.
 ## Essai : --town=v3 (ou GameConfig.TOWN_V3). L'ancienne ville reste celle du jeu tant que la nouvelle n'est pas prête.
 var _town_plan: Dictionary = {}
+var _port_lamps: Array[OmniLight3D] = []   ## les réverbères de l'ancienne ville (allumés la nuit)
 var _town_lights: TownLights
 
 
@@ -3536,6 +3561,11 @@ func _process(delta_raw: float) -> void:
 		_swim_loop_gain = move_toward(_swim_loop_gain, 0.0, delta / 0.2)
 		_set_swim_loop(_swim_loop_gain)
 	_update_building_fade(delta)
+	if not _port_lamps.is_empty() and _atmo != null:
+		var on := smoothstep(0.35, 0.8, 1.0 - _atmo.sky.daylight)
+		for pl: OmniLight3D in _port_lamps:
+			pl.light_energy = GameConfig.LAMP_ENERGY * on
+			pl.visible = on > 0.01
 	if _town_lights != null and _atmo != null:
 		var here := _lpos if (_loc == Loc.LAND or _loc == Loc.SWIM) else _sim.position
 		_town_lights.update(1.0 - _atmo.sky.daylight, Vector3(here.x, 0.0, here.y), Vector3(here.x, _lh, here.y), delta)
@@ -5501,6 +5531,7 @@ func _apply_grade() -> void:
 		g = {"tint": Vector3.ONE, "shadow": Vector3.ZERO, "high": Vector3.ZERO, "sat": 1.0, "contrast": 1.0,
 				"vignette": 0.12, "haze_color": Vector3(0.8, 0.8, 0.8), "haze": 0.0}
 	_post_mat.set_shader_parameter("grade_tint", g["tint"])
+	_post_mat.set_shader_parameter("grade_warm_keep", float(g.get("warm_keep", 0.0)))
 	_post_mat.set_shader_parameter("grade_shadow", g["shadow"])
 	_post_mat.set_shader_parameter("grade_high", g["high"])
 	_post_mat.set_shader_parameter("grade_sat", g["sat"])

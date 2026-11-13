@@ -19,6 +19,10 @@ uniform vec3 grade_shadow = vec3(0.0);      // teinte ajoutée aux ombres
 uniform vec3 grade_high = vec3(0.0);        // teinte ajoutée aux hautes lumières
 uniform float grade_sat = 1.0;
 uniform float grade_contrast = 1.0;
+// 13/11 : l'étalonnage de nuit bleuit et désature toute l'image, donc aussi ce qu'une lanterne éclaire : sa lumière ressortait
+// blanche (ou rosée) quelle que soit sa couleur. Là où l'image est chaude (plus de rouge que de bleu : c'est qu'une lumière
+// chaude l'éclaire, l'ambiance de nuit étant bleue), on garde cette part de la couleur d'origine. 0 le jour.
+uniform float grade_warm_keep = 0.0;
 uniform float vignette = 0.0;
 uniform vec3 haze_color = vec3(0.8);        // brume : couleur, quantité, dérive
 uniform float haze_amount = 0.0;
@@ -50,11 +54,14 @@ float fbm(vec2 p) {
 
 vec3 grade(vec3 c, vec2 uv) {
 	float l = dot(c, vec3(0.299, 0.587, 0.114));
+	vec3 raw = c;
+	float warm = smoothstep(0.0, 0.14, c.r - c.b) * smoothstep(0.10, 0.40, l) * grade_warm_keep;
 	c *= grade_tint;
 	c += grade_shadow * (1.0 - smoothstep(0.0, 0.55, l));
 	c += grade_high * smoothstep(0.45, 1.0, l);
 	c = mix(vec3(dot(c, vec3(0.299, 0.587, 0.114))), c, grade_sat);
 	c = (c - 0.5) * grade_contrast + 0.5;
+	c = mix(c, raw, warm);
 	if (haze_amount > 0.001) {
 		// (12/11 : avant, un voile laiteux sur tout l'écran, pirate compris. La vraie brume est maintenant dans la 3D
 		// (profondeur + ras de l'eau, voir SkyCycle) ; ici il ne reste que des bancs de brume qui dérivent, en lambeaux, plus
