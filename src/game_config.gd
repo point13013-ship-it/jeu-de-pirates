@@ -440,3 +440,9 @@ const ROPE_REACH := 1.8                 ## m : distance à laquelle on ligote ou
 const ROPE_LENGTH := 9.0                ## m : longueur de la corde qui relie au bateau (on est traîné au bout, derrière la poupe)
 const BOUND_MAX_TIME := 180.0           ## s : sans silex et sans aide, les liens lâchent au bout de ce temps
 const FLINT_CHEST_CHANCE := 0.35        ## chance de trouver un silex dans un coffre d'île
+## Instruments de musique (13/11, 4.5).
+const INSTRUMENT_VOL := 0.9             ## volume d'un instrument (son placé sur le pirate : il s'éteint avec la distance)
+const NOTE_EVERY := 0.4                 ## s entre deux notes qui s'envolent
+const NOTE_LIFE := 1.5                  ## s : durée de vie d'une note
+const INSTRUMENT_SCALE := 1.5           ## taille de l'instrument tenu
+const NOTE_SCALE := 1.6                 ## taille des notes qui s'envolent

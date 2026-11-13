@@ -9,6 +9,7 @@ const START_PLANKS := 4
 const START_BALLS := 8
 
 var gold := 0
+var instrument := "accordeon"  ## l'instrument de musique choisi : accordeon, violon ou tambour (13/11)
 var flint := 0                ## silex en poche (13/11) : à usage unique, sert à couper ses liens
 var hidden := ""              ## l'emplacement caché : « flint » ou vide ; on y accède même ligoté
 var tool := "compass"         ## l'instrument en poche : « compass » (boussole) ou « spyglass » (longue-vue) ; on l'échange à bord
@@ -90,6 +91,9 @@ func load_file() -> void:
 		reputation = maxi(int(d.get("reputation", 0)), 0)
 		tool = "spyglass" if str(d.get("tool", "compass")) == "spyglass" else "compass"
 		flint = maxi(int(d.get("flint", 0)), 0)
+		instrument = str(d.get("instrument", "accordeon"))
+		if not (instrument in ["accordeon", "violon", "tambour"]):
+			instrument = "accordeon"
 		hidden = "flint" if str(d.get("hidden", "")) == "flint" else ""
 
 
@@ -98,7 +102,7 @@ func save() -> void:
 		return
 	var f := FileAccess.open(PATH, FileAccess.WRITE)
 	if f != null:
-		f.store_string(JSON.stringify({"gold": gold, "quests": quests, "planks": planks, "balls": balls, "ship_planks": ship_planks, "ship_balls": ship_balls, "owned": owned, "ship_skin": ship_skin, "ships": ships, "ship": ship, "discovered": discovered, "berry": berry, "known_spells": known_spells, "berries": berries, "weapons": weapons, "weapon": weapon, "weapon2": weapon2, "skins_owned": skins_owned, "skin_worn": skin_worn, "bullets": bullets, "shells": shells, "captured": captured, "cabins": cabins, "reputation": reputation, "tool": tool, "flint": flint, "hidden": hidden}, "\t"))
+		f.store_string(JSON.stringify({"gold": gold, "quests": quests, "planks": planks, "balls": balls, "ship_planks": ship_planks, "ship_balls": ship_balls, "owned": owned, "ship_skin": ship_skin, "ships": ships, "ship": ship, "discovered": discovered, "berry": berry, "known_spells": known_spells, "berries": berries, "weapons": weapons, "weapon": weapon, "weapon2": weapon2, "skins_owned": skins_owned, "skin_worn": skin_worn, "bullets": bullets, "shells": shells, "captured": captured, "cabins": cabins, "reputation": reputation, "tool": tool, "flint": flint, "hidden": hidden, "instrument": instrument}, "\t"))
 
 
 ## Gagne `n` points de réputation. Renvoie {from, to, rank_from, rank_to} (pour l'animation de progression), ou {} si rien n'a changé.

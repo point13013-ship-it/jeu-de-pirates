@@ -523,6 +523,80 @@ static func rope() -> AudioStream:
 		return _to_stream(_normalize(out, 0.5), false))
 
 
+## 13/11 (4.5) — les instruments de musique des pirates : le même air de marin (ré mineur, 6,4 s, en boucle) joué par
+## l'accordéon (mélodie, basse et accords), le violon (mélodie une octave plus haut, avec vibrato) ou le tambour (le rythme).
+## Même tempo et même tonalité : plusieurs pirates peuvent jouer ensemble. Fabriqué une fois, puis gardé.
+const TUNE := [62, 0, 65, 69, 69, 67, 65, 64, 62, 0, 65, 69, 72, 0, 69, 0, 70, 0, 69, 67, 65, 0, 64, 62, 64, 65, 67, 64, 62, 0, 0, -1]
+const TUNE_STEP := 0.2   ## s par croche
+
+
+static func instrument(kind: String) -> AudioStream:
+	return _cached("instr_" + kind, func() -> AudioStreamWAV:
+		var step := int(TUNE_STEP * RATE)
+		var total := step * TUNE.size()
+		var out := PackedFloat32Array()
+		out.resize(total)
+		out.fill(0.0)
+		if kind == "tambour":
+			var nz := _noise(total, 77)
+			for s in TUNE.size():
+				var k := s % 8
+				var low := k == 0 or k == 3 or k == 4
+				var rim := k == 2 or k == 6 or k == 7
+				if not (low or rim):
+					continue
+				var n := int(0.18 * RATE)
+				for i in n:
+					var t := float(i) / RATE
+					var at := s * step + i
+					if low:
+						out[at] += exp(-t * 16.0) * sin(TAU * (110.0 - 50.0 * minf(t * 8.0, 1.0)) * t) + nz[at] * exp(-t * 40.0) * 0.25
+					else:
+						out[at] += nz[at] * exp(-t * 38.0) * 0.45 + exp(-t * 30.0) * sin(TAU * 330.0 * t) * 0.25
+			return _to_stream(_normalize(out, 0.8), true)
+		var violin := kind == "violon"
+		var s2 := 0
+		while s2 < TUNE.size():
+			var note: int = TUNE[s2]
+			var hold := 1
+			while s2 + hold < TUNE.size() and int(TUNE[s2 + hold]) == 0:
+				hold += 1
+			if note > 0:
+				var f := 440.0 * pow(2.0, float(note + (12 if violin else 0) - 69) / 12.0)
+				var n2 := hold * step
+				var ph := 0.0
+				var ph2 := 0.0
+				for i in n2:
+					var t2 := float(i) / RATE
+					var vib := 1.0 + (0.006 * sin(TAU * 5.5 * t2) * minf(t2 * 4.0, 1.0) if violin else 0.0)
+					ph += TAU * f * vib / RATE
+					ph2 += TAU * f * 1.007 / RATE
+					var env := minf(t2 / (0.07 if violin else 0.02), 1.0) * minf((float(n2 - i) / RATE) / 0.04, 1.0)
+					var v := 0.0
+					for h in range(1, 6):
+						v += sin(ph * h) / h
+						if not violin:
+							v += sin(ph2 * h) / h * 0.6   # la seconde anche, un rien désaccordée : le son de l'accordéon
+					out[s2 * step + i] += v * env * (0.5 if violin else 0.38)
+			s2 += hold
+		if not violin:   # la main gauche de l'accordéon : basse sur le temps, accord sur le contretemps
+			var beat := 0
+			for b in range(0, TUNE.size(), 4):
+				var root_hz := 116.54 if (beat >= 4 and beat < 6) else 146.83   # ré, et si bémol à la troisième mesure
+				var n3 := int(0.16 * RATE)
+				for i in n3:
+					var t3 := float(i) / RATE
+					var env3 := minf(t3 / 0.01, 1.0) * exp(-t3 * 9.0)
+					var v3 := 0.0
+					if beat % 2 == 0:
+						v3 = sin(TAU * root_hz * 0.5 * t3) + 0.4 * sin(TAU * root_hz * t3)
+					else:
+						v3 = (sin(TAU * root_hz * t3) + sin(TAU * root_hz * 1.189 * t3) + sin(TAU * root_hz * 1.498 * t3)) * 0.4
+					out[b * step + i] += v3 * env3 * 0.5
+				beat += 1
+		return _to_stream(_normalize(out, 0.8), true))
+
+
 ## 13/11 (2.4) — le couinement du canard en plastique : deux notes qui montent puis retombent, un peu nasillardes.
 static func duck_squeak() -> AudioStream:
 	return _cached("duck_squeak", func() -> AudioStreamWAV:

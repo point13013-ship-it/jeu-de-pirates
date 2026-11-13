@@ -471,6 +471,146 @@ func _toggle_compass() -> void:
 	_say("Boussole sortie (B pour la ranger)" if _sprite.compass_enabled else "Boussole rangée (B pour la ressortir)", 2.5)
 
 
+## ------------------------------------------------------------------ 13/11 (4.5) : les instruments de musique
+## Touche N : je joue de mon instrument (accordéon, violon ou tambour, choisi dans le sac), N de nouveau : j'arrête. Les joueurs
+## proches l'entendent (son placé sur le pirate), des notes s'envolent de l'instrument, et le pirate le tient devant lui, les
+## bras en avant. On peut marcher en jouant ; on s'arrête si l'on frappe, porte, nage ou se fait ligoter.
+## Réseau : un événement « music » (l'instrument, ou rien pour l'arrêt), relayé par l'hôte.
+const INSTRUMENT_NAMES := {"accordeon": "Accordéon", "violon": "Violon", "tambour": "Tambour"}
+var _playing := ""
+var _musicians := {}        # les autres joueurs qui jouent : identifiant -> instrument
+var _music_props := {}      # identifiant (le mien compris) -> l'instrument tenu
+var _notes: Array = []      # les notes en l'air : [nœud, âge, dérive]
+var _note_in := 0.0
+var _music_t := 0.0
+
+
+func _toggle_music() -> void:
+	if _playing != "":
+		_set_playing("")
+	elif not (_bound or _is_down() or _is_dead() or _carrying or _loc == Loc.SWIM or _loc == Loc.CLIMB or _loc == Loc.FLIGHT or _gun_i >= 0 or _spy):
+		_set_playing(_profile.instrument)
+
+
+func _set_playing(kind: String) -> void:
+	if kind == _playing:
+		return
+	_playing = kind
+	_send_action("music", kind, _my_world_pos(), _face)
+	_set_music_prop(_my_id(), kind)
+	if kind == "":
+		_sfx.stop_loop("music_me")
+
+
+## L'instrument tenu par le pirate `id` (« » : on le range).
+func _set_music_prop(id: int, kind: String) -> void:
+	if _music_props.has(id) and is_instance_valid(_music_props[id]):
+		(_music_props[id] as Node).queue_free()
+	_music_props.erase(id)
+	var sp := _rope_sprite(id)
+	if kind == "" or sp == null:
+		return
+	var root := Node3D.new()
+	root.set_meta("kind", kind)
+	match kind:
+		"accordeon":
+			for side: float in [-1.0, 1.0]:
+				var cheek := ProcKit.box(root, Vector3(0.1, 0.3, 0.2), Vector3(side * 0.19, 0.0, 0.0), ProcKit.flat(Color("b23a30")))
+				cheek.name = "joue_g" if side < 0.0 else "joue_d"
+				ProcKit.box(cheek, Vector3(0.02, 0.22, 0.12), Vector3(side * 0.055, 0.0, 0.0), ProcKit.flat(Color("efe4cc")))
+			var bellows := ProcKit.box(root, Vector3(0.28, 0.26, 0.17), Vector3.ZERO, ProcKit.flat(Color("2e2a44")))
+			bellows.name = "soufflet"
+		"violon":
+			var body := ProcKit.ball(root, 0.13, Vector3(0.05, 0.0, 0.0), ProcKit.flat(Color("9c6a43")))
+			body.scale = Vector3(1.25, 0.9, 0.4)
+			ProcKit.box(root, Vector3(0.26, 0.035, 0.03), Vector3(-0.2, 0.03, 0.0), ProcKit.flat(Color("3a2630")))
+			var bow := ProcKit.box(root, Vector3(0.42, 0.015, 0.015), Vector3(0.0, 0.07, 0.04), ProcKit.flat(Color("efe4cc")), Vector3(0, 0, 0.5))
+			bow.name = "archet"
+		"tambour":
+			ProcKit.cyl(root, 0.16, 0.2, Vector3.ZERO, ProcKit.flat(Color("7a3530")))
+			ProcKit.cyl(root, 0.165, 0.02, Vector3(0, 0.105, 0), ProcKit.flat(Color("efe4cc")))
+			for side2: float in [-1.0, 1.0]:
+				var stick := ProcKit.box(root, Vector3(0.02, 0.02, 0.24), Vector3(side2 * 0.08, 0.2, 0.06), ProcKit.flat(Color("cf9c62")), Vector3(0.9, 0, 0))
+				stick.name = "baguette_g" if side2 < 0.0 else "baguette_d"
+	for c: Node in root.find_children("*", "MeshInstance3D", true, false):
+		(c as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	sp.add_child(root)
+	_music_props[id] = root
+
+
+## Chaque image : les sons suivent les musiciens, les instruments bougent, les notes s'envolent.
+func _update_music(delta: float) -> void:
+	_music_t += delta
+	if _playing != "" and (_bound or _is_down() or _is_dead() or _carrying or _loc == Loc.SWIM or _loc == Loc.CLIMB or _loc == Loc.FLIGHT or _atk_cd > 0.0):
+		_set_playing("")
+	if _playing != "":
+		_sfx.loop_at("music_me", Synth.instrument(_playing), _my_scene_pos() + Vector3.UP * 0.9, GameConfig.INSTRUMENT_VOL)
+	for id: int in _musicians.keys():
+		if not _remotes.has(id):
+			_musicians.erase(id)
+			_set_music_prop(id, "")
+			_sfx.stop_loop("music_%d" % id)
+			continue
+		_sfx.loop_at("music_%d" % id, Synth.instrument(str(_musicians[id])), ((_remotes[id]["sprite"]) as Node3D).global_position + Vector3.UP * 0.9, GameConfig.INSTRUMENT_VOL)
+	var to_cam := _cam.global_transform.basis.z
+	var beat := _music_t / Synth.TUNE_STEP
+	_note_in -= delta
+	var spawn := _note_in <= 0.0
+	if spawn:
+		_note_in = GameConfig.NOTE_EVERY
+	for id2: int in _music_props.keys():
+		var prop := _music_props[id2] as Node3D
+		var sp := _rope_sprite(id2)
+		if not is_instance_valid(prop) or sp == null:
+			_music_props.erase(id2)
+			continue
+		# (face à la caméra, à la taille des bras : enfant du sprite, il héritait de son écrasement et se présentait de profil)
+		prop.global_transform = Transform3D(Basis(Vector3.UP, _cam_yaw).scaled(Vector3.ONE * GameConfig.INSTRUMENT_SCALE),
+				sp.global_position + Vector3(0.0, 0.80, 0.0) + to_cam * 0.4)
+		match str(prop.get_meta("kind")):
+			"accordeon":
+				var open := 1.0 + 0.45 * (0.5 + 0.5 * sin(beat * PI * 0.5))
+				(prop.get_node("soufflet") as Node3D).scale.x = open
+				(prop.get_node("joue_g") as Node3D).position.x = -0.05 - 0.14 * open
+				(prop.get_node("joue_d") as Node3D).position.x = 0.05 + 0.14 * open
+			"violon":
+				(prop.get_node("archet") as Node3D).position.x = 0.1 * sin(beat * PI)
+			"tambour":
+				(prop.get_node("baguette_g") as Node3D).position.y = 0.2 + 0.07 * absf(sin(beat * PI * 0.5))
+				(prop.get_node("baguette_d") as Node3D).position.y = 0.2 + 0.07 * absf(cos(beat * PI * 0.5))
+		if spawn:
+			_spawn_note(sp.global_position + Vector3(0.0, 1.95, 0.0) + to_cam * 0.4)
+	for i in range(_notes.size() - 1, -1, -1):
+		var n: Array = _notes[i]
+		var node := n[0] as Node3D
+		n[1] = float(n[1]) + delta
+		var age := float(n[1])
+		if age >= GameConfig.NOTE_LIFE or not is_instance_valid(node):
+			if is_instance_valid(node):
+				node.queue_free()
+			_notes.remove_at(i)
+			continue
+		node.position += Vector3(sin(age * 4.0 + float(n[2])) * 0.25, 0.7, 0.0) * delta
+		node.scale = Vector3.ONE * (GameConfig.NOTE_SCALE * minf(age * 6.0, 1.0) * (1.0 - smoothstep(GameConfig.NOTE_LIFE * 0.6, GameConfig.NOTE_LIFE, age)))
+
+
+## Une note de musique (une tête ronde, une hampe, un crochet) qui s'envole.
+func _spawn_note(at: Vector3) -> void:
+	var cols: Array[Color] = [Color("ffe2a0"), Color("ffb35c"), Color("e46be0"), Color("a6e3c8")]
+	var mat := ProcKit.glow(cols[randi() % cols.size()])
+	var note := Node3D.new()
+	var head := ProcKit.ball(note, 0.07, Vector3.ZERO, mat)
+	head.scale = Vector3(1.2, 0.85, 0.6)
+	ProcKit.box(note, Vector3(0.022, 0.26, 0.022), Vector3(0.07, 0.13, 0.0), mat)
+	ProcKit.box(note, Vector3(0.1, 0.035, 0.022), Vector3(0.115, 0.24, 0.0), mat, Vector3(0, 0, -0.5))
+	for c: Node in note.get_children():
+		(c as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_world_fixed.add_child(note)
+	note.global_transform = Transform3D(Basis(Vector3.UP, _cam_yaw), at + Vector3(randf_range(-0.3, 0.3), 0.0, 0.0))
+	note.scale = Vector3.ZERO
+	_notes.append([note, 0.0, randf() * TAU])
+
+
 ## ------------------------------------------------------------------ 13/11 (4.2 à 4.4) : la corde, l'emplacement caché, le silex
 ## Chaque pirate a une corde (touche C).
 ## - Sur le pont, C : je m'attache au bateau (un tour de corde à la taille). Attaché, si je tombe à l'eau je suis traîné derrière
@@ -1995,7 +2135,7 @@ func _apply_test_args() -> void:
 		get_tree().create_timer(float(_args["raft-ride"])).timeout.connect(func() -> void: _board_raft())
 	if _args.has("press"):
 		# test : --press=E@2,SPACE@3.5 appuie sur ces touches aux secondes indiquées
-		var codes := {"M": KEY_M, "E": KEY_E, "R": KEY_R, "SPACE": KEY_SPACE, "DOWN": KEY_DOWN, "UP": KEY_UP, "F": KEY_F, "ESC": KEY_ESCAPE, "1": KEY_1, "2": KEY_2, "3": KEY_3, "4": KEY_4, "T": KEY_T, "TAB": KEY_TAB, "X": KEY_X, "G": KEY_G, "C": KEY_C, "H": KEY_H, "V": KEY_V, "J": KEY_J, "B": KEY_B}
+		var codes := {"M": KEY_M, "E": KEY_E, "R": KEY_R, "SPACE": KEY_SPACE, "DOWN": KEY_DOWN, "UP": KEY_UP, "F": KEY_F, "ESC": KEY_ESCAPE, "1": KEY_1, "2": KEY_2, "3": KEY_3, "4": KEY_4, "T": KEY_T, "TAB": KEY_TAB, "X": KEY_X, "G": KEY_G, "C": KEY_C, "H": KEY_H, "V": KEY_V, "J": KEY_J, "B": KEY_B, "N": KEY_N}
 		for item in str(_args["press"]).split(","):
 			var kv := item.split("@")
 			var code: Key = codes.get(kv[0], KEY_E)
@@ -2069,6 +2209,8 @@ func _apply_test_args() -> void:
 	if _args.has("water-time"):   # essai : --water-time=85 (avec --swim) : déjà ce temps passé dans l'eau
 		get_tree().create_timer(0.4).timeout.connect(func() -> void: _water_t = float(_args["water-time"]))
 	_profile.tool = "compass"   # (la longue-vue du bord est au coffre au début de chaque partie)
+	if _args.has("instrument"):   # essai : --instrument=violon --press=N@6
+		_profile.instrument = str(_args["instrument"])
 	if _args.has("flint"):   # essais : --flint=1 (un silex, glissé dans l'emplacement caché), --bind=6 (ligoté à cet instant),
 		_profile.hidden = "flint"   # --tether=4 (attaché au bateau à cet instant)
 	if _args.has("bind"):
@@ -3224,6 +3366,14 @@ func apply_action(peer: int, kind: String, arg: String, pos: Vector2, dir: Vecto
 	match kind:
 		"enemy_repair":   # un équipage ennemi répare sa coque
 			_enemy_repair_fx(pos)
+		"music":   # `peer` se met à jouer de l'instrument `arg`, ou s'arrête (« »)
+			if arg == "" or not INSTRUMENT_NAMES.has(arg):
+				_musicians.erase(peer)
+				_sfx.stop_loop("music_%d" % peer)
+				_set_music_prop(peer, "")
+			else:
+				_musicians[peer] = arg
+				_set_music_prop(peer, arg)
 		"bind":   # `peer` ligote le joueur dont l'identifiant est dans `arg` (moi, peut-être)
 			_apply_bind(int(arg), true)
 		"unbind":
@@ -3304,6 +3454,11 @@ func _inventory_rows() -> Array:
 			rows.append({"kind": "weapon_empty", "slot": int(pair[1]), "label": "Emplacement 2 (clic droit) : achète une deuxième arme au port"})
 			continue
 		rows.append(_weapon_row(id, int(pair[1])))
+	# 13/11 (4.5) : l'instrument de musique
+	rows.append({"head": true, "label": "Instrument de musique (touche N pour jouer) — clic : en changer"})
+	rows.append({"kind": "instrument", "id": _profile.instrument, "label": str(INSTRUMENT_NAMES[_profile.instrument]), "count": 1,
+			"right": "changer", "enabled": true,
+			"desc": "Accordéon, violon ou tambour : le même air de marin, pour jouer à plusieurs. Les pirates proches t'entendent."})
 	# 13/11 (4.3, 4.4) : le silex et l'emplacement caché (accessible même ligoté)
 	rows.append({"head": true, "label": "Emplacement caché — clic : y glisser ou reprendre un silex"})
 	var hid := _profile.hidden == "flint"
@@ -3413,6 +3568,15 @@ func _on_inventory_use(kind: String, id: String) -> void:
 		return
 	if _bound:
 		return   # ligoté : le reste du sac est hors de portée
+	if kind == "instrument":
+		var order: Array = INSTRUMENT_NAMES.keys()
+		_profile.instrument = str(order[(order.find(_profile.instrument) + 1) % order.size()])
+		_profile.save()
+		if _playing != "":
+			_set_playing("")
+			_set_playing(_profile.instrument)
+		_inventory.open(_inventory_rows())
+		return
 	if _chest_island >= 0 or _chest_island == -2:   # le panneau montre le coffre d'une cabane, ou celui du bateau (-2)
 		_on_chest_use(kind, id)
 		return
@@ -3835,6 +3999,7 @@ func _process(delta_raw: float) -> void:
 		_swim_loop_gain = move_toward(_swim_loop_gain, 0.0, delta / 0.2)
 		_set_swim_loop(_swim_loop_gain)
 	_update_building_fade(delta)
+	_update_music(delta)
 	if not _port_lamps.is_empty() and _atmo != null:
 		var on := smoothstep(0.35, 0.8, 1.0 - _atmo.sky.daylight)
 		for pl: OmniLight3D in _port_lamps:
@@ -5622,7 +5787,7 @@ func _animate_pirates(delta: float) -> void:
 			_sprite.direction = PirateSprite.direction_of(move)
 		_sprite.drive(delta, move if _wading() else Vector2.ZERO, _carrying, false, helm_dir, 0, false, climb_face)   # (il a pied sur la plage : il marche)
 	else:
-		_sprite.drive(delta, move, _carrying, _loc == Loc.SHIP and _mode == Mode.HELM, helm_dir, air, climbing, climb_face)
+		_sprite.drive(delta, move, _carrying or _playing != "", _loc == Loc.SHIP and _mode == Mode.HELM, helm_dir, air, climbing, climb_face)
 	_prev_ppos = _ppos
 	_prev_lpos = _lpos
 	_prev_hpos = _hpos
@@ -5639,7 +5804,7 @@ func _animate_pirates(delta: float) -> void:
 		r["land_t"] = maxf(float(r.get("land_t", 0.0)) - delta, 0.0)
 		if rair == 0 and float(r["land_t"]) > 0.0:
 			rair = 2   # lot 2 (2.3) : sa réception aussi
-		var r_carry: bool = str(_remote_carry.get(id, "")) != ""
+		var r_carry: bool = str(_remote_carry.get(id, "")) != "" or _musicians.has(id)   # (un musicien tient son instrument)
 		var r_face := helm_dir if loc != 8 else (d if d.length() > 0.001 else Vector2(0, -1))
 		(r["sprite"] as PirateSprite).drive(delta, m if loc != 8 else Vector2.ZERO, r_carry,
 				loc == 0 and _helm_owner == id, helm_dir, rair, loc == 2 or loc == 8, r_face)
@@ -6209,6 +6374,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		_cycle_weapon()
 	elif key.physical_keycode == KEY_C:
 		_use_rope()
+	elif key.physical_keycode == KEY_N:
+		_toggle_music()
 	elif key.physical_keycode == KEY_T:
 		_try_unstick()
 	elif key.physical_keycode == KEY_V:
