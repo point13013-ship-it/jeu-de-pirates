@@ -172,14 +172,35 @@ static func fire() -> AudioStreamWAV:
 
 ## La pluie : un grésillement constant.
 static func rain() -> AudioStreamWAV:
+	# 13/11 (retour de Jimmy : « insupportable, on dirait du sable secoué dans une bouteille en plastique »). L'ancienne pluie
+	# était un bruit blanc dont on ne gardait que les aigus (au-dessus de 1 800 Hz), en boucle de 3 s : un chuintement sec.
+	# La nouvelle est faite comme une pluie qu'on écoute pour s'endormir :
+	# - un fond grave et feutré (bruit filtré entre 220 et 1 100 Hz, quatre fois) : la pluie qui tombe au loin ;
+	# - un voile plus clair, très bas (jusqu'à 2,2 kHz) : la pluie proche, sans sifflement ;
+	# - des gouttes isolées, douces et graves (petits « ploc » de 300 à 900 Hz), irrégulières ;
+	# - de lentes respirations (0,13 et 0,31 Hz) ; une boucle de 12 s, fondue sur elle-même.
 	return _cached("rain", func() -> AudioStreamWAV:
-		var n := int(3.0 * RATE)
-		var hi := _highpass(_noise(n + 3000, 41), 1800.0)
+		var tail := 6000
+		var n := int(12.0 * RATE) + tail
+		var body := _highpass(_lowpass(_lowpass(_lowpass(_lowpass(_noise(n, 41), 1100.0), 1100.0), 1100.0), 1100.0), 220.0)
+		var veil := _highpass(_lowpass(_lowpass(_noise(n, 97), 2200.0), 2200.0), 700.0)
 		var out := PackedFloat32Array()
-		out.resize(n + 3000)
-		for i in out.size():
-			out[i] = hi[i] * (0.8 + 0.2 * sin(TAU * float(i) / RATE * 1.7))
-		return _to_stream(_loopify(_normalize(out, 0.6), 3000), true))
+		out.resize(n)
+		for i in n:
+			var t := float(i) / RATE
+			var breath := 0.82 + 0.12 * sin(TAU * 0.13 * t) + 0.06 * sin(TAU * 0.31 * t + 1.1)
+			out[i] = (body[i] * 1.0 + veil[i] * 0.10) * breath
+		var r := _rng(73)
+		for k in 150:   # les gouttes
+			var at := r.randi_range(0, n - 2600)
+			var f := r.randf_range(300.0, 900.0)
+			var amp := r.randf_range(0.05, 0.16)
+			var decay := r.randf_range(26.0, 48.0)
+			var len := int(0.11 * RATE)
+			for i in len:
+				var t2 := float(i) / RATE
+				out[at + i] += amp * exp(-t2 * decay) * sin(TAU * f * (1.0 + 0.35 * exp(-t2 * 60.0)) * t2)
+		return _to_stream(_loopify(_normalize(out, 0.5), tail), true))
 
 
 ## Les insectes d'une île verte : des trilles aigus par groupes.

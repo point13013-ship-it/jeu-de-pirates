@@ -392,7 +392,7 @@ const SIREN_LEAVE_AFTER := 3.0        ## s après être sorti de l'eau avant que
 ## Les joueurs gardent leurs achats ; les ennemis gardent les couleurs de leur rang.  : tout revient.
 const SHIP_SKINS_ENABLED := false
 ## Son (13/11).
-const RAIN_VOL := 0.5                 ## volume de la pluie (x l'ancien : -50 %) ; son intensité varie en plus (averses, accalmies)
+const RAIN_VOL := 0.3                 ## volume de la pluie (x l'ancien : -50 %) ; son intensité varie en plus (averses, accalmies)
 const WORK_PITCH_VAR := 1.08          ## écoper, réparer : hauteur tirée entre 1/1,08 et 1,08 à chaque coup
 const WORK_VOL_VAR := 0.25            ## … et volume tiré entre 75 % et 100 %
 ## Refonte graphique, eau (13/11).
