@@ -99,7 +99,9 @@ func _initialize() -> void:
 	_check(shown == 0, "les traces s'effacent avec le temps (%d restantes)" % shown)
 	_check(life._gulls.size() == IslandLife.GULLS, "des mouettes prêtes")
 	# les sons : tous fabriqués, boucles bouclées
-	for stream: AudioStreamWAV in [Synth.waves(), Synth.wind(), Synth.fire(), Synth.rain(), Synth.insects()]:
+	# (13/11 : la pluie est un vrai enregistrement, en boucle ; la pluie fabriquée reste là en secours)
+	_check(Synth.rain() != null, "la pluie a un son")
+	for stream: AudioStreamWAV in [Synth.waves(), Synth.wind(), Synth.fire(), Synth._rain_synth(), Synth.insects()]:
 		_check(stream.data.size() > 10000 and stream.loop_mode == AudioStreamWAV.LOOP_FORWARD, "boucle d'ambiance (%d octets)" % stream.data.size())
 	for stream: AudioStreamWAV in [Synth.gull(), Synth.bird(0), Synth.bird(2), Synth.splash(), Synth.rustle(), Synth.chime(), Synth.creak(), Synth.thunder()]:
 		_check(stream.data.size() > 1000 and stream.loop_mode == AudioStreamWAV.LOOP_DISABLED, "son bref (%d octets)" % stream.data.size())
