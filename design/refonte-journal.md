@@ -225,3 +225,14 @@ Plan complet et réponses de Jimmy : design/plan-retours-session-3-joueurs.md.
 - Crâne du pavillon : une des deux têtes de mort était dans le plan du pavillon (clignotement au roulis) ; 7 cm de chaque côté.
 - Les trois bateaux ont été régénérés. Tests : tous passent sauf test_town (échec antérieur).
 - Reste ouvert : « finition de la coque » (à préciser avec Jimmy).
+
+## Retours de la session à 3 joueurs : lot 2, personnages et rendu (13/11/2026)
+
+- Pirate caché par un décor : vraies couleurs à 50 % d'opacité, 15 % de teinte claire (`SPRITE_XRAY_COLOR`, `SPRITE_XRAY_TINT`).
+- « Les jambes ne bougent plus en portant » : ce n'était pas propre au port. De face et de dos, les images de marche ne montrent
+  pas les pas (les jambes viennent vers la caméra). Le shader du pirate lève un pied puis l'autre (jusqu'à 3 pixels).
+- Chapeaux : planche de contrôle chapeaux x coiffures faite dans Godot (python absent du PC). Seul le bicorne flottait (6 pixels,
+  hors profils) : images recalées dans les douze animations, et le script du générateur (tools/art/pixel_hair.py) corrigé pareil.
+- Cercle de l'ancre : la jauge ne se redessinait plus quand son opacité atteignait zéro ; après une saccade elle restait affichée.
+- Vagues depuis la vigie : surface de mer étendue (400 m, maille 1 m) dans le nid, en vue dézoomée (< 0,5) ou rasante (< 30°).
+- Brume : bancs du filtre d'image coupés (`FOG_SCREEN_BANKS`), densité -15 % (`FOG_DENSITY_BASE`, `FOG_DENSITY_GAIN`).
