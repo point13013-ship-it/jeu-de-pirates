@@ -32,6 +32,9 @@ var _stage: Control
 var _look: Dictionary
 var _time := 0.0
 var _textures: Dictionary = {}
+var _jetty: Dictionary = {}          ## les morceaux du ponton sous le pirate (ColorRect)
+var _feet_tex: Texture2D
+var _feet_row := 0                   ## dernière ligne opaque de la première image du pirate (ses semelles)
 
 
 func _init(look: Dictionary = {}) -> void:
@@ -89,6 +92,38 @@ func _process(delta: float) -> void:
 	var px := clampi(int(_stage.size.y / 90.0), 3, 9)
 	_preview.scale = Vector2(px, px)
 	_preview.position = Vector2(_stage.size.x * 0.5, _stage.size.y * 0.5 + 8.0 * px)
+	_place_jetty(tex, frames, float(px))
+
+
+## Le ponton : posé sous les semelles du pirate, il file jusqu'au bord droit de l'écran.
+func _place_jetty(tex: Texture2D, frames: int, px: float) -> void:
+	var cell := Vector2(tex.get_width() / float(frames), tex.get_height() / 8.0)
+	if tex != _feet_tex:
+		_feet_tex = tex
+		_feet_row = int(cell.y) - 1
+		var img := tex.get_image()
+		for y in range(int(cell.y) - 1, -1, -1):
+			var solid := false
+			for x in int(cell.x):
+				if img.get_pixel(x, y).a > 0.5:
+					solid = true
+					break
+			if solid:
+				_feet_row = y
+				break
+	var feet := _preview.position.y + (float(_feet_row) + 1.0 - cell.y * 0.5) * px
+	var left := _preview.position.x - 15.0 * px
+	var width := _stage.size.x - left + 60.0
+	(_jetty["edge"] as ColorRect).position = Vector2(left, feet)
+	(_jetty["edge"] as ColorRect).size = Vector2(width, px)
+	(_jetty["deck"] as ColorRect).position = Vector2(left, feet + px)
+	(_jetty["deck"] as ColorRect).size = Vector2(width, 3.0 * px)
+	(_jetty["under"] as ColorRect).position = Vector2(left + px, feet + 4.0 * px)
+	(_jetty["under"] as ColorRect).size = Vector2(width, 2.0 * px)
+	(_jetty["post_a"] as ColorRect).position = Vector2(left + 3.0 * px, feet + 4.0 * px)
+	(_jetty["post_a"] as ColorRect).size = Vector2(3.0 * px, 400.0)
+	(_jetty["post_b"] as ColorRect).position = Vector2(left + 34.0 * px, feet + 4.0 * px)
+	(_jetty["post_b"] as ColorRect).size = Vector2(3.0 * px, 400.0)
 
 
 func _build_left() -> Control:
@@ -190,9 +225,13 @@ func _build_right() -> Control:
 	_stage.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_stage.custom_minimum_size = Vector2(300, 300)
 	box.add_child(_stage)
-	var plank := ColorRect.new()
-	plank.color = Color(0.0, 0.0, 0.0, 0.0)
-	_stage.add_child(plank)
+	# 13/11 : le pirate se tient au bout d'un ponton, devant le coucher de soleil (il flottait au-dessus de la mer)
+	for spec: Array in [["post_a", "2e2a44"], ["post_b", "2e2a44"], ["under", "3a2630"], ["deck", "6a4532"], ["edge", "9c6a43"]]:
+		var part := ColorRect.new()
+		part.color = Color(str(spec[1]))
+		part.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_stage.add_child(part)
+		_jetty[str(spec[0])] = part
 	_preview = Sprite2D.new()
 	_preview.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	_stage.add_child(_preview)
