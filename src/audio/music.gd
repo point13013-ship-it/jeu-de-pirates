@@ -32,6 +32,7 @@ var _fade_in := 3.0
 var _fading_out: AudioStreamPlayer
 var _fade_out_level := 0.0
 var _fade_out_secs := 3.0
+var _track_gain := 1.0           ## volume du morceau en cours (tiré à son départ)
 var _gap := 0.0                  ## s de silence restant avant le prochain morceau
 var _state := ""                 ## état voulu (après hystérésis du combat)
 var _combat_hold := 0.0
@@ -130,8 +131,8 @@ func update(delta: float, mood: String, duck: float = 1.0, intensity: float = 0.
 			_switch_to(_state, GameConfig.MUSIC_FADE, GameConfig.MUSIC_FADE)
 	if _playing_id != "":
 		_level = move_toward(_level, 1.0, delta / maxf(_fade_in, 0.05))
-		_active.volume_db = linear_to_db(maxf(_level * BASE * duck, 0.0001))
-		(_tops[_active] as AudioStreamPlayer).volume_db = linear_to_db(maxf(_level * BASE * duck * _top_gain, 0.0001))
+		_active.volume_db = linear_to_db(maxf(_level * BASE * duck * _track_gain, 0.0001))
+		(_tops[_active] as AudioStreamPlayer).volume_db = linear_to_db(maxf(_level * BASE * duck * _top_gain * _track_gain, 0.0001))
 	if _fading_out != null:
 		_fade_out_level = move_toward(_fade_out_level, 0.0, delta / maxf(_fade_out_secs, 0.05))
 		_fading_out.volume_db = linear_to_db(maxf(_fade_out_level * BASE * duck, 0.0001))
@@ -168,6 +169,9 @@ func _switch_to(st: String, fade_in: float, fade_out: float) -> void:
 		top.play()   # même longueur, même départ : les deux couches restent calées
 	_playing_id = st
 	_level = 0.0
+	# 13/11 : chaque morceau a son volume (au calme, de 55 % à 100 % : certains passent en fond, d'autres au premier plan) ;
+	# le combat et la tempête restent pleins
+	_track_gain = 1.0 if st in CONTINUOUS else randf_range(GameConfig.MUSIC_TRACK_GAIN_MIN, 1.0)
 	_fade_in = fade_in
 
 

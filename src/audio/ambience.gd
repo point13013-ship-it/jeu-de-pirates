@@ -13,6 +13,7 @@ var _loops: Dictionary = {}    ## nom -> {player, vol (visé), cur (actuel)}
 var _pool: Array[AudioStreamPlayer] = []
 var _pool_i := 0
 var _bird_t := 3.0
+var _rain_t := 0.0
 var _gull_t := 6.0
 var _creak_t := 9.0
 var _thunder_t := 14.0
@@ -144,7 +145,11 @@ func update(delta: float, ctx: Dictionary) -> void:
 	_vol("crowd", 0.0 if muted else town * GameConfig.TOWN_CROWD_VOL * (0.35 if night else 1.0) * (1.0 - 0.6 * rain))
 	_vol("kids", 0.0 if (muted or night) else town * GameConfig.TOWN_KIDS_VOL * (1.0 - rain))
 	_vol("fire", 0.0 if muted else fire)
-	_vol("rain", 0.0 if muted else rain * (0.45 if in_hold else 0.8))
+	# 13/11 : la pluie est deux fois moins forte (GameConfig.RAIN_VOL), elle a son curseur de volume, et son intensité varie :
+	# averses et accalmies se succèdent (deux ondes lentes, d'environ une et trois minutes)
+	_rain_t += delta
+	var gust := clampf(0.2 + 0.8 * (0.5 + 0.5 * sin(_rain_t * 0.11)) * (0.55 + 0.45 * sin(_rain_t * 0.037 + 1.3)), 0.12, 1.0)
+	_vol("rain", 0.0 if muted else rain * (0.45 if in_hold else 0.8) * GameConfig.RAIN_VOL * gust * AudioSettings.rain_gain())
 	_fade_loops(delta)
 	if muted:
 		return

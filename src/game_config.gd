@@ -100,7 +100,8 @@ const CANNON_TAIL_VOL := 0.7
 
 ## Musique (voir src/audio/music.gd) : silences entre deux morceaux au calme, fondus, sortie lente du combat.
 const MUSIC_GAP_MIN := 60.0            ## s de silence au moins entre deux morceaux (mer, escale, tempête)
-const MUSIC_GAP_MAX := 180.0
+const MUSIC_GAP_MAX := 240.0           ## (13/11 : 180 ; des silences plus longs par moments)
+const MUSIC_TRACK_GAIN_MIN := 0.55     ## au calme, un morceau démarre entre ce volume et 100 % (13/11 : tous au même volume)
 const MUSIC_FADE := 3.0                ## s : fondu enchaîné ordinaire (on accoste, la tempête se lève)
 const MUSIC_FADE_COMBAT_IN := 1.5      ## s : le combat entre vite
 const MUSIC_FADE_COMBAT_OUT := 5.0     ## s : et s'éteint lentement
@@ -257,7 +258,7 @@ const HELM_WHEEL_RADIUS := 0.44       ## unités du modèle (13/11 : 0,5 ; la ba
 const HELM_GAIN_MIN := 0.55            ## chaque coup de barre grince entre 55 % et 100 % du volume (tiré au hasard)
 const HELM_CRACK_PER_S := 0.6          ## craquements de bois par seconde (au plus vite de la roue), par-dessus le grincement
 const HELM_WHEEL_TURNS := 1.5        ## tours de roue d'une butée à l'autre
-const HELM_CREAK_VOL := 0.9           ## volume du grincement à pleine vitesse de rotation
+const HELM_CREAK_VOL := 0.6           ## volume du grincement à pleine vitesse de rotation (13/11 : 0,9 ; son adouci et plus grave)
 
 ## 3.1 Coques agrandies (12/11/2026) : facteur de longueur appliqué par tools/art/blender/make_ship.py (KL). Sert à garder la poupe
 ## à sa place d'avant au port. À changer en même temps que KL dans le script Blender.
@@ -389,3 +390,7 @@ const SIREN_LEAVE_AFTER := 3.0        ## s après être sorti de l'eau avant que
 ## Skins de bateau (proue, voiles, coque, pavillon) : masqués le temps d'être refaits (13/11, ils dégradaient le nouveau bateau).
 ## Les joueurs gardent leurs achats ; les ennemis gardent les couleurs de leur rang.  : tout revient.
 const SHIP_SKINS_ENABLED := false
+## Son (13/11).
+const RAIN_VOL := 0.5                 ## volume de la pluie (x l'ancien : -50 %) ; son intensité varie en plus (averses, accalmies)
+const WORK_PITCH_VAR := 1.08          ## écoper, réparer : hauteur tirée entre 1/1,08 et 1,08 à chaque coup
+const WORK_VOL_VAR := 0.25            ## … et volume tiré entre 75 % et 100 %

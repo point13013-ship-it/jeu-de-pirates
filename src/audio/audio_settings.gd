@@ -8,9 +8,9 @@ static var path := PATH   ## (les essais le détournent pour ne pas toucher aux 
 const BUS_MUSIC := "Musique"
 const BUS_AMBIENT := "Ambiance"
 const BUS_SFX := "Effets"
-const KEYS := ["master", "music", "ambient", "sfx"]
-const LABELS := {"master": "Volume général", "music": "Musique", "ambient": "Ambiance (mer, vent, oiseaux…)", "sfx": "Effets (pas, éclaboussures…)"}
-const DEFAULTS := {"master": 1.0, "music": 0.7, "ambient": 0.9, "sfx": 0.9}
+const KEYS := ["master", "music", "ambient", "sfx", "rain"]   # (13/11 : « rain » n'est pas un bus : un volume à part pour la pluie)
+const LABELS := {"master": "Volume général", "music": "Musique", "ambient": "Ambiance (mer, vent, oiseaux…)", "sfx": "Effets (pas, éclaboussures…)", "rain": "Pluie"}
+const DEFAULTS := {"master": 1.0, "music": 0.7, "ambient": 0.9, "sfx": 0.9, "rain": 0.8}
 
 static var volumes: Dictionary = DEFAULTS.duplicate()
 static var _inited := false
@@ -52,6 +52,8 @@ static func bus_of(key: String) -> String:
 
 static func apply() -> void:
 	for k: String in KEYS:
+		if k == "rain":
+			continue   # (lu par l'ambiance, voir Ambience : rain_gain)
 		var idx := AudioServer.get_bus_index(bus_of(k))
 		if idx >= 0:
 			AudioServer.set_bus_volume_db(idx, to_db(float(volumes[k])))
@@ -60,6 +62,12 @@ static func apply() -> void:
 ## Un curseur de 0 à 1 → décibels ; le milieu du curseur reste confortable (courbe en carré), 0 = silence.
 static func to_db(v: float) -> float:
 	return -80.0 if v <= 0.001 else linear_to_db(v * v)
+
+
+## Le volume de la pluie choisi par le joueur (0…1, courbe en carré comme les autres curseurs).
+static func rain_gain() -> float:
+	var v := float(volumes.get("rain", 0.8))
+	return v * v / 0.64   # (0,8, la valeur par défaut, laisse le mixage tel qu'il est réglé)
 
 
 static func set_volume(key: String, v: float, save_now: bool = true) -> void:

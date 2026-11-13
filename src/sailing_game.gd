@@ -7980,14 +7980,15 @@ func _work_fx(kind: String, t0: float, t1: float, dur: float, at: Vector3, key: 
 			var n0 := floori(maxf(t0, 0.0) / GameConfig.HAMMER_EVERY)
 			var n1 := floori(t1 / GameConfig.HAMMER_EVERY)
 			if t0 < 0.0 or n1 > n0:
-				_sfx.play_at(Synth.hammer(n1 % 3), at + Vector3(0.0, 0.6, 0.0), 0.9)
+				_sfx.play_at(Synth.hammer(n1 % 3), at + Vector3(0.0, 0.6, 0.0), 0.9 * randf_range(1.0 - GameConfig.WORK_VOL_VAR, 1.0),
+						randf_range(1.0 / GameConfig.WORK_PITCH_VAR, GameConfig.WORK_PITCH_VAR))   # (13/11 : chaque coup sonne un peu différemment)
 				_chips(at + Vector3(0.0, 0.7, 0.0), Color(0.72, 0.52, 0.3))
 		"bail":
 			var cut := dur * GameConfig.BAIL_FILL_SHARE
 			if t0 < 0.0:
-				_sfx.play_at(Synth.bucket_fill(), at, 0.8)
+				_sfx.play_at(Synth.bucket_fill(), at, 0.8 * randf_range(1.0 - GameConfig.WORK_VOL_VAR, 1.0), randf_range(1.0 / GameConfig.WORK_PITCH_VAR, GameConfig.WORK_PITCH_VAR))
 			if t0 < cut and t1 >= cut:
-				_sfx.play_at(Synth.bucket_pour(), at + Vector3(0.0, 1.2, 0.0), 0.85)
+				_sfx.play_at(Synth.bucket_pour(), at + Vector3(0.0, 1.2, 0.0), 0.85 * randf_range(1.0 - GameConfig.WORK_VOL_VAR, 1.0), randf_range(1.0 / GameConfig.WORK_PITCH_VAR, GameConfig.WORK_PITCH_VAR))
 				_chips(at + Vector3(0.0, 1.3, 0.0), Color(0.7, 0.88, 1.0), 9, 1.3)
 		"hoist":
 			if t0 < 0.0:
