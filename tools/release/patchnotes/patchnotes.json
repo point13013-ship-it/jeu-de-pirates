@@ -2,6 +2,17 @@
   "_commentaire": "Les nouveautés affichées dans la salle de jeux (bouton Nouveautés, et après chaque mise à jour). La plus récente d'abord. 'version': 'prochaine' est remplacé par le numéro de la version au moment de la publication (publish.ps1). Les images sont les fichiers de ce dossier ; publish.ps1 les envoie avec la version.",
   "versions": [
     {
+      "version": "2026.11.13-1441",
+      "titre": "Coque fermée, armes contre les bateaux, équilibrage",
+      "points": [
+        "Coque : on ne voit plus la mer à travers le milieu de l'étrave.",
+        "Le sabre et les armes à feu abîment les bateaux ennemis (bien moins qu'un boulet). Du dehors, ils usent aussi notre propre coque : assez de coups ouvrent une voie d'eau.",
+        "On entend l'équipage ennemi réparer sa coque, et « Ils réparent ! » s'affiche quand il est proche.",
+        "Ennemis plus résistants : squelette 7, soldat 8, officier 15, capitaine 32 points de vie ; coques ennemies +20 %.",
+        "Armes à feu plus lentes : pistolet 1,2 s entre deux tirs, tromblon 1,9 s (portée 6,5 m), fusil 2,8 s et 4 de dégâts."
+      ]
+    },
+    {
       "version": "2026.11.13-1426",
       "titre": "Corrections : coffre du bateau, port du coffre, voiles triangulaires",
       "points": [
