@@ -52,6 +52,14 @@ var _cam_yaw := 0.0               ## rad : cap de la caméra autour du pirate (m
 var _cam_drag := false            ## la molette est enfoncée
 var _cam_drag_moved := 0.0        ## px parcourus pendant l'appui (un appui sans mouvement remet la caméra droite)
 var _elev_user := ELEVATION_DEG  ## inclinaison choisie par le joueur (molette enfoncée, haut/bas)
+## VUE 4 (active par défaut ; --no-vue4 rend l'ancienne vue orthographique) : en mer la caméra est en perspective basse avec horizon ; à terre elle reste en 3/4 orthographique.
+## Elle change toute seule, d'un coup, selon l'endroit où se tient le pirate (aucune transition). Le reste du jeu (bateau, eau, ciel, brume) est celui de la branche refonte-gameplay.
+const VUE4_ELEV := 7.0          ## ° : inclinaison de la vue à horizon (choisie par comparaison : 7, 13 ou 22)
+const VUE4_ZOOM_SEA := 0.5       ## grossissement de la vue à horizon (à la barre : 0,52)
+var _v4_init := false
+var _v4_persp := false
+var _v4_pending := 0.0
+var _v4_elev := VUE4_ELEV   ## inclinaison de la vue à horizon (réglée à la molette enfoncée + souris haut/bas)
 var _mid_clicks := 0             ## clics rapides sur la molette (trois : vue de base)
 var _mid_click_t := -10.0
 var _elev_deg := ELEVATION_DEG   ## inclinaison actuelle de la caméra (lissée entre la vue normale et la vue épaule)
@@ -1013,6 +1021,8 @@ func _layout_view() -> void:
 func _hd() -> int:
 	if _args.has("hd"):
 		return maxi(1, int(str(_args["hd"])))
+	if _vue4_enabled():   # la vue 4 est faite pour les gros pixels (un seul format de pixel, partout)
+		return 1
 	return 2 if size.y >= 900.0 else 1
 
 
@@ -1023,7 +1033,7 @@ func _ppm() -> float:
 
 ## Le grossissement voulu selon où l'on est : plus loin en mer, un peu plus près à terre, très loin dans le nid de pie.
 func _zoom_goal() -> float:
-	var base := ZOOM_SEA
+	var base := VUE4_ZOOM_SEA if _v4_persp else ZOOM_SEA   # (vue 4 : à l'horizon, un cran plus loin qu'avant)
 	match _loc:
 		Loc.LAND:
 			base = ZOOM_LAND
@@ -6729,6 +6739,50 @@ func _read_lore(it: Dictionary) -> void:
 		_profile.gold += gold
 		_say("+%d or" % gold, 3.0)
 	_profile.save()
+## Vue 4 active ? Oui, sauf avec --no-vue4 (retour à la vue orthographique d'avant, gros pixels ou fins selon la fenêtre).
+func _vue4_enabled() -> bool:
+	return not _args.has("no-vue4")
+
+
+## Vue 4 : faut-il la perspective basse (mer) ? Sur le pont, à la nage, sur le radeau, au mât : oui. À terre et dans la cale : 3/4 orthographique.
+func _vue4_wants_persp() -> bool:
+	return _loc == Loc.SHIP or _loc == Loc.RAFT or _loc == Loc.SWIM or _loc == Loc.CLIMB or _loc == Loc.NEST
+
+
+## Passe d'un coup d'une vue à l'autre : projection, inclinaison, zoom et cadrage changent à la même image (aucune transition).
+func _vue4_apply(persp: bool) -> void:
+	_v4_persp = persp
+	if persp:
+		_cam.projection = Camera3D.PROJECTION_PERSPECTIVE
+		_cam.far = 1500.0
+	else:
+		_cam.projection = Camera3D.PROJECTION_ORTHOGONAL
+		_cam.far = 250.0
+	_elev_deg = _v4_elev if persp else _elev_user
+	_zoom = _zoom_goal()
+	if _cam != null and _viewport != null:
+		_cam.size = float(_viewport.size.y) / _ppm()
+	_snap_camera()
+
+
+## Appelée à chaque image : la vue suit l'endroit où se tient le pirate, toute seule. Un répit de 0,15 s évite de basculer
+## en boucle quand on marche au bord de l'eau (pied dans l'eau, pied sur le sable).
+func _vue4_update(delta: float) -> void:
+	if not _v4_init:
+		_v4_init = true
+		if _args.has("v4-elev"):   # essai : inclinaison de départ de la vue à horizon (degrés)
+			_v4_elev = float(_args["v4-elev"])
+		_vue4_apply(_vue4_wants_persp())
+		if _args.has("v4-test-ship"):   # essai : remet le pirate sur le pont à cet instant (secondes), pour voir le changement de vue
+			get_tree().create_timer(float(_args["v4-test-ship"])).timeout.connect(func() -> void: _loc = Loc.SHIP)
+		return
+	if _vue4_wants_persp() == _v4_persp:
+		_v4_pending = 0.0
+		return
+	_v4_pending += delta
+	if _v4_pending >= 0.15:
+		_v4_pending = 0.0
+		_vue4_apply(not _v4_persp)
 
 
 func _update_camera(delta: float) -> void:
@@ -6737,11 +6791,13 @@ func _update_camera(delta: float) -> void:
 	# de scintillement), puis l'image finale est décalée de la fraction de pixel restante, à
 	# l'échelle de l'écran. Les déplacements paraissent continus au lieu d'avancer par sauts de
 	# 2 ou 3 pixels d'écran.
+	if _vue4_enabled():
+		_vue4_update(delta)
 	_cam_offset = _cam_offset.lerp(_camera_target(), 1.0 - exp(-delta * 6.0))
-	_elev_deg = lerpf(_elev_deg, SHOULDER_ELEV_DEG if _shoulder_active() else _elev_user, 1.0 - exp(-delta * 4.0))
+	_elev_deg = lerpf(_elev_deg, SHOULDER_ELEV_DEG if _shoulder_active() else (_v4_elev if _v4_persp else _elev_user), 1.0 - exp(-delta * 4.0))
 	# 13/11 (Jimmy : voir ce qui est devant soi) : en vue basse (V), à la barre, la caméra se place derrière le bateau et
 	# regarde vers l'avant ; à pied, on la tourne à la main (molette enfoncée)
-	if _shoulder_active() and _loc == Loc.SHIP and _mode == Mode.HELM:
+	if (_shoulder_active() or _v4_persp) and _loc == Loc.SHIP and _mode == Mode.HELM:   # (vue 4 : en mer, à la barre, la caméra se place derrière le bateau)
 		var fwd := _sim.forward()
 		_cam_yaw = lerp_angle(_cam_yaw, atan2(-fwd.x, -fwd.y), 1.0 - exp(-delta * 1.6))
 	_cam.rotation = Vector3(-deg_to_rad(_elev_deg), _cam_yaw, 0.0)   # (_cam_yaw : cap de la caméra, tourné avec la molette)
@@ -6754,6 +6810,8 @@ func _update_camera(delta: float) -> void:
 	var focus := _snap_ground(focus_exact)
 	_cam_focus = focus
 	_cam.position = focus + Basis(Vector3.UP, _cam_yaw) * Vector3(0, sin(el), cos(el)) * 60.0
+	if _v4_persp:   # perspective réglée à l'échelle du plan du pirate : là où il se tient, un pixel du jeu = la même taille qu'en orthographique
+		_cam.fov = rad_to_deg(2.0 * atan(_cam.size * 0.5 / 60.0))
 	var off_xz := Vector2(focus_exact.x - focus.x, focus_exact.z - focus.z)
 	var frac_px := Vector2(off_xz.dot(Vector2(cos(_cam_yaw), -sin(_cam_yaw))) * _ppm(),
 			off_xz.dot(Vector2(sin(_cam_yaw), cos(_cam_yaw))) * sin(el) * _ppm())
@@ -6762,7 +6820,7 @@ func _update_camera(delta: float) -> void:
 		_shake_t -= delta
 		shake = Vector2(randf_range(-1.0, 1.0), randf_range(-1.0, 1.0)) * 5.0 * clampf(_shake_t / 0.4, 0.0, 1.0)
 	_container.position = Vector2(-_factor, -_factor) - frac_px * float(_factor) + shake
-	var far_sea: bool = _loc == Loc.NEST or _zoom < SEA_FAR_ZOOM or _elev_user < SEA_FAR_ELEV
+	var far_sea: bool = _loc == Loc.NEST or _zoom < SEA_FAR_ZOOM or _elev_user < SEA_FAR_ELEV or _v4_persp
 	var want_mesh: PlaneMesh = _sea_far_mesh if far_sea else _sea_near_mesh
 	if _sea.mesh != want_mesh:
 		_sea.mesh = want_mesh
@@ -6962,13 +7020,18 @@ func _unhandled_input(event: InputEvent) -> void:
 				_mid_clicks = 0
 				_cam_yaw = 0.0
 				_elev_user = ELEVATION_DEG
+				_v4_elev = VUE4_ELEV
 				_say("Vue de base", 1.5)
 		return
 	if event is InputEventMouseMotion and _cam_drag:
 		var rel := (event as InputEventMouseMotion).relative
 		_cam_drag_moved += absf(rel.x) + absf(rel.y)
 		_cam_yaw = wrapf(_cam_yaw - rel.x * 0.008, -PI, PI)
-		_elev_user = clampf(_elev_user + rel.y * 0.15, GameConfig.CAM_ELEV_MIN, GameConfig.CAM_ELEV_MAX)
+		if _v4_persp:   # vue 4, en mer : la même molette enfoncée règle l'inclinaison de la vue à horizon (5° à 32°)
+			_v4_elev = clampf(_v4_elev + rel.y * 0.08, 5.0, 32.0)
+			_say("Inclinaison %d°" % roundi(_v4_elev), 0.8)
+		else:
+			_elev_user = clampf(_elev_user + rel.y * 0.15, GameConfig.CAM_ELEV_MIN, GameConfig.CAM_ELEV_MAX)
 		return
 	if event is InputEventMouseButton:
 		var mb := event as InputEventMouseButton
@@ -7009,9 +7072,13 @@ func _unhandled_input(event: InputEvent) -> void:
 			_lh = keep_h
 			_try_attack(mb.button_index == MOUSE_BUTTON_RIGHT)
 		elif mb.pressed and mb.button_index == MOUSE_BUTTON_WHEEL_UP:
-			_zoom_user = clampf(_zoom_user * 1.12, 0.55, 1.9)   # molette : on se rapproche
+			_zoom_user = clampf(_zoom_user * 1.12, 0.4 if _vue4_enabled() else 0.55, 1.9)   # molette : on se rapproche
+			if _vue4_enabled():
+				_say("Zoom x%.2f" % _zoom_user, 0.8)
 		elif mb.pressed and mb.button_index == MOUSE_BUTTON_WHEEL_DOWN:
-			_zoom_user = clampf(_zoom_user / 1.12, 0.55, 1.9)   # on s'éloigne
+			_zoom_user = clampf(_zoom_user / 1.12, 0.4 if _vue4_enabled() else 0.55, 1.9)   # on s'éloigne
+			if _vue4_enabled():
+				_say("Zoom x%.2f" % _zoom_user, 0.8)
 		return
 	if not (event is InputEventKey):
 		return
