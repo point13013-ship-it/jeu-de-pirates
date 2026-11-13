@@ -17,6 +17,7 @@ var _alpha := 0.0
 var _visible_goal := false
 var _flash := 0.0          ## 0..1 : éclat doré de fin
 var _fail := 0.0           ## 0..1 : rouge d'interruption
+var _was_shown := false
 
 
 func _init() -> void:
@@ -51,8 +52,12 @@ func _process(delta: float) -> void:
 	_alpha = move_toward(_alpha, 1.0 if _visible_goal else 0.0, delta * (8.0 if _visible_goal else 3.0))
 	_flash = maxf(_flash - delta * 2.5, 0.0)
 	_fail = maxf(_fail - delta * 2.0, 0.0)
-	if _alpha > 0.0 or _flash > 0.0 or _fail > 0.0:
+	# 13/11 : on redessine aussi l'image où tout retombe à zéro. Avant, la jauge ne se redessinait plus dès que l'opacité
+	# valait zéro : après une saccade (l'opacité passe d'un coup de 0,6 à 0), le dernier dessin restait à l'écran.
+	var shown := _alpha > 0.0 or _flash > 0.0 or _fail > 0.0
+	if shown or _was_shown:
 		queue_redraw()
+	_was_shown = shown
 
 
 func _draw() -> void:
