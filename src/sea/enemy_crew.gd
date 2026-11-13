@@ -31,6 +31,12 @@ var _spots: Array = []                   ## par canon : où se tient le canonnie
 var _faces: Array = []                   ## par canon : direction du regard du canonnier (repère de la scène : x, z)
 var _time := 0.0
 var _cfg: Dictionary = {}
+## 13/11 (retour de Jimmy : « ils ne bougent pas, ils devraient venir sur moi ») : les joueurs montés à bord, dans le repère
+## du modèle (le jeu remplit cette liste à chaque image). Tant qu'il y en a, les canonniers lâchent leurs canons et vont au
+## contact du plus proche ; le timonier reste à la barre. Les coups eux-mêmes sont donnés par le jeu (à portée, voir
+## SailingGame._update_boarding).
+var intruders: Array = []
+const FIGHT_REACH := 1.0       ## m : le canonnier s'arrête à cette distance de sa cible et frappe
 var extra_gunners := 0                   ## lot 5 (6.2) : canonniers en plus selon le rang du bateau (avant build)
 var load_time := LOAD_TIME               ## s pour bourrer un canon (13/11 : plus court aux rangs élevés, GameConfig.ENEMY_LOAD_TIME)
 
@@ -147,9 +153,40 @@ func step(delta: float, active: bool) -> void:
 		_icons[i].visible = loaded[i]
 	if active:
 		for k in gunners.size():
-			if not is_down(k + 1):   # (13/11 : un canonnier abattu par un joueur ne recharge plus)
-				_step_gunner(gunners[k], delta)
+			if is_down(k + 1):   # (13/11 : un canonnier abattu par un joueur ne recharge plus)
+				continue
+			if not intruders.is_empty():
+				_step_fight(gunners[k], delta)
+				continue
+			if (gunners[k] as Dictionary)["state"] == "fight":   # plus personne à bord : retour aux canons
+				(gunners[k] as Dictionary)["state"] = "idle"
+				(gunners[k] as Dictionary)["wait"] = 0.6
+			_step_gunner(gunners[k], delta)
 	_update_visuals(delta)
+
+
+## Un joueur est à bord : le canonnier lâche son boulet, court au contact et lève le sabre.
+func _step_fight(g: Dictionary, dt: float) -> void:
+	if g["state"] != "fight":
+		g["state"] = "fight"
+		g["cannon"] = -1
+		g["t"] = 0.0
+		(g["carry"] as MeshInstance3D).visible = false
+	var bp: Vector2 = g["bp"]
+	var target: Vector2 = intruders[0]
+	for p: Vector2 in intruders:
+		if p.distance_to(bp) < target.distance_to(bp):
+			target = p
+	var to := target - bp
+	g["near"] = to.length() * ShipModel.SCALE <= FIGHT_REACH
+	if not bool(g["near"]):
+		_walk(g, target, dt)
+		return
+	if to.length() > 0.001:
+		(g["enemy"] as IslandEnemy).facing = Vector2(to.x, -to.y).normalized()
+	g["t"] = float(g["t"]) - dt
+	if float(g["t"]) <= 0.0:
+		g["t"] = GameConfig.CREW_STRIKE_EVERY
 
 
 func _step_gunner(g: Dictionary, dt: float) -> void:
@@ -246,10 +283,22 @@ func _update_visuals(delta: float) -> void:
 		e.pos = Vector2(p.x, p.z)
 		e.ground_y = p.y
 	set_pos.call(helmsman, _helm_bp)
+	helmsman.hurt_t = maxf(helmsman.hurt_t - delta, 0.0)   # (13/11 : l'éclair d'un coup reçu ne s'éteignait jamais)
 	helmsman.update_visual(delta, _time, true)
 	for g: Dictionary in gunners:
 		var e := g["enemy"] as IslandEnemy
+		e.hurt_t = maxf(e.hurt_t - delta, 0.0)
 		set_pos.call(e, g["bp"])
+		if g["state"] == "fight":
+			# au contact : le bras se lève et s'abat, au rythme des coups
+			if bool(g.get("near", false)):
+				e.state = IslandEnemy.State.WINDUP
+				e.cfg["windup"] = GameConfig.CREW_STRIKE_EVERY
+				e.timer = maxf(float(g["t"]), 0.0)
+			else:
+				e.state = IslandEnemy.State.IDLE
+			e.update_visual(delta, _time, true)
+			continue
 		# prendre le boulet et le bourrer : le même bras levé que pour le coup de sabre
 		if g["state"] == "grab" or g["state"] == "loading":
 			e.state = IslandEnemy.State.WINDUP

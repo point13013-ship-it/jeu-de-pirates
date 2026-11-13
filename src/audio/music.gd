@@ -3,6 +3,12 @@ extends Node
 ## Le jukebox. La musique suit la situation (« état ») : « mer » au large, « escale » à terre, « tempete » sous l'orage,
 ## « combat » quand l'ennemi est là.
 ##
+## 13/11 — au calme, la musique respire (réglages GameConfig.MUSIC_FIRST_GAP_*, MUSIC_CHANGE_*, MUSIC_SOFT_IN, MUSIC_SWELL_*,
+## MUSIC_CUT_*) : du silence au début de la partie ; un morceau entre tout doucement, monte lentement jusqu'à son volume ; une
+## fois sur trois il s'éteint avant sa fin ; puis du silence, puis un autre. Changer de lieu (accoster, reprendre la mer, sortir
+## d'un combat) éteint le morceau en cours et laisse un silence au lieu d'enchaîner aussitôt sur le thème suivant. Seuls le
+## combat et les requins entrent tout de suite.
+##
 ## Pratiques reprises du son de jeu (voir design/refonte-journal.md, « Son ») :
 ## - Pas de musique en continu au calme : un morceau, puis un silence de MUSIC_GAP_MIN à MUSIC_GAP_MAX s (on n'entend que la mer
 ##   et le vent), puis un autre morceau du même état, jamais le même deux fois de suite. Évite la lassitude.
@@ -35,6 +41,9 @@ var _fade_out_secs := 3.0
 var _combat_boost := 0.0         ## 1 à l'entrée en combat, retombe à 0 : la musique arrive fort puis se pose
 var _track_gain := 1.0           ## volume du morceau en cours (tiré à son départ)
 var _gap := 0.0                  ## s de silence restant avant le prochain morceau
+var _swell := 1.0                ## 0…1 : montée lente du morceau en cours (au calme)
+var _played := 0.0               ## s depuis le départ du morceau en cours
+var _cut_at := INF               ## s : le morceau en cours s'éteint à ce moment (INF : joué en entier)
 var _state := ""                 ## état voulu (après hystérésis du combat)
 var _combat_hold := 0.0
 var _punch := 0.0               ## 0…1 : creux de volume après un coup de canon (« ducking »)
@@ -120,11 +129,21 @@ func update(delta: float, mood: String, duck: float = 1.0, intensity: float = 0.
 	if want == "combat" and _state != "combat":
 		_combat_boost = 1.0
 	if want != _state:
-		var leaving_combat := _state == "combat"
+		var was := _state
 		_state = want
-		_gap = 0.0
-		_switch_to(want, GameConfig.MUSIC_FADE_COMBAT_IN if want == "combat" else GameConfig.MUSIC_FADE,
-				GameConfig.MUSIC_FADE_COMBAT_OUT if leaving_combat else GameConfig.MUSIC_FADE)
+		if want in CONTINUOUS:
+			# le danger entre tout de suite
+			_gap = 0.0
+			_switch_to(want, GameConfig.MUSIC_FADE_COMBAT_IN if want == "combat" else GameConfig.MUSIC_FADE, GameConfig.MUSIC_FADE)
+		else:
+			# au calme : le morceau en cours s'éteint, puis un silence avant le thème du nouveau lieu
+			_fade_to_silence(GameConfig.MUSIC_FADE_COMBAT_OUT if was == "combat" else GameConfig.MUSIC_CHANGE_FADE)
+			_gap = randf_range(GameConfig.MUSIC_FIRST_GAP_MIN, GameConfig.MUSIC_FIRST_GAP_MAX) if was == "" \
+					else randf_range(GameConfig.MUSIC_CHANGE_GAP_MIN, GameConfig.MUSIC_CHANGE_GAP_MAX)
+	elif _playing_id != "" and _active.playing and _played >= _cut_at:
+		# un morceau écourté : il s'éteint lentement, puis le silence ordinaire entre deux morceaux
+		_fade_to_silence(GameConfig.MUSIC_CUT_FADE)
+		_gap = randf_range(GameConfig.MUSIC_GAP_MIN, GameConfig.MUSIC_GAP_MAX)
 	elif _playing_id != "" and not _active.playing:
 		# le morceau est fini : silence, puis un autre (le combat et les airs fabriqués enchaînent sans pause)
 		_playing_id = ""
@@ -133,10 +152,13 @@ func update(delta: float, mood: String, duck: float = 1.0, intensity: float = 0.
 	elif _playing_id == "":
 		_gap -= delta
 		if _gap <= 0.0:
-			_switch_to(_state, GameConfig.MUSIC_FADE, GameConfig.MUSIC_FADE)
+			_switch_to(_state, GameConfig.MUSIC_FADE if _state in CONTINUOUS else GameConfig.MUSIC_SOFT_IN, GameConfig.MUSIC_FADE)
 	if _playing_id != "":
+		_played += delta
+		_swell = move_toward(_swell, 1.0, delta / GameConfig.MUSIC_SWELL_TIME)
 		_level = move_toward(_level, 1.0, delta / maxf(_fade_in, 0.05))
 		var push := (GameConfig.MUSIC_COMBAT_GAIN + GameConfig.MUSIC_COMBAT_BOOST * _combat_boost) if _state == "combat" else 1.0
+		push *= lerpf(GameConfig.MUSIC_SWELL_FROM, 1.0, smoothstep(0.0, 1.0, _swell))
 		_active.volume_db = linear_to_db(maxf(_level * BASE * duck * _track_gain * push, 0.0001))
 		(_tops[_active] as AudioStreamPlayer).volume_db = linear_to_db(maxf(_level * BASE * duck * _top_gain * _track_gain * push, 0.0001))
 	if _fading_out != null:
@@ -151,6 +173,16 @@ func update(delta: float, mood: String, duck: float = 1.0, intensity: float = 0.
 
 func _files_of(st: String) -> Array:
 	return _files.get(st, []) as Array
+
+
+## Le morceau en cours s'éteint en `secs` s, sans rien lancer après (le silence).
+func _fade_to_silence(secs: float) -> void:
+	if _playing_id != "" and _active.playing:
+		_fading_out = _active
+		_fade_out_level = _level * lerpf(GameConfig.MUSIC_SWELL_FROM, 1.0, smoothstep(0.0, 1.0, _swell))
+		_fade_out_secs = secs
+		_active = _b if _active == _a else _a
+	_playing_id = ""
 
 
 ## Fondu enchaîné vers un morceau de l'état `st` (l'ancien s'éteint en `fade_out` s, le nouveau monte en `fade_in` s).
@@ -178,6 +210,13 @@ func _switch_to(st: String, fade_in: float, fade_out: float) -> void:
 	# 13/11 : chaque morceau a son volume (au calme, de 55 % à 100 % : certains passent en fond, d'autres au premier plan) ;
 	# le combat et la tempête restent pleins
 	_track_gain = 1.0 if st in CONTINUOUS else randf_range(GameConfig.MUSIC_TRACK_GAIN_MIN, 1.0)
+	# au calme : le morceau part bas et monte lentement ; une fois sur trois il ne sera pas joué en entier
+	_played = 0.0
+	_swell = 1.0 if st in CONTINUOUS else 0.0
+	_cut_at = INF
+	if not (st in CONTINUOUS) and randf() < GameConfig.MUSIC_CUT_CHANCE \
+			and stream.get_length() > GameConfig.MUSIC_CUT_MAX + GameConfig.MUSIC_CUT_FADE + 15.0:
+		_cut_at = randf_range(GameConfig.MUSIC_CUT_MIN, GameConfig.MUSIC_CUT_MAX)
 	_fade_in = fade_in
 
 

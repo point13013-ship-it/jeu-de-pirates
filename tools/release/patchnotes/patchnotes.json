@@ -2,6 +2,18 @@
   "_commentaire": "Les nouveautés affichées dans la salle de jeux (bouton Nouveautés, et après chaque mise à jour). La plus récente d'abord. 'version': 'prochaine' est remplacé par le numéro de la version au moment de la publication (publish.ps1). Les images sont les fichiers de ce dossier ; publish.ps1 les envoie avec la version.",
   "versions": [
     {
+      "version": "prochaine",
+      "titre": "Abordage, musique, nouvelle ville au départ",
+      "points": [
+        "La nouvelle ville est maintenant l'île de départ pour tout le monde.",
+        "À l'abordage, l'équipage ennemi vient se battre au lieu de rester planté ; à la nage près d'eux, ils te tirent dessus (sans toucher à chaque fois).",
+        "Sur un pont ennemi, ton pirate ne court plus sur place.",
+        "La musique respire : des silences, des morceaux qui entrent doucement et montent, d'autres qui s'arrêtent avant la fin.",
+        "Le silex va dans les provisions ; un clic le glisse dans l'Orifice, et ligoté, un clic sur l'Orifice coupe tes liens.",
+        "Le canard a une traînée jaune."
+      ]
+    },
+    {
       "version": "2026.11.13-1750",
       "titre": "La ville s'entend, et plus de musique",
       "points": [

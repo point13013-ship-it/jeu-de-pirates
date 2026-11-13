@@ -267,7 +267,7 @@ func _slot(i: int, r: Dictionary) -> Control:
 	ic.position = Vector2(8, 8)
 	ic.size = Vector2(SLOT - 16, SLOT - 16)
 	ic.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	if not bool(r.get("enabled", false)) and str(r.get("kind", "")) not in ["weapon", "item", "treasure"]:
+	if not bool(r.get("enabled", false)) and str(r.get("kind", "")) not in ["weapon", "item", "treasure", "hidden"]:
 		ic.modulate = Color(1, 1, 1, 0.45)
 	p.add_child(ic)
 	var n := _count_of(r)

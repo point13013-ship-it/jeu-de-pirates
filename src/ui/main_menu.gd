@@ -185,7 +185,8 @@ func _build_left() -> Control:
 	box.add_child(solo)
 	box.add_child(_big_button("Héberger une partie", func() -> void: host_game.emit(ship)))
 	# 13/11 : la nouvelle ville (design/ville-v3) se visite seul tant qu'elle est en chantier ; les parties à plusieurs gardent l'ancienne
-	box.add_child(_big_button("Aperçu : la nouvelle ville (seul)", func() -> void: preview_town.emit(ship)))
+	# (13/11 : la nouvelle ville est maintenant celle du jeu ; plus besoin d un aperçu)
+	#box.add_child(_big_button("Aperçu : la nouvelle ville (seul)", func() -> void: preview_town.emit(ship)))
 	box.add_child(_big_button("Rejoindre un ami", _toggle_join))
 	_join_row = HBoxContainer.new()
 	_join_row.visible = false

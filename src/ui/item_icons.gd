@@ -47,11 +47,42 @@ static func icon(kind: String, id: String) -> Texture2D:
 				"planks", "plank": _planks(img)
 				"bullets": _bullets(img)
 				"shells": _shells(img)
+				"flint": _flint(img)
+				"butt": _butt(img)
 				"treasure": _chest(img)
 				_: _scroll(img)
 	var t := ImageTexture.create_from_image(img)
 	_cache[key] = t
 	return t
+
+
+# ------------------------------------------------------------------ 13/11 : le silex et l'emplacement « Orifice »
+
+## Un silex : un éclat de pierre grise, taillé en pointe, avec ses facettes.
+static func _flint(img: Image) -> void:
+	var dark := Color("4a4f5c")
+	var mid := Color("7d8494")
+	var light := Color("b9c0cc")
+	for y in range(5, 28):
+		var k := float(y - 5) / 22.0
+		var half := int(round(lerpf(1.0, 9.0, sin(k * PI * 0.62))))
+		var cx := 16 + int(round((k - 0.5) * 6.0))
+		for x in range(cx - half, cx + half + 1):
+			var edge := x == cx - half or x == cx + half or y == 5 or y == 27
+			var c := light if x < cx - half / 3 else (mid if x < cx + half / 2 else dark)
+			if (x + y * 2) % 7 == 0 and not edge:
+				c = c.darkened(0.18)
+			img.set_pixel(clampi(x, 0, N - 1), y, OUT if edge else c)
+	_line(img, Vector2(15, 7), Vector2(13, 24), 1.0, Color("dfe5ee"))
+
+
+## L'emplacement vide : une paire de fesses.
+static func _butt(img: Image) -> void:
+	var skin := Color("e8ae84")
+	_disc(img, 10.5, 16.5, 9.5, skin)
+	_disc(img, 21.5, 16.5, 9.5, skin)
+	_rect(img, 15, 9, 16, 25, OUT)   # la raie
+	_rect(img, 16, 10, 16, 24, Color("a8694a"))
 
 
 # ------------------------------------------------------------------ outils de dessin

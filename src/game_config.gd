@@ -102,6 +102,20 @@ const CANNON_TAIL_VOL := 0.7
 const MUSIC_GAP_MIN := 60.0            ## s de silence au moins entre deux morceaux (mer, escale, tempête)
 const MUSIC_GAP_MAX := 240.0           ## (13/11 : 180 ; des silences plus longs par moments)
 const MUSIC_TRACK_GAIN_MIN := 0.55     ## au calme, un morceau démarre entre ce volume et 100 % (13/11 : tous au même volume)
+## 13/11 (Jimmy : « des moments sans musique, une musique qui reprend tout doucement, qui monte, qui s'arrête, une autre qui se
+## lance ») — au calme (mer, escale, tempête) :
+const MUSIC_FIRST_GAP_MIN := 20.0      ## s de silence au début de la partie, avant le premier morceau
+const MUSIC_FIRST_GAP_MAX := 45.0
+const MUSIC_CHANGE_GAP_MIN := 12.0     ## s de silence quand on change de lieu (on accoste, on reprend la mer, le combat finit) :
+const MUSIC_CHANGE_GAP_MAX := 40.0     ## le morceau en cours s'éteint, le suivant ne part pas tout de suite
+const MUSIC_CHANGE_FADE := 7.0         ## s : le morceau en cours s'éteint en ce temps
+const MUSIC_SOFT_IN := 10.0            ## s : un morceau entre tout doucement…
+const MUSIC_SWELL_FROM := 0.45         ## … à cette part de son volume, puis monte jusqu'à son volume…
+const MUSIC_SWELL_TIME := 45.0         ## … en ce temps (s)
+const MUSIC_CUT_CHANCE := 0.35         ## chance qu'un morceau ne soit pas joué en entier : il s'éteint en cours de route…
+const MUSIC_CUT_MIN := 55.0            ## … après ce temps au moins (s)
+const MUSIC_CUT_MAX := 95.0
+const MUSIC_CUT_FADE := 12.0           ## s : fondu de sortie d'un morceau écourté
 const MUSIC_FADE := 3.0                ## s : fondu enchaîné ordinaire (on accoste, la tempête se lève)
 const MUSIC_FADE_COMBAT_IN := 0.5      ## s : le combat entre vite
 const MUSIC_FADE_COMBAT_OUT := 5.0     ## s : et s'éteint lentement
@@ -372,7 +386,16 @@ const BOARD_LADDER_REACH := 2.8       ## m : distance à l'échelle ennemie pour
 const CREW_HP := 3                    ## points de vie d'un squelette de l'équipage (un coup de sabre : 1 ; pistolet : 2)
 const CREW_RESPAWN := 30.0            ## s avant qu'un squelette abattu revienne (timonier compris)
 const CREW_STRIKE_REACH := 1.5        ## m : à cette distance d'un joueur monté à bord, un squelette frappe
-const CREW_STRIKE_EVERY := 1.6        ## s entre deux coups reçus à bord
+const CREW_STRIKE_EVERY := 2.0        ## s entre deux coups reçus à bord
+## 13/11 (Jimmy) : l'équipage ennemi tire au pistolet sur un pirate à la nage. Imprécis : la chance de toucher va de
+## CREW_SHOT_HIT_NEAR (à moins de CREW_SHOT_NEAR m de la coque) à CREW_SHOT_HIT_FAR (à CREW_SHOT_RANGE m).
+const CREW_SHOT_RANGE := 26.0        ## m : au-delà, ils ne tirent pas
+const CREW_SHOT_NEAR := 5.0
+const CREW_SHOT_HIT_NEAR := 0.35
+const CREW_SHOT_HIT_FAR := 0.06
+const CREW_SHOT_EVERY_MIN := 2.4     ## s entre deux tirs (un canonnier debout de plus : un peu plus vite)
+const CREW_SHOT_EVERY_MAX := 4.2
+const CREW_SHOT_DAMAGE := 1          ## cœurs
 const CREW_STRIKE_DAMAGE := 1         ## cœurs
 const ENEMY_ANCHOR_TIME := 40.0       ## s pendant lesquelles un ennemi dont on a jeté l'ancre reste sur place
 const BOARD_ANCHOR_REACH := 1.9       ## m : distance au cabestan ennemi pour jeter son ancre
@@ -399,7 +422,7 @@ const WORK_VOL_VAR := 0.25            ## … et volume tiré entre 75 % et 100 %
 const SHORE_SWELL := 0.2              ## part de la houle qui reste au bord d'une île (1 = comme au large)
 const SHELTER_WIDTH := 30.0           ## m : distance au bord de l'île sur laquelle la houle reprend toute sa hauteur
 ## Ville v3 (13/11, design/ville-v3/conception.md).
-const TOWN_V3 := false                ## true : la nouvelle ville (maquette grise de data/town_plan.json) remplace le port ; essai : --town=v3
+const TOWN_V3 := true                 ## true : la nouvelle ville (maquette grise de data/town_plan.json) remplace le port ; essai : --town=v3
 const LADDER_EXIT_REACH := 2.0        ## m : dans la ville v3, un nageur sort de l'eau à moins de cette distance d'une échelle (ou par la grève)
 const LAMP_EVERY_MAIN := 13.0          ## m entre deux lanternes sur le quai et la Grand-Rue
 const LAMP_EVERY := 21.0               ## … et sur les autres rues

@@ -1307,7 +1307,9 @@ func _print_bounds() -> void:
 ## Charge la ville portuaire à l'origine du monde et amarre le bateau le long du ponton principal,
 ## étrave vers le large (sud). Les sols sont repeints par shaders/ground.gdshader.
 func _build_port() -> void:
-	if GameConfig.TOWN_V3 or str(_args.get("town", "")) == "v3":
+	# 13/11 (demande de Jimmy) : la nouvelle ville est l'île de départ pour tout le monde. L'ancienne reste dans le jeu
+	# (essai : --town=v1) en attendant d'être posée sur une île à part, comme ville secondaire.
+	if (GameConfig.TOWN_V3 and str(_args.get("town", "")) != "v1") or str(_args.get("town", "")) == "v3":
 		_build_town_v3()
 		return
 	var scene := load("res://assets/models/port/port.glb") as PackedScene
@@ -2192,6 +2194,14 @@ func _apply_test_args() -> void:
 		_sim.sail_trim_target = deg_to_rad(float(_args["trim"]))
 		_sim.sail_trim = _sim.sail_trim_target
 		_sim.auto_trim_pending = false
+	if _args.has("board"):   # essai : --enemy=sloop,x,z --board=1 met le pirate sur le pont du premier bateau ennemi
+		for s0: Dictionary in _fleet.ships:
+			var m0 := s0.get("model") as ShipModel
+			if m0 != null and not m0.ladders.is_empty():
+				var l0: Array = m0.ladders[0]
+				_enter_swim(_enemy_deck_world(s0, Vector2(float(l0[0]), float(l0[3]))))
+				_try_board_enemy()
+				break
 	if _args.has("swim"):   # essai : --swim=x,z met le pirate à l'eau à cet endroit du monde
 		var sw := str(_args["swim"]).split(",")
 		get_tree().create_timer(0.2).timeout.connect(func() -> void: _enter_swim(Vector2(float(sw[0]), float(sw[1]))))
@@ -2336,6 +2346,9 @@ func _apply_test_args() -> void:
 		_profile.instrument = str(_args["instrument"])
 	if _args.has("flint"):   # essais : --flint=1 (un silex, glissé dans l'emplacement caché), --bind=6 (ligoté à cet instant),
 		_profile.hidden = "flint"   # --tether=4 (attaché au bateau à cet instant)
+		if str(_args["flint"]) == "2":   # --flint=2 : un silex dans les provisions, l'Orifice vide
+			_profile.hidden = ""
+			_profile.flint = maxi(_profile.flint, 1)
 	if _args.has("bind"):
 		get_tree().create_timer(float(_args["bind"])).timeout.connect(func() -> void: _apply_bind(_my_id(), true))
 	if _args.has("tether"):
@@ -3582,15 +3595,6 @@ func _inventory_rows() -> Array:
 	rows.append({"kind": "instrument", "id": _profile.instrument, "label": str(INSTRUMENT_NAMES[_profile.instrument]), "count": 1,
 			"right": "changer", "enabled": true,
 			"desc": "Accordéon, violon ou tambour : le même air de marin, pour jouer à plusieurs. Les pirates proches t'entendent."})
-	# 13/11 (4.3, 4.4) : le silex et l'emplacement caché (accessible même ligoté)
-	rows.append({"head": true, "label": "Emplacement caché — clic : y glisser ou reprendre un silex"})
-	var hid := _profile.hidden == "flint"
-	rows.append({"kind": "hidden", "id": "flint", "label": "Silex caché" if hid else "Vide", "count": 1 if hid else 0,
-			"right": "le reprendre" if hid else ("y cacher un silex" if _profile.flint > 0 else "pas de silex"),
-			"enabled": hid or _profile.flint > 0,
-			"desc": "Personne ne fouille là. Ligoté, appuie sur E : le silex caché coupe tes liens en %d s, et il est usé. On trouve des silex dans les coffres des îles." % int(GameConfig.ACTION_TIMES["flint"])})
-	rows.append({"kind": "item", "id": "flint", "label": "Silex", "count": _profile.flint, "right": "%d" % _profile.flint, "enabled": false,
-			"desc": "Une pierre tranchante, à usage unique. Glisse-la dans l'emplacement caché avant d'en avoir besoin."})
 	rows.append({"head": true, "label": "Provisions"})
 	for line: Array in [["balls", "Boulets", "Pour les canons. Ils sont rangés dans le coffre à boulets du pont."],
 			["planks", "Planches", "Pour boucher les voies d'eau (dans la cale) et fabriquer. Rangées dans la caisse à planches."],
@@ -3598,6 +3602,17 @@ func _inventory_rows() -> Array:
 			["shells", "Cartouches", "Munitions du tromblon."]]:
 		var n := int(_profile.get(str(line[0])))
 		rows.append({"kind": "item", "id": line[0], "label": line[1], "count": n, "right": "%d" % n, "enabled": false, "desc": line[2]})
+	# 13/11 (demande de Jimmy) : le silex est une provision ; un clic dessus le glisse dans l'emplacement « Orifice » (0 et des
+	# fesses quand il est vide, 1 et le silex quand il est plein). Ligoté, un clic sur l'Orifice coupe les liens.
+	if _profile.flint > 0:
+		rows.append({"kind": "item", "id": "flint", "label": "Silex", "count": _profile.flint, "right": "le cacher", "enabled": true,
+				"desc": "Une pierre tranchante, à usage unique. Clic : la glisser dans l'Orifice, pour l'avoir sur soi une fois ligoté."})
+	var hid := _profile.hidden == "flint"
+	rows.append({"head": true, "label": "Orifice"})
+	rows.append({"kind": "hidden", "id": "flint" if hid else "butt", "label": "Orifice", "count": 1 if hid else 0,
+			"right": ("couper mes liens" if _bound else "le reprendre") if hid else "vide", "enabled": hid,
+			"desc": ("Un silex y est caché. Ligoté, clique dessus (ou appuie sur E) : il coupe tes liens en %d s, et il est usé." % int(GameConfig.ACTION_TIMES["flint"])) if hid
+					else "Personne ne fouille là. Clique sur un silex de tes provisions pour l'y glisser. On trouve des silex dans les coffres des îles."})
 	rows.append({"head": true, "label": "Baies des dieux"})
 	if _profile.berries.is_empty():
 		rows.append({"kind": "none", "id": "", "label": "(aucune baie dans le sac)", "right": "", "enabled": false,
@@ -3679,18 +3694,26 @@ func _on_inventory_alt(kind: String, id: String) -> void:
 
 
 func _on_inventory_use(kind: String, id: String) -> void:
-	if kind == "hidden":
+	if kind == "hidden":   # l'Orifice : ligoté, le silex coupe les liens ; sinon on le reprend
 		if _profile.hidden == "flint":
+			if _bound:
+				_inventory.close()
+				_try_flint()
+				return
 			_profile.hidden = ""
 			_profile.flint += 1
-		elif _profile.flint > 0:
-			_profile.flint -= 1
-			_profile.hidden = "flint"
-		_profile.save()
-		_inventory.open(_inventory_rows())
+			_profile.save()
+			_inventory.open(_inventory_rows())
 		return
 	if _bound:
 		return   # ligoté : le reste du sac est hors de portée
+	if kind == "item" and id == "flint":   # un silex des provisions : dans l'Orifice (un seul à la fois)
+		if _profile.flint > 0 and _profile.hidden == "":
+			_profile.flint -= 1
+			_profile.hidden = "flint"
+			_profile.save()
+			_inventory.open(_inventory_rows())
+		return
 	if kind == "instrument":
 		var order: Array = INSTRUMENT_NAMES.keys()
 		_profile.instrument = str(order[(order.find(_profile.instrument) + 1) % order.size()])
@@ -4203,6 +4226,8 @@ func _axis(neg: Array, pos: Array) -> float:
 func _update_player(delta: float) -> void:
 	_sync_deck_nodes()
 	_update_boarding(delta)
+	_feed_enemy_crews()
+	_update_swim_shots(delta)
 	_spill_bag_surplus(delta)
 	_update_jump(delta)
 	if _is_down() or _is_dead():
@@ -4652,6 +4677,9 @@ func _world_to_ship(w: Vector2) -> Vector2:
 var _board_id := -1                 ## l'ennemi sur le pont duquel je suis (-1 : aucun)
 var _bpos := Vector2.ZERO           ## ma position sur son pont (repère de son modèle)
 var _board_strike_t := 0.0          ## délai avant le prochain coup d'un squelette
+var _prev_bpos := Vector2.ZERO      ## ma position sur son pont à l'image d'avant
+var _board_walk := Vector2.ZERO     ## mon pas sur son pont pendant la dernière image (monde) : le bateau qui m'emporte ne compte pas
+var _swim_shot_t := 3.0             ## délai avant le prochain tir de l'équipage ennemi sur moi, à la nage
 
 
 func _boarded_ship() -> Dictionary:
@@ -4684,6 +4712,10 @@ func _update_boarding(delta: float) -> void:
 			_enter_swim(_lpos)
 		return
 	var model := s["model"] as ShipModel
+	# 13/11 (Jimmy : « mon personnage court alors que je ne me déplace pas, et j'entends des pas sur le bois ») : le pont ennemi
+	# m'emporte ; seuls mes propres pas comptent pour l'animation et pour le bruit
+	_board_walk = _enemy_deck_world(s, _bpos) - _enemy_deck_world(s, _prev_bpos)
+	_prev_bpos = _bpos
 	_lpos = _enemy_deck_world(s, _bpos)
 	_lh = model.position.y + model.deck_height(_bpos.x)
 	_board_strike_t = maxf(_board_strike_t - delta, 0.0)
@@ -4702,6 +4734,94 @@ func _update_boarding(delta: float) -> void:
 			return
 
 
+## Position sur le pont du bateau ennemi `s` (repère de son modèle) d'un point du monde (l'inverse de _enemy_deck_world).
+func _enemy_deck_local(s: Dictionary, w: Vector2) -> Vector2:
+	var model := s["model"] as ShipModel
+	var esim: ShipSim = s["sim"]
+	var d := w - esim.position
+	var ld := Basis(Vector3.UP, -esim.yaw) * Vector3(d.x, 0.0, d.y)
+	return Vector2(ld.x / ShipModel.SCALE - model.shift, -ld.z / ShipModel.SCALE)
+
+
+## Chaque image : chaque équipage ennemi apprend qui est monté à son bord (moi, et les autres joueurs vus sur son pont) ; ses
+## canonniers vont au contact (EnemyCrew.intruders).
+func _feed_enemy_crews() -> void:
+	for s: Dictionary in _fleet.ships:
+		var crew := s.get("crew") as EnemyCrew
+		var model := s.get("model") as ShipModel
+		if crew == null or model == null:
+			continue
+		var list: Array = []
+		if _board_id == int(s["id"]) and _loc == Loc.LAND and not _is_down() and not _is_dead():
+			list.append(_bpos)
+		for id: int in _remotes:
+			var r: Dictionary = _remotes[id]
+			if int(r.get("loc", 0)) != 1 or float(r.get("lh", 0.0)) < 0.6:
+				continue
+			var rp: Vector2 = r["pos"]
+			if rp.distance_to((s["sim"] as ShipSim).position) > 30.0:
+				continue
+			var bp := _enemy_deck_local(s, rp)
+			if absf(bp.y) <= model.half_width(bp.x) + 0.2 and model.nearest_walkable(bp, 1.0).distance_to(bp) < 1.0:
+				list.append(bp)
+		crew.intruders = list
+
+
+## Chaque image, à la nage près d'un bateau ennemi dont l'équipage est debout : ils me tirent dessus au pistolet. Imprécis (voir
+## GameConfig.CREW_SHOT_*) : plus je suis près de la coque, plus ils touchent ; un tir manqué fait une gerbe à côté de moi.
+func _update_swim_shots(delta: float) -> void:
+	if _loc != Loc.SWIM or _is_down() or _is_dead():
+		_swim_shot_t = maxf(_swim_shot_t, 1.5)
+		return
+	var best: Dictionary = {}
+	var best_d := GameConfig.CREW_SHOT_RANGE
+	var shooters := 0
+	for s: Dictionary in _fleet.ships:
+		var crew := s.get("crew") as EnemyCrew
+		if crew == null or s.get("model") == null or s["state"] == "sinking":
+			continue
+		var d := (s["sim"] as ShipSim).position.distance_to(_lpos)
+		if d >= best_d:
+			continue
+		var up := 0
+		for i in range(1, crew.member_count()):
+			if not crew.is_down(i):
+				up += 1
+		if up > 0:
+			best = s
+			best_d = d
+			shooters = up
+	if best.is_empty():
+		_swim_shot_t = maxf(_swim_shot_t, 1.5)
+		return
+	_swim_shot_t -= delta * (1.0 + 0.2 * float(shooters - 1))
+	if _swim_shot_t > 0.0:
+		return
+	_swim_shot_t = randf_range(GameConfig.CREW_SHOT_EVERY_MIN, GameConfig.CREW_SHOT_EVERY_MAX)
+	var model := best["model"] as ShipModel
+	var from := _enemy_deck_world(best, _enemy_deck_local(best, _lpos).limit_length(model.half_width(0.0)))
+	var to := _lpos - from
+	var hull_d := to.length()
+	var chance := lerpf(GameConfig.CREW_SHOT_HIT_NEAR, GameConfig.CREW_SHOT_HIT_FAR,
+			smoothstep(GameConfig.CREW_SHOT_NEAR, GameConfig.CREW_SHOT_RANGE, hull_d))
+	var hit := randf() < chance
+	_dbg("tir de l'équipage ennemi à %.1f m : chance %.2f, %s" % [hull_d, chance, "touché" if hit else "manqué"])
+	var aim := to.normalized() if hit else to.normalized().rotated(randf_range(0.06, 0.2) * (1.0 if randf() < 0.5 else -1.0))
+	var def := Weapons.get_def("pistolet").duplicate()
+	def["range"] = hull_d + (0.0 if hit else 2.5)
+	_shot_fx(from, aim, def, model.position.y + model.deck_height(0.0))
+	_sfx.play_at(Synth.recorded("shot_pistolet"), _world_fixed.to_global(Vector3(from.x, 2.0, from.y)), 0.8, 1.0, true)
+	if hit:   # (apply_hurt ne vaut qu'à terre : à la nage on encaisse ici, comme pour une morsure de requin)
+		_hp = maxi(_hp - GameConfig.CREW_SHOT_DAMAGE, 0)
+		_island_hud.flash = 1.0
+		_shake_t = 0.3
+		_splash_burst(_lpos)
+		if _hp <= 0:
+			_die("tir")
+	else:
+		_splash_burst(from + aim * (hull_d + randf_range(0.3, 1.6)))
+
+
 ## À la nage, E ou Espace près de l'échelle de coque d'un ennemi : on monte à l'abordage. Vrai si c'est fait.
 func _try_board_enemy() -> bool:
 	for s: Dictionary in _fleet.ships:
@@ -4714,6 +4834,8 @@ func _try_board_enemy() -> bool:
 				continue
 			_board_id = int(s["id"])
 			_bpos = model.nearest_walkable(Vector2(float(l[0]), float(l[1])))
+			_prev_bpos = _bpos
+			_board_walk = Vector2.ZERO
 			_splash_burst(_lpos)
 			_loc = Loc.LAND
 			_mode = Mode.WALK
@@ -5896,7 +6018,7 @@ func _animate_pirates(delta: float) -> void:
 	elif _loc == Loc.RAFT or _prev_loc == Loc.RAFT:
 		move = Vector2.ZERO   # le radeau porte le pirate : il ne marche pas
 	elif on_land and was_land:
-		move = _lpos - _prev_lpos
+		move = _board_walk if _board_id >= 0 else _lpos - _prev_lpos
 	elif not on_land and not was_land and not in_hold and not _prev_hold:
 		move = _screen_of_ship(_ppos - _prev_ppos)
 	var helm_dir := _screen_of_ship(Vector2(1.0, 0.0))
@@ -6038,6 +6160,8 @@ func _update_atmosphere(delta: float) -> void:
 		moved = walk_pos.distance_to(_atmo_prev)
 		if moved > 1.5:
 			moved = 0.0   # un saut de position (téléportation, changement de lieu) : pas des pas
+		if _board_id >= 0:
+			moved = _board_walk.length()   # sur un pont ennemi : mes pas seulement, pas la course du bateau
 	_atmo_prev = walk_pos
 	_atmo_prev_kind = kind
 	# l'ennemi est là : un bateau ennemi en chasse à moins de 120 m, ou un ennemi d'île éveillé tout près
@@ -9773,18 +9897,18 @@ func _make_siren() -> Node3D:
 		beak.position = Vector3(0, 0.96 - 0.07 * k, 0.86 - 0.02 * k)
 		beak.rotation = Vector3(0.12 if k == 0 else -0.22, 0.0, 0.0)
 		root.add_child(beak)
-	var glow := _make_ball(1.0, Color(0.5, 1.0, 0.92))   # la lueur à la surface
+	var glow := _make_ball(1.0, Color(1.0, 0.86, 0.3))   # la lueur à la surface (13/11 : jaune, comme le canard)
 	var gm := glow.material_override as StandardMaterial3D
 	gm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	gm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	gm.albedo_color = Color(0.5, 1.0, 0.92, 0.16)
+	gm.albedo_color = Color(1.0, 0.86, 0.3, 0.16)
 	glow.scale = Vector3(1.6, 0.12, 1.6)
 	glow.position = Vector3(0, 0.25, 0)
 	glow.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	root.add_child(glow)
 	root.add_child(_siren_trail())
 	var light := OmniLight3D.new()
-	light.light_color = Color(0.5, 1.0, 0.9)
+	light.light_color = Color(1.0, 0.85, 0.35)
 	light.light_energy = 1.4
 	light.omni_range = 6.0
 	light.position = Vector3(0, 1.2, 0)
@@ -9809,7 +9933,7 @@ func _siren_capsule(radius: float, height: float, c: Color) -> MeshInstance3D:
 	return mi
 
 
-## La traînée de lumière de la sirène : des lueurs turquoise qui montent lentement en spirale jusqu'à une quinzaine de mètres.
+## La traînée de lumière de la sirène : des lueurs jaunes (13/11 : comme le canard) qui montent lentement en spirale jusqu'à une quinzaine de mètres.
 func _siren_trail() -> GPUParticles3D:
 	var p := GPUParticles3D.new()
 	p.amount = 60
@@ -9830,10 +9954,10 @@ func _siren_trail() -> GPUParticles3D:
 	pm.scale_min = 0.6
 	pm.scale_max = 1.2
 	var ramp := Gradient.new()
-	ramp.set_color(0, Color(0.7, 1.0, 0.95, 0.0))
-	ramp.set_color(1, Color(0.5, 1.0, 0.9, 0.0))
-	ramp.add_point(0.15, Color(0.7, 1.0, 0.95, 0.9))
-	ramp.add_point(0.7, Color(0.5, 1.0, 0.9, 0.5))
+	ramp.set_color(0, Color(1.0, 0.95, 0.6, 0.0))
+	ramp.set_color(1, Color(1.0, 0.8, 0.25, 0.0))
+	ramp.add_point(0.15, Color(1.0, 0.95, 0.6, 0.9))
+	ramp.add_point(0.7, Color(1.0, 0.8, 0.25, 0.5))
 	var gt := GradientTexture1D.new()
 	gt.gradient = ramp
 	pm.color_ramp = gt
