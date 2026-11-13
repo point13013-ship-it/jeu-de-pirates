@@ -478,6 +478,8 @@ func _toggle_compass() -> void:
 ## Réseau : un événement « music » (l'instrument, ou rien pour l'arrêt), relayé par l'hôte.
 const INSTRUMENT_NAMES := {"accordeon": "Accordéon", "violon": "Violon", "tambour": "Tambour"}
 var _playing := ""
+var _playing_spec := ""     # instrument et air joués (« violon:2 ») : c'est ce qui est envoyé aux autres
+var _tune_next := 0         # dernier air joué : le suivant change, sauf si quelqu'un joue déjà (on prend le sien)
 var _musicians := {}        # les autres joueurs qui jouent : identifiant -> instrument
 var _music_props := {}      # identifiant (le mien compris) -> l'instrument tenu
 var _notes: Array = []      # les notes en l'air : [nœud, âge, dérive]
@@ -496,10 +498,23 @@ func _set_playing(kind: String) -> void:
 	if kind == _playing:
 		return
 	_playing = kind
-	_send_action("music", kind, _my_world_pos(), _face)
+	_playing_spec = "" if kind == "" else "%s:%d" % [kind, _pick_tune(kind)]
+	_send_action("music", _playing_spec, _my_world_pos(), _face)
 	_set_music_prop(_my_id(), kind)
 	if kind == "":
 		_sfx.stop_loop("music_me")
+
+
+## L'air à jouer : celui d'un musicien déjà en train de jouer (le violon et le tambour d'un même air tombent ensemble) ; sinon
+## l'air suivant de l'instrument, chaque fois qu'on le reprend.
+func _pick_tune(kind: String) -> int:
+	var count := maxi(Synth.instrument_tunes(kind), 1)
+	for id: int in _musicians:
+		var theirs := str(_musicians[id])
+		if theirs.contains(":"):
+			return clampi(int(theirs.get_slice(":", 1)), 1, count)
+	_tune_next = _tune_next % count + 1
+	return _tune_next
 
 
 ## L'instrument tenu par le pirate `id` (« » : on le range).
@@ -544,7 +559,7 @@ func _update_music(delta: float) -> void:
 	if _playing != "" and (_bound or _is_down() or _is_dead() or _carrying or _loc == Loc.SWIM or _loc == Loc.CLIMB or _loc == Loc.FLIGHT or _atk_cd > 0.0):
 		_set_playing("")
 	if _playing != "":
-		_sfx.loop_at("music_me", Synth.instrument(_playing), _my_scene_pos() + Vector3.UP * 0.9, GameConfig.INSTRUMENT_VOL, 1.0, true)
+		_sfx.loop_at("music_me", Synth.instrument(_playing_spec), _my_scene_pos() + Vector3.UP * 0.9, GameConfig.INSTRUMENT_VOL, 1.0, true)
 	for id: int in _musicians.keys():
 		if not _remotes.has(id):
 			_musicians.erase(id)
@@ -1466,6 +1481,85 @@ func _build_town_v3() -> void:
 ## Vrai s'il y a un port (l'ancien, en rectangles, ou la ville v3, en polygones).
 func _has_port() -> bool:
 	return not _land.walk_rects.is_empty() or not _land.walk_polys.is_empty()
+
+
+## 13/11 — la ville v3 s'entend lieu par lieu (enregistrements Epidemic Sound, assets/audio/sfx/amb_*.ogg) : le brouhaha de la
+## taverne, l'enclume de la forge, le marché, la scie et le marteau du chantier naval, le lavoir, le quai qui grince, des poules
+## entre les maisons. Chaque son est plein tout près de son lieu et s'éteint à GameConfig.TOWN_SPOT_FAR m. Les métiers se taisent
+## la nuit, ceux du dehors presque sous la pluie ; la taverne est plus animée le soir, et pleine quand on est dedans. La cloche
+## de l'église et un chien au loin sonnent de temps en temps.
+var _town_spots: Array = []          ## {key, pos (plan), vol, day (de jour seulement), dry (à l'abri de la pluie)}
+var _town_church := Vector2(5.0, 87.0)
+var _bell_in := 75.0
+var _dog_in := 35.0
+
+
+func _build_town_spots() -> void:
+	var at := {}
+	for b: Dictionary in _town_plan.get("buildings", []):
+		at[str(b["id"])] = Vector2(float(b["x"]), float(b["y"]))
+	_town_church = at.get("b11", _town_church)
+	# [son, bâtiment du plan, volume, de jour seulement, à l'abri de la pluie]
+	for spec: Array in [["amb_taverne", "b3", 0.8, false, true], ["amb_forge", "b9", 0.9, true, true],
+			["amb_marche", "b10", 0.8, true, false], ["amb_chantier", "b5", 0.8, true, false],
+			["amb_lavoir", "b19", 0.7, true, false], ["amb_poules", "m7", 0.6, true, false]]:
+		if at.has(spec[1]) and Synth.recorded(str(spec[0]), true) != null:
+			_town_spots.append({"key": str(spec[0]), "pos": at[spec[1]], "vol": float(spec[2]), "day": bool(spec[3]), "dry": bool(spec[4])})
+	if Synth.recorded("amb_quai", true) != null:
+		var dock: Dictionary = _town_plan.get("dock", {})
+		_town_spots.append({"key": "amb_quai", "pos": Vector2(float(dock.get("pier_x1", 0.0)), float(dock.get("y", -19.0)) + 6.0),
+				"vol": 0.7, "day": false, "dry": true})
+
+
+## `here` : ma position dans le plan de la ville (à pied ou à bord).
+func _update_town_sounds(delta: float, here: Vector2) -> void:
+	if _town_plan.is_empty() or _sfx == null or _atmo == null:
+		return
+	if _town_spots.is_empty():
+		_build_town_spots()
+	var ear := _my_scene_pos() + Vector3.UP * 0.9
+	var day := smoothstep(0.25, 0.5, _atmo.sky.daylight)
+	var rain := clampf(_atmo.sky.rain, 0.0, 1.0)
+	var inside := ""
+	if _interior_active >= 0 and _interior_active < _land.interiors.size():
+		inside = str((_land.interiors[_interior_active] as Dictionary).get("id", ""))
+	var axes := _world_fixed.global_transform.basis.orthonormalized()
+	for sp: Dictionary in _town_spots:
+		var key := str(sp["key"])
+		var p: Vector2 = sp["pos"]
+		var d := here.distance_to(p)
+		var v := float(sp["vol"]) * GameConfig.TOWN_SPOT_VOL * (1.0 - smoothstep(GameConfig.TOWN_SPOT_NEAR, GameConfig.TOWN_SPOT_FAR, d))
+		if bool(sp["day"]):
+			v *= day
+		elif key == "amb_taverne":
+			v *= lerpf(1.0, 0.6, day)
+		if not bool(sp["dry"]):
+			v *= 1.0 - 0.8 * rain
+		# le son est posé tout près de l'oreille, dans la direction du lieu : le volume suit la distance (calculée ici, sur 40 m ;
+		# les bruitages ordinaires ne portent qu'à 22 m), et l'oreille garde la direction
+		var at := ear
+		if key == "amb_taverne" and inside == "taverne":
+			v = float(sp["vol"]) * GameConfig.TOWN_SPOT_VOL * 1.2
+		elif d > 0.5:
+			var dir := (p - here) / d
+			at = ear + axes * Vector3(dir.x, 0.0, dir.y) * minf(d, 3.0)
+		if v > 0.02:
+			_sfx.loop_at("spot_" + key, Synth.recorded(key, true), at, v)
+		else:
+			_sfx.stop_loop("spot_" + key)
+	var to_church := here.distance_to(_town_church)
+	_bell_in -= delta
+	if _bell_in <= 0.0:
+		_bell_in = randf_range(GameConfig.TOWN_BELL_MIN, GameConfig.TOWN_BELL_MAX)
+		if day > 0.5 and to_church < 170.0:
+			_atmo.audio.play(Synth.recorded("town_bell"), GameConfig.TOWN_BELL_VOL * (1.0 - 0.75 * smoothstep(25.0, 170.0, to_church)),
+					1.0, AudioSettings.BUS_AMBIENT)
+	_dog_in -= delta
+	if _dog_in <= 0.0:
+		_dog_in = randf_range(GameConfig.TOWN_DOG_MIN, GameConfig.TOWN_DOG_MAX)
+		if to_church < 120.0 and inside == "":
+			_atmo.audio.play(Synth.recorded("town_dog"), GameConfig.TOWN_DOG_VOL * randf_range(0.6, 1.0), randf_range(0.92, 1.08),
+					AudioSettings.BUS_AMBIENT)
 
 
 ## Ville v3 : terrasses et rampes du plan, habitants à leur place du plan (devant leur boutique), promeneurs sur les rues.
@@ -3396,13 +3490,13 @@ func apply_action(peer: int, kind: String, arg: String, pos: Vector2, dir: Vecto
 		"enemy_repair":   # un équipage ennemi répare sa coque
 			_enemy_repair_fx(pos)
 		"music":   # `peer` se met à jouer de l'instrument `arg`, ou s'arrête (« »)
-			if arg == "" or not INSTRUMENT_NAMES.has(arg):
+			if arg == "" or not INSTRUMENT_NAMES.has(arg.get_slice(":", 0)):
 				_musicians.erase(peer)
 				_sfx.stop_loop("music_%d" % peer)
 				_set_music_prop(peer, "")
 			else:
-				_musicians[peer] = arg
-				_set_music_prop(peer, arg)
+				_musicians[peer] = arg   # (« violon:2 » : l'instrument et son air)
+				_set_music_prop(peer, arg.get_slice(":", 0))
 		"bind":   # `peer` ligote le joueur dont l'identifiant est dans `arg` (moi, peut-être)
 			_apply_bind(int(arg), true)
 		"unbind":
@@ -4049,6 +4143,7 @@ func _process(delta_raw: float) -> void:
 	if _town_lights != null and _atmo != null:
 		var here := _lpos if (_loc == Loc.LAND or _loc == Loc.SWIM) else _sim.position
 		_town_lights.update(1.0 - _atmo.sky.daylight, Vector3(here.x, 0.0, here.y), Vector3(here.x, _lh, here.y), delta)
+		_update_town_sounds(delta, here)
 	_update_interior()
 	_update_npcs(delta)
 	_ship.update_cutaway(_loc == Loc.SHIP and _ship.inside_cabin(_ppos))

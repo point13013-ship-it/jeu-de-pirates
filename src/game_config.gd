@@ -441,6 +441,16 @@ const ROPE_LENGTH := 9.0                ## m : longueur de la corde qui relie au
 const BOUND_MAX_TIME := 180.0           ## s : sans silex et sans aide, les liens lâchent au bout de ce temps
 const FLINT_CHEST_CHANCE := 0.35        ## chance de trouver un silex dans un coffre d'île
 ## Instruments de musique (13/11, 4.5).
+## Ville v3 : les lieux qui s'entendent (13/11). Un son de lieu est plein à moins de TOWN_SPOT_NEAR m et s'éteint à TOWN_SPOT_FAR m.
+const TOWN_SPOT_NEAR := 6.0
+const TOWN_SPOT_FAR := 40.0
+const TOWN_SPOT_VOL := 0.8              ## volume général des sons de lieu (taverne, forge, marché, chantier, lavoir, quai, poules)
+const TOWN_BELL_MIN := 240.0            ## s : la cloche de l'église sonne de temps en temps, le jour…
+const TOWN_BELL_MAX := 480.0
+const TOWN_BELL_VOL := 0.5
+const TOWN_DOG_MIN := 70.0              ## … et un chien aboie au loin
+const TOWN_DOG_MAX := 170.0
+const TOWN_DOG_VOL := 0.35
 const INSTRUMENT_VOL := 0.9             ## volume d'un instrument (son placé sur le pirate : il s'éteint avec la distance)
 const NOTE_EVERY := 0.4                 ## s entre deux notes qui s'envolent
 const NOTE_LIFE := 1.5                  ## s : durée de vie d'une note

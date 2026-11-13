@@ -569,19 +569,36 @@ const TUNE_STEP := 0.2   ## s par croche
 static var _instr_rec: Dictionary = {}
 
 
-static func instrument(kind: String) -> AudioStream:
-	if not _instr_rec.has(kind):
-		var path := "%sinstr_%s_1.ogg" % [SFX_DIR, kind]
+## 13/11 (Jimmy : « deux variantes de plus par instrument ») : trois airs par instrument (instr_<instrument>_1 à _3). `spec` est
+## « violon » (air 1) ou « violon:2 ». Les airs de même numéro du violon et du tambour viennent du même morceau (2 : « O'Connor's
+## Jig », 3 : « Great Bend Reel ») et ont la même longueur : ils tombent ensemble. Accordéon 2 : « Oui Le Taxi », 3 : « Cheesy
+## France ».
+static func instrument(spec: String) -> AudioStream:
+	var kind := spec.get_slice(":", 0)
+	var tune := maxi(int(spec.get_slice(":", 1)), 1) if spec.contains(":") else 1
+	if tune > instrument_tunes(kind):
+		tune = 1
+	var key := "%s_%d" % [kind, tune]
+	if not _instr_rec.has(key):
+		var path := "%sinstr_%s.ogg" % [SFX_DIR, key]
 		var s: AudioStreamOggVorbis = null
 		if ResourceLoader.exists(path):
 			s = load(path) as AudioStreamOggVorbis
 			if s != null:
 				s = s.duplicate() as AudioStreamOggVorbis
 				s.loop = true
-		_instr_rec[kind] = s
-	if _instr_rec[kind] != null:
-		return _instr_rec[kind]
+		_instr_rec[key] = s
+	if _instr_rec[key] != null:
+		return _instr_rec[key]
 	return _instrument_synth(kind)
+
+
+## Le nombre d'airs enregistrés de cet instrument (0 : seulement l'air fabriqué).
+static func instrument_tunes(kind: String) -> int:
+	var n := 0
+	while n < 8 and ResourceLoader.exists("%sinstr_%s_%d.ogg" % [SFX_DIR, kind, n + 1]):
+		n += 1
+	return n
 
 
 static func _instrument_synth(kind: String) -> AudioStream:
