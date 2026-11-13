@@ -2,6 +2,18 @@
   "_commentaire": "Les nouveautés affichées dans la salle de jeux (bouton Nouveautés, et après chaque mise à jour). La plus récente d'abord. 'version': 'prochaine' est remplacé par le numéro de la version au moment de la publication (publish.ps1). Les images sont les fichiers de ce dossier ; publish.ps1 les envoie avec la version.",
   "versions": [
     {
+      "version": "2026.11.13-1601",
+      "titre": "La corde, le silex et l'emplacement caché",
+      "points": [
+        "Touche C : la corde. Sur le pont, elle t'attache au bateau : si tu tombes à l'eau, tu es traîné derrière la poupe, sans noyade, sans canard ni requins. C de nouveau pour te détacher.",
+        "Près d'un autre joueur, C le ligote : il ne peut plus marcher, frapper ni toucher à rien, et tout le monde voit ses liens. C de nouveau, par n'importe qui, le délie.",
+        "Le sac a un emplacement caché, accessible même ligoté. Avec un silex dedans, E coupe tes liens en 12 secondes ; le silex est usé.",
+        "On trouve des silex dans les coffres des îles (environ un coffre sur trois).",
+        "Sans silex et sans aide, les liens lâchent d'eux-mêmes au bout de trois minutes.",
+        "Tout l'équipage doit mettre à jour."
+      ]
+    },
+    {
       "version": "2026.11.13-1539",
       "titre": "Une seule longue-vue par bateau",
       "points": [
