@@ -301,3 +301,29 @@ Plan complet et réponses de Jimmy : design/plan-retours-session-3-joueurs.md.
 - Trésors posés sur le pont : ils y restent (`_deck_items`, tenus par l'hôte, diffusés avec l'état du bateau), E pour reprendre ;
   au naufrage ils partent à la dérive avec le reste.
 - Reste : cale en plusieurs pièces et hublots, porte arrière de la cabine et balcon praticable.
+
+### Lot 8 (fin)
+- Cale en trois pièces (`HoldLayout.walls`, `HOLD_LENGTH_MULT` 1,8, portes `HOLD_DOOR_HALF`), hublots (`HOLD_PORTHOLE_EVERY`).
+- Cabine : porte arrière et balcon praticable (`WALK_EXTRA` dans make_ship.py, méta `walk_extra`, lue par `ShipModel.is_walkable`).
+
+### Lot 9 : haute ville
+- Maisons toutes droites, rangée du fond aérée (quatre maisons, jardins, arbres), bords du plateau solides (make_port.py).
+- Pas fait : apparence des trésors (trois pistes dans le plan, choix attendu), collision du « fond en herbe » (endroit non retrouvé).
+
+### Lot 10 : audio
+- Tromblon : prises faibles retirées. Fusil refait à partir des prises existantes (plus grave, écho).
+- Pluie : -50 % (`RAIN_VOL`), averses et accalmies, curseur « Pluie » dans les réglages (`AudioSettings.rain_gain`).
+- Écoper et réparer : hauteur et volume tirés à chaque coup (`WORK_PITCH_VAR`, `WORK_VOL_VAR`). Barre adoucie.
+- Volume des morceaux varié (`MUSIC_TRACK_GAIN_MIN`). Pas fait : nouvelles musiques (fichiers Epidemic à fournir).
+
+### Refonte graphique, suite (13/11, après les lots)
+- Îles : les taches d'herbe suivaient la grille du bruit (pavés carrés). Octaves tournées, dessin déformé par un second bruit,
+  verts de la palette v1 (shaders/island_ground.gdshader).
+- Rivage : la houle traversait la nappe d'eau claire (elle monte plus haut que prévu avec les vagues à crête pointue). La houle
+  tombe maintenant à 20 % au bord d'une île et reprend sur 30 m (`SHORE_SWELL`, `SHELTER_WIDTH`), même formule dans
+  shaders/water.gdshader (`shelter_at`) et dans `SailingGame._shelter_at` : l'eau dessinée et la flottaison restent d'accord, et
+  c'est pareil chez tous les joueurs (les îles sont au même endroit). Le calcul prend le cercle englobant de l'île : une baie
+  est donc calme elle aussi. Bord extérieur de la nappe irrégulier, plus de trait de contour (pixel_edges : `shallow_y`).
+- Menu principal : fond refait (shaders/menu_sea.gdshader, coucher de soleil en gros pixels, palette v1), ponton sous le pirate.
+- Reste de la refonte : silhouettes d'îles (falaises en strates, épaves, ruines), autres menus (pause, boutique, création du
+  pirate), sillage en texture, reflets des lanternes, vue sous l'eau.

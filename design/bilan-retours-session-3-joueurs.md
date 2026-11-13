@@ -22,6 +22,18 @@ Presque tous les réglages sont dans `src/game_config.gd`, section « Retours de
 | 10 Audio | Tromblon (prises faibles retirées), fusil refait, pluie -50 % avec accalmies et curseur, écoper et réparer variés, barre adoucie, volume des morceaux varié | Tirer vingt fois au tromblon ; attendre une averse ; réglages (Échap) : curseur « Pluie » |
 | 11 Interface | HUD épuré, « [E] … » sous le centre, réputation au gain et dans le sac, boussole redessinée (seulement en main : B), pseudo à la nage, sirène qui s'en va, curseur du jeu | Jouer cinq minutes sans bandeau ; B pour la boussole ; Tab pour le sac |
 
+## Refonte graphique reprise après les lots
+
+| Point | Fait | Comment le voir |
+|---|---|---|
+| Herbe des îles | Taches aux contours souples (elles étaient carrées), verts de la palette v1 | Débarquer sur une île |
+| Rivage | La houle s'apaise près des îles et ne traverse plus l'eau claire ; bord de l'eau claire irrégulier, sans trait | Longer une île en bateau : le bateau tangue moins près du bord |
+| Menu principal | Coucher de soleil en gros pixels, pirate sur un ponton | Lancer le jeu |
+
+Réglages : houle au bord d'une île 100 % → 20 % (), reprise sur 30 m ().
+Reste de la refonte : silhouettes d'îles (falaises, épaves, ruines), menus de pause, de boutique et de création du pirate,
+sillage persistant, reflets des lanternes.
+
 ## Ce qui n'est pas fait, ou pas comme demandé
 
 - **Trésors : apparence.** Trois pistes proposées dans le plan (lot 9), aucune appliquée : il faut en choisir une.
