@@ -5,7 +5,7 @@ extends RefCounted
 ## un bateau ennemi, un récif, le rivage, un mur, un tonneau, un arbre… Au-delà de RANGE il retombe à l'eau : rien d'accroché.
 ## Cette fonction est celle du jeu : le joueur la voit en visant (cercle vert ou rouge), l'hôte la rejoue au lancer.
 
-const RANGE := 26.0     ## m : portée du crochet
+const RANGE := 22.0     ## m : portée du crochet (13/11 : 26)
 const STEP := 0.4       ## m entre deux sondages le long du tir
 const START := 1.1      ## m : on ne saisit rien plus près que cela (le pirate lui-même, ce qu'il a sous les pieds)
 const SPEED := 34.0     ## m/s : vol du crochet

@@ -34,6 +34,20 @@ var sail_speed: float = 0.35     ## ouverture par seconde
 var drag: float = 1.0            ## facteur sur la vitesse visée : 1 à sec, moins quand la cale se remplit
 var penalty_scale: float = 1.0   ## part du malus de mauvais vent qui s'applique (lot 3 : 0,75 pour le bateau des joueurs)
 var handling: float = 1.0        ## facteur sur la maniabilité (lot 3 : la forte houle la réduit un peu)
+# 13/11 : réglages de navigation du bateau des joueurs (les valeurs par défaut gardent l'ancien comportement : ennemis, radeau)
+var rudder_rate: float = 1.6     ## par seconde : vitesse de la barre quand on la pousse
+var rudder_return: float = 1.6   ## par seconde : vitesse de retour au centre quand on la lâche
+var turn_inertia: float = 0.0    ## s : temps que met le bateau à prendre (et à quitter) son virage
+var yaw_rate: float = 0.0        ## rad/s : vitesse de rotation actuelle
+var anchor_brake: float = 2.6    ## freinage à l'ancre (x l'accélération)
+var anchor_restart: float = 0.0  ## s après avoir levé l'ancre pendant lesquelles l'accélération est réduite
+var anchor_restart_accel: float = 1.0   ## part de l'accélération pendant ce temps
+var wind_strength: float = 1.0   ## 1 : vent normal ; près de 0 dans une zone de calme
+var aback_brake: float = 1.0     ## freinage des voiles hissées sans vent ou vent debout (x le freinage normal ; 1 : sans effet)
+var adverse: bool = false        ## une saute de vent est en cours (le vent a tourné d'un coup) : les voiles hautes sont à contre
+var glide: float = 1.0           ## freinage voiles carguées (x le freinage normal ; moins de 1 : le bateau court sur son erre)
+var _lift_t := 0.0
+var _pull := 0.0                 ## dernière poussée du vent dans les voiles (0…1), pour l'affichage
 
 
 ## Configure le bateau depuis ses caractéristiques (données externes).
@@ -118,8 +132,8 @@ func change_sails(step_levels: int) -> void:
 
 ## Fait varier le vent : il tourne lentement (quelques degrés par dizaine de secondes), toujours dans une bande autour du
 ## vent d'origine pour que le port reste jouable. `t` : temps de la partie (s).
-func drift_wind(t: float) -> void:
-	wind_angle = deg_to_rad(28.0 * sin(t * 0.021) + 17.0 * sin(t * 0.047 + 1.3))
+func drift_wind(t: float, extra: float = 0.0) -> void:
+	wind_angle = deg_to_rad(28.0 * sin(t * 0.021) + 17.0 * sin(t * 0.047 + 1.3)) + extra   # (extra : saute de vent, voir WindZones)
 	wind_dir = Vector2.from_angle(wind_angle)
 
 
@@ -131,15 +145,33 @@ func step(dt: float) -> void:
 	if absf(trim_input) > 0.01:
 		sail_trim_target = clampf(sail_trim_target + trim_input * TRIM_SPEED * 1.2 * dt, -MAX_TRIM, MAX_TRIM)
 	sail_trim = move_toward(sail_trim, sail_trim_target, TRIM_SPEED * dt)
-	rudder = move_toward(rudder, rudder_target, 1.6 * dt)
-	var target := 0.0 if anchored else max_speed * sail_open * sail_efficiency() * drag
-	var rate := accel if target > speed else accel * (2.6 if anchored else 0.6)
-	speed = move_toward(speed, target, rate * dt)
+	# la barre : elle part à `rudder_rate`, et revient au centre à `rudder_return` quand on la lâche (13/11 : une seule
+	# vitesse, 1,6/s ; un appui d'une seconde donnait un gros virage)
+	var back := absf(rudder_target) < absf(rudder) and signf(rudder_target) * signf(rudder) >= 0.0
+	rudder = move_toward(rudder, rudder_target, (rudder_return if back else rudder_rate) * dt)
+	# le vent tombe (zone de calme) ou les voiles le prennent à contre : voiles hissées, elles freinent ; carguées, le bateau
+	# court sur son erre. Carguer devient donc le bon geste dans un calme ou une saute de vent.
+	var pull := clampf(wind_factor() * trim_efficiency(), 0.0, 1.0) * wind_strength
+	var aback := aback_brake > 1.0 and sail_open > 0.2 and (wind_strength < 0.5 or adverse)
+	var eff := sail_efficiency() * (lerpf(0.25, 1.0, wind_strength) if aback_brake > 1.0 else 1.0)
+	var target := 0.0 if anchored else max_speed * sail_open * eff * drag
+	if aback and adverse:
+		target *= 0.25   # saute de vent : les voiles hautes sont prises à contre (hors saute, le vent debout ralentit sans arrêter)
+	_lift_t = maxf(_lift_t - dt, 0.0)
+	if anchored:
+		_lift_t = anchor_restart
+	var up := accel * (anchor_restart_accel if _lift_t > 0.0 else 1.0)
+	var down := accel * (anchor_brake if anchored else (0.6 * (aback_brake if aback else (glide if sail_open < 0.2 else 1.0))))
+	speed = move_toward(speed, target, (up if target > speed else down) * dt)
 	var steer := MIN_STEER + (1.0 - MIN_STEER) * clampf(speed / (max_speed * 0.6), 0.0, 1.0)
 	if anchored:
 		steer = 0.3  # l'ancre fait pivoter le bateau lentement
-	yaw -= rudder * turn_rate * handling * steer * dt
+	# inertie du virage : le bateau met `turn_inertia` s à prendre son virage, et autant à le quitter (0 : immédiat)
+	var want := rudder * turn_rate * handling * steer
+	yaw_rate = want if turn_inertia <= 0.0 else lerpf(yaw_rate, want, 1.0 - exp(-dt / turn_inertia))
+	yaw -= yaw_rate * dt
 	position += forward() * speed * dt * screen_comp()
+	_pull = pull
 
 
 const MIN_SAIL_EFF := 0.22   ## (12/11 : 0,4 ; « il faudrait plus de différence avec ou sans vent dans les voiles ») rendement minimal des voiles (vent debout + vergues mal réglées) : le vent ralentit, il n'arrête jamais le bateau

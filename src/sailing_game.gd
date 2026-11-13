@@ -109,6 +109,8 @@ var _treasure_icon: Node3D          ## sa maquette au-dessus de ma tête
 var _carry_step_t := 0.0            ## foulées depuis qu'on marche en portant (balancement du fardeau)
 var _carry_bob := 0.0               ## 0..1 : ampleur du balancement (0 à l'arrêt)
 var _stash: Array = []              ## les trésors du coffre du capitaine (cabine) : identifiants ; l'hôte fait autorité
+var _wind_zones := WindZones.new()   ## calmes et sautes de vent (13/11)
+var _shift_told := false
 var _stash_glow: MeshInstance3D     ## l'éclat d'or au-dessus du coffre quand il contient quelque chose
 var _loot := WorldLoot.new()        ## butin posé dans le monde : trésors flottants, boulets, planches, bourses
 var _fleet := EnemyFleet.new()      ## les bateaux de pirates ennemis (IA chez l'hôte)
@@ -373,6 +375,16 @@ func _setup_ship(ship_name: String) -> void:
 	_sim.configure(_load_stats(ship_name))
 	_sim.max_speed *= GameConfig.PLAYER_SHIP_SPEED_MULT        # lot 3 (3.6) : +10 %
 	_sim.penalty_scale = GameConfig.PLAYER_UPWIND_PENALTY_SCALE   # lot 3 (3.6) : malus de mauvais vent -25 %
+	# 13/11 (retours de la session à 3) : barre plus lourde, inertie de virage, ancre progressive, calmes et sautes de vent
+	_sim.turn_rate *= GameConfig.PLAYER_TURN_SCALE
+	_sim.rudder_rate = GameConfig.RUDDER_RATE
+	_sim.rudder_return = GameConfig.RUDDER_RETURN
+	_sim.turn_inertia = GameConfig.TURN_INERTIA
+	_sim.anchor_brake = GameConfig.ANCHOR_BRAKE
+	_sim.anchor_restart = GameConfig.ANCHOR_RESTART
+	_sim.anchor_restart_accel = GameConfig.ANCHOR_RESTART_ACCEL
+	_sim.aback_brake = GameConfig.SAILS_ABACK_BRAKE
+	_sim.glide = GameConfig.SAILS_FURLED_GLIDE
 	_sim.yaw = deg_to_rad(float(_args.get("yaw", "0")))
 	if not _args.has("no-port"):
 		_build_port()
@@ -3100,8 +3112,18 @@ func _process(delta_raw: float) -> void:
 		if _hull.is_sunk():
 			_sink_ship()
 	_sim.drag = _hull.speed_factor()
+	# zone de calme : même calcul chez tous (zones fixes sur la carte)
+	var calm := WindZones.strength_at(_sim.position)
+	if calm < 0.5 and _sim.wind_strength >= 0.5 and _sim.sail_open > 0.2 and (_loc == Loc.SHIP or _loc == Loc.NEST):
+		_say("Calme plat : plus de vent dans les voiles. Cargue-les et laisse courir le bateau", 5.0)
+	_sim.wind_strength = calm
 	if _is_authority() and not _args.has("no-wind-drift") and not _args.has("wind"):
-		_sim.drift_wind(_time)
+		_wind_zones.step(delta, _sim.speed > 1.5 and _sim.position.length() > WindZones.PORT_CLEAR)
+		_sim.drift_wind(_time, _wind_zones.shift_angle)
+		_sim.adverse = _wind_zones.shifting
+		if _wind_zones.shifting and not _shift_told:
+			_notify_all("Saute de vent ! Les voiles sont prises à contre : cargue-les le temps que ça passe")
+		_shift_told = _wind_zones.shifting
 	_update_zoom(delta)
 	_unstick_armed = maxf(_unstick_armed - delta, 0.0)
 	if _sim.sail_open > 0.25 and not _sim.anchored and _sim.speed < 0.25:
@@ -3883,7 +3905,7 @@ func _update_aim_line() -> void:
 
 # --- viser et tirer au canon, à la souris ---
 
-const GUN_ARC := PI              ## rad : visée libre sur 360° (le tube suit le curseur, d'où qu'il soit)
+const GUN_ARC := GameConfig.GUN_ARC_DEG * PI / 180.0   ## rad : arc de visée de chaque côté de la perpendiculaire (13/11 : 360° en tout)
 const GUN_RELOAD := 0.7          ## s : délai entre deux tirs au même canon
 
 var _gun_i := -1                 ## le canon que je vise à la souris (-1 : aucun)
@@ -4003,7 +4025,7 @@ func _update_gun_aim(delta: float) -> void:
 	# trajectoire prévue : mêmes lois que le boulet (voir fire_visual et _update_projectiles)
 	var dir := out2.rotated(_cannon_aim)
 	var fwd := _sim.forward()
-	var vel := Vector3(dir.x, 0.0, dir.y) * 28.0 + Vector3.UP * 5.0 + Vector3(fwd.x, 0.0, fwd.y) * _sim.speed
+	var vel := Vector3(dir.x, 0.0, dir.y) * GameConfig.BALL_SPEED + Vector3.UP * 5.0 + Vector3(fwd.x, 0.0, fwd.y) * _sim.speed
 	var pos := muzzle
 	var pts: Array[Vector3] = [pos]
 	var hits := false
@@ -5837,7 +5859,8 @@ func apply_request(peer: int, kind: String, value: int) -> void:
 					fire_visual(value)
 		"aim_fire":   # tir visé : valeur = canon + 100 x (angle en degrés + 180)
 			var gi := value % 100
-			var aim := deg_to_rad(float(clampi(value / 100 - 180, -180, 180)))
+			var arc_deg := int(GameConfig.GUN_ARC_DEG)   # (13/11 : l'hôte borne aussi l'angle à l'arc de visée)
+			var aim := deg_to_rad(float(clampi(value / 100 - 180, -arc_deg, arc_deg)))
 			if gi >= 0 and gi < _cannon_loaded.size() and _cannon_loaded[gi]:
 				_cannon_loaded[gi] = false
 				if _net.active:
@@ -6430,7 +6453,7 @@ func _update_wind_feel(delta: float) -> void:
 		_wind_streaks = WindStreaks.new()
 		_world.add_child(_wind_streaks)
 	var hoisted := _sim.sail_open
-	var pull := clampf(_sim.wind_factor() * _sim.trim_efficiency(), 0.0, 1.0)   # le vent pris par la toile, 0…1
+	var pull := clampf(_sim.wind_factor() * _sim.trim_efficiency(), 0.0, 1.0) * _sim.wind_strength   # le vent pris par la toile, 0…1 (calme : presque rien)
 	var fill := pull * smoothstep(0.05, 0.4, hoisted)
 	var luff := hoisted * clampf((GameConfig.SAIL_LUFF_AT - pull) / GameConfig.SAIL_LUFF_AT, 0.0, 1.0)
 	_ship.set_sail_wind(fill, luff, delta)
@@ -6489,7 +6512,7 @@ func fire_visual(i: int, human: bool = false, aim: float = 0.0) -> void:
 	ShipCannons.kick(_cannon_nodes[i])
 	_cannon_boom(muzzle)
 	if not human:   # un pirate tiré du canon part seul : pas de boulet avec lui
-		var vel := dir * 28.0 + Vector3.UP * 5.0 + Vector3(fwd.x, 0.0, fwd.y) * _sim.speed
+		var vel := dir * GameConfig.BALL_SPEED + Vector3.UP * 5.0 + Vector3(fwd.x, 0.0, fwd.y) * _sim.speed
 		var ball := _make_ball(0.16, Color(0.10, 0.10, 0.14))
 		_world_fixed.add_child(ball)
 		ball.global_position = muzzle

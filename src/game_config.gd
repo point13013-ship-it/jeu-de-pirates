@@ -157,7 +157,7 @@ const CHART_ROW_OFFSET := 20          ## la ligne du port (z = 0) est la ligne 2
 const DAY_SECS := 2100.0              ## 8.1 : s pour un jour complet (avant : 1 500 s ; +40 %)
 const WEATHER_SECS := 420.0           ## s : une tranche de temps (avant : 360)
 ## 8.2 : chances de chaque temps par tranche (avant : clair 62 %, brume 16 %, pluie 14 %, orage 8 %) …
-const WEATHER_ODDS := {"clear": 0.76, "mist": 0.10, "rain": 0.10, "storm": 0.04}
+const WEATHER_ODDS := {"clear": 0.83, "mist": 0.08, "rain": 0.06, "storm": 0.03}   # (13/11 : 76 / 10 / 10 / 4 %, encore trop de pluie)
 ## … et part de la tranche pendant laquelle il dure (avant : toute la tranche).
 const WEATHER_SHARE := {"mist": 0.6, "rain": 0.55, "storm": 0.7}
 ## 8.3 : périodes de houle plus forte hors tempête (une chance par période, la houle monte puis retombe).
@@ -332,3 +332,19 @@ const HULL_SPLASH_MAX := 3.5
 const FOG_SCREEN_BANKS := 0.0         ## part des bancs du filtre d'image (12/11 : 0,35)
 const FOG_DENSITY_BASE := 0.21        ## (12/11 : 0,25 ; -15 %)
 const FOG_DENSITY_GAIN := 0.6         ## (12/11 : 0,7 ; -15 %)
+
+# ------------------------------------------------------------------ Retours de la session à 3 joueurs (13/11/2026)
+
+## Navigation du bateau des joueurs (les ennemis gardent leurs réglages).
+const RUDDER_RATE := 0.6              ## par seconde : la barre va du centre à fond en 1,6 s (avant : 1,6, soit 0,63 s)
+const RUDDER_RETURN := 0.45           ## par seconde : lâchée, elle revient au centre en 2,2 s (avant : 0,63 s)
+const TURN_INERTIA := 1.2             ## s : temps que met le bateau à prendre son virage et à le quitter (avant : 0)
+const PLAYER_TURN_SCALE := 0.77       ## puissance de virage (x celle de data/ship_stats.json ; brigantin : 20 -> 15,5 °/s)
+const ANCHOR_BRAKE := 1.2             ## freinage à l'ancre, x l'accélération (avant : 2,6 ; arrêt en 5 à 6 s au lieu de 2,8 s)
+const ANCHOR_RESTART := 2.0           ## s après avoir levé l'ancre où le bateau repart mollement
+const ANCHOR_RESTART_ACCEL := 0.4     ## part de l'accélération pendant ce temps
+const SAILS_ABACK_BRAKE := 2.2        ## voiles hautes dans un calme ou une saute de vent : freinage x 2,2
+const SAILS_FURLED_GLIDE := 0.5       ## voiles carguées : freinage divisé par deux (le bateau court sur son erre)
+## Canons et crochet.
+const GUN_ARC_DEG := 50.0             ## ° de visée de chaque côté de la perpendiculaire (avant : 180, soit 360° en tout)
+const BALL_SPEED := 31.0              ## m/s à la bouche (avant : 28 ; portée d'environ 27 m -> 32 m)
