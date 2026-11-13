@@ -867,6 +867,12 @@ def square_sail(x, z0, z1, width, bulge, emblem, patch=None):
     cyl("yardlow_z%d" % round(z1 * 100), x, 0, z0, 0.07, width + 0.2, "mast", rot=(math.radians(90), 0, 0), verts=6)
 
 
+def shroud_foot(x, side):
+    """Le pied d'un hauban : sur la lisse du pavois (50 cm au-dessus du pont), au milieu de son épaisseur, à l'abscisse x."""
+    _x, hw, dz, _dp = station((x + L / 2) / L)
+    return (x, side * max(hw - 0.07, 0.03), dz + 0.5)
+
+
 max_top = 0.0
 NESTS: list = []   # (x, y, z du plancher, hauteur du mât)
 for mx, mh, sails in CFG["masts"]:
@@ -894,17 +900,22 @@ for mx, mh, sails in CFG["masts"]:
         elif V2 and si == 1 and mx < 0:
             pt = (0.18, 0.40, 0.32, 0.66)
         square_sail(mx, z0, z1, w, b, e, pt)
+    # 13/11 (bug 1.3, « les cordes ne touchent pas le bateau ») : les haubans descendaient vers une largeur et une hauteur fixes
+    # (celles du milieu du bateau). Près de l'étrave, où la coque est plus étroite et le pont plus haut, ils finissaient dans le
+    # vide, à l'extérieur. Chaque hauban s'attache maintenant sur la lisse du pavois, là où il tombe (shroud_foot), à une cadène.
     for side in (-1, 1):
         for k in range(3):
-            rope((mx, 0, mh * 0.78), (mx - 0.7 + k * 0.7, side * (hw_s * 0.95), 0.62))
+            foot = shroud_foot(mx - 0.7 + k * 0.7, side)
+            rope((mx, 0, mh * 0.78), foot)
+            box("chainplate", foot[0], foot[1], foot[2] - 0.12, 0.12, 0.08, 0.3, "iron")
     if V2:
         # mâts cerclés de fer (Sea of Thieves) ; enfléchures : des échelons de corde entre les haubans avant et arrière
         for zb in (2.4, mh * 0.45, mh * 0.62):
             cyl("mast_iron", mx, 0, zb, 0.235 + (0.04 if L > 14 else 0), 0.12, "iron")
         for side in (-1, 1):
             mtop = Vector((mx, 0, mh * 0.78))
-            fa = Vector((mx - 0.7, side * (hw_s * 0.95), 0.62))
-            fb = Vector((mx + 0.7, side * (hw_s * 0.95), 0.62))
+            fa = Vector(shroud_foot(mx - 0.7, side))
+            fb = Vector(shroud_foot(mx + 0.7, side))
             t = 0.1
             while t < 0.8:
                 pa = fa.lerp(mtop, t)
