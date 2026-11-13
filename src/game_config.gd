@@ -188,9 +188,9 @@ const ENEMY_RANKS := [
 		"loot": {"treasures": [2, 3], "rarity": 1.4, "planks": [3, 5], "balls": [2, 4], "gold": [60, 160]}},   # (= l'ancien butin d'un sloop)
 	{"weight": 30, "kind": "sloop", "hp": 1.35, "crew": 1, "planks": 4, "skin": {"sail": "red", "hull": "ebony", "flag": "red"},
 		"loot": {"treasures": [3, 4], "rarity": 1.8, "planks": [4, 6], "balls": [3, 6], "gold": [110, 220]}},
-	{"weight": 14, "kind": "brigantin", "hp": 1.6, "crew": 1, "planks": 6, "skin": {"sail": "tempest", "hull": "navy", "flag": "white"},
+	{"weight": 14, "kind": "brigantin", "hp": 1.6, "crew": 2, "planks": 6, "skin": {"sail": "tempest", "hull": "navy", "flag": "white"},
 		"loot": {"treasures": [4, 5], "rarity": 2.4, "planks": [5, 8], "balls": [5, 9], "gold": [200, 340]}},
-	{"weight": 4, "kind": "galion", "hp": 2.2, "crew": 2, "planks": 10, "skin": {"sail": "purple", "hull": "royal", "flag": "gold"},
+	{"weight": 4, "kind": "galion", "hp": 2.2, "crew": 3, "planks": 10, "skin": {"sail": "purple", "hull": "royal", "flag": "gold"},
 		"loot": {"treasures": [6, 8], "rarity": 3.2, "planks": [8, 12], "balls": [8, 14], "gold": [350, 600]}},
 ]
 const MOB_SLOW_TIME := 1.5            ## 6.8 : s de ralentissement d'un mob touché par un boulet
@@ -357,3 +357,9 @@ const AIM_JUMP_SPREAD := 3.5          ## dispersion en plein saut
 const AIM_JUMP_ADD := 0.08            ## rad ajoutés en plein saut
 const CARRY_TREASURE_SPEED := 0.85    ## vitesse de marche en portant un trésor (x la normale)
 const CARRY_TREASURE_SPRINT := 0.88   ## et sa course : 1,53 x 0,88 = 1,35 x la marche
+## Bateaux ennemis : équipages plus forts selon le rang (1 à 4), dégâts visibles à la place de la barre de vie.
+## (canonniers en plus par rang : 0 / 1 / 2 / 3, dans ENEMY_RANKS ; avant : 0 / 1 / 1 / 2)
+const ENEMY_LOAD_TIME := [0.9, 0.8, 0.7, 0.6]   ## s pour charger un canon, par rang (avant : 0,9 partout)
+const ENEMY_AIM_PER_RANK := 0.1       ## dispersion des tirs en moins par rang au-dessus du premier
+const ENEMY_DAMAGE_SINK := 0.7        ## m : un bateau à bout de coque s'enfonce d'autant
+const ENEMY_DAMAGE_LIST := 0.14       ## rad : et gîte d'autant

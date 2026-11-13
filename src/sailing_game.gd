@@ -1426,6 +1426,10 @@ func _apply_test_args() -> void:
 		_fleet.spawn(ep[0], Vector2(float(ep[1]), float(ep[2])), float(_args.get("enemy-yaw", "0")) * PI / 180.0)
 	if _args.has("carry"):   # essai : --carry=calice met ce trésor dans les bras du pirate
 		get_tree().create_timer(0.5).timeout.connect(func() -> void: _pick_up_treasure(str(_args["carry"])))
+	if _args.has("enemy-hp"):   # essai : --enemy-hp=0.3 ramène la coque des ennemis à cette part, 2 s après le départ (dégâts visibles)
+		get_tree().create_timer(2.0).timeout.connect(func() -> void:
+			for s: Dictionary in _fleet.ships:
+				s["hp"] = float(s["hp_max"]) * float(_args["enemy-hp"]))
 	if _args.has("enemy-sink"):   # essai : --enemy-sink=6 coule les ennemis à cet instant (naufrage et butin flottant)
 		get_tree().create_timer(float(_args["enemy-sink"])).timeout.connect(func() -> void:
 			for s: Dictionary in _fleet.ships:

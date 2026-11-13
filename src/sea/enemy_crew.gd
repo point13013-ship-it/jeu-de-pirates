@@ -32,6 +32,7 @@ var _faces: Array = []                   ## par canon : direction du regard du c
 var _time := 0.0
 var _cfg: Dictionary = {}
 var extra_gunners := 0                   ## lot 5 (6.2) : canonniers en plus selon le rang du bateau (avant build)
+var load_time := LOAD_TIME               ## s pour bourrer un canon (13/11 : plus court aux rangs élevés, GameConfig.ENEMY_LOAD_TIME)
 
 
 ## Monte l'équipage sur `p_model`. `rng` : pour qui est chargé au départ.
@@ -40,7 +41,7 @@ func build(p_model: ShipModel, p_cannons: Array, kind: String, rng: RandomNumber
 	cannon_nodes = p_cannons
 	var base: Dictionary = (IslandWorld.read_json("res://data/enemies.json").get("kinds", {}) as Dictionary).get("skeleton", {})
 	_cfg = base.duplicate()
-	_cfg["windup"] = LOAD_TIME
+	_cfg["windup"] = load_time
 	_cfg["cooldown"] = 0.5
 	var ammo: Array = model.meta.get("ammo", [0.0, 0.0])
 	_ammo_spot = model.nearest_walkable(Vector2(float(ammo[0]), float(ammo[1])) + Vector2(0.0, -0.55 * signf(float(ammo[1]))))
@@ -177,7 +178,7 @@ func _step_gunner(g: Dictionary, dt: float) -> void:
 			var idx2 := int(g["cannon"])
 			if _walk(g, _spots[idx2], dt):
 				g["state"] = "loading"
-				g["t"] = LOAD_TIME
+				g["t"] = load_time
 		"loading":
 			g["t"] = float(g["t"]) - dt
 			(g["enemy"] as IslandEnemy).facing = (_faces[int(g["cannon"])] as Vector2)
@@ -251,7 +252,7 @@ func _update_visuals(delta: float) -> void:
 		# prendre le boulet et le bourrer : le même bras levé que pour le coup de sabre
 		if g["state"] == "grab" or g["state"] == "loading":
 			e.state = IslandEnemy.State.WINDUP
-			var total := GRAB_TIME if g["state"] == "grab" else LOAD_TIME
+			var total := GRAB_TIME if g["state"] == "grab" else load_time
 			e.cfg["windup"] = total
 			e.timer = maxf(float(g["t"]), 0.0)
 		else:

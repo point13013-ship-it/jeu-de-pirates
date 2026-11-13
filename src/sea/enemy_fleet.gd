@@ -152,6 +152,8 @@ func _make_visual(s: Dictionary) -> void:
 	s["cannons"] = ShipCannons.build(model)
 	var crew := EnemyCrew.new()   # l'équipage de squelettes : timonier et canonniers qui rechargent
 	crew.extra_gunners = int(rdef.get("crew", 0))   # lot 5 (6.2) : plus de canonniers aux rangs élevés
+	var lt: Array = GameConfig.ENEMY_LOAD_TIME
+	crew.load_time = float(lt[clampi(int(s.get("rank", 1)) - 1, 0, lt.size() - 1)])   # 13/11 : et ils chargent plus vite
 	crew.build(model, s["cannons"], str(s["kind"]), _rng)
 	s["crew"] = crew
 	var label := Label3D.new()
@@ -366,7 +368,8 @@ func _fire_queue(s: Dictionary, delta: float) -> void:
 		var tvel: Vector2 = e[3]
 		var dist := Vector2(start.x, start.z).distance_to(tgt_pos)
 		var flight := clampf(dist / 24.0, 0.7, 2.4)
-		var spread := 2.6 + 0.05 * dist
+		# 13/11 : les équipages des rangs élevés visent mieux (dispersion -10 % par rang)
+		var spread := (2.6 + 0.05 * dist) * (1.0 - GameConfig.ENEMY_AIM_PER_RANK * float(int(s.get("rank", 1)) - 1))
 		var aim := tgt_pos + tvel * flight + Vector2(_rng.randf_range(-spread, spread), _rng.randf_range(-spread, spread))
 		var target3 := Vector3(aim.x, 0.2, aim.y)
 		var vel := Vector3((target3.x - start.x) / flight, (target3.y - start.y) / flight + 0.5 * 16.0 * flight, (target3.z - start.z) / flight)
@@ -462,6 +465,10 @@ func _place_visual(s: Dictionary, _delta: float) -> void:
 	var y := wave * 0.6
 	var roll := sin(_time * 0.9 + float(s["id"])) * 0.03 - sim.rudder * 0.04 * clampf(sim.speed / maxf(sim.max_speed, 0.1), 0.0, 1.0)
 	var pitch := sin(_time * 0.7 + float(s["id"]) * 1.7) * 0.02
+	# 13/11 : un bateau abîmé gîte et s'enfonce (à la place de la barre de vie)
+	var hurt_k := smoothstep(0.5, 1.0, 1.0 - clampf(float(s["hp"]) / float(s["hp_max"]), 0.0, 1.0))
+	y -= hurt_k * GameConfig.ENEMY_DAMAGE_SINK
+	roll += hurt_k * GameConfig.ENEMY_DAMAGE_LIST * (1.0 if int(s["id"]) % 2 == 0 else -1.0)
 	if s["state"] == "sinking":
 		var k := clampf(float(s["sink_t"]) / SINK_TIME, 0.0, 1.0)
 		y -= k * k * 5.0
@@ -479,14 +486,116 @@ func _place_visual(s: Dictionary, _delta: float) -> void:
 	model.rotation = Vector3(roll, sim.yaw, pitch)
 	var label := s["label"] as Label3D
 	if label != null:
-		var frac := clampf(float(s["hp"]) / float(s["hp_max"]), 0.0, 1.0)
-		var n := int(ceil(frac * 10.0))
-		label.text = "%s\n[%s%s]" % [label_name(s), "#".repeat(n), "-".repeat(10 - n)]   # (★ : le rang)
+		# 13/11 : plus de barre de vie (le nom et le rang restent) ; l'état de la coque se lit sur le bateau (_update_damage)
+		label.text = label_name(s)
 		label.visible = s["state"] != "sinking"
+	_update_damage(s, model)
 	# des éclats quand la coque encaisse (chez tout le monde : la vie baisse dans l'état reçu)
 	if float(s["hp"]) < float(s["chips_hp"]) - 0.5:
 		s["chips_hp"] = float(s["hp"])
 		_chips(model)
+
+
+## Les dégâts visibles (13/11, à la place de la barre de vie) : quatre paliers selon la coque qui reste.
+##   75 % : premiers trous dans la coque et planches cassées ; 50 % : voiles déchirées et fumée ; 25 % : plus de trous, fumée
+##   épaisse, le bateau gîte et s'enfonce (voir _place_visual). Mêmes dégâts chez tous les joueurs : ils sont tirés de
+##   l'identifiant du bateau, et la coque restante est dans l'état diffusé par l'hôte. Réparé, le bateau perd ses dégâts.
+func _update_damage(s: Dictionary, model: ShipModel) -> void:
+	var frac := clampf(float(s["hp"]) / float(s["hp_max"]), 0.0, 1.0)
+	var level := 0 if frac > 0.75 else (1 if frac > 0.5 else (2 if frac > 0.25 else 3))
+	if level == int(s.get("dmg_level", 0)):
+		return
+	s["dmg_level"] = level
+	for old: Node in (s.get("dmg_nodes", []) as Array):
+		if is_instance_valid(old):
+			old.queue_free()
+	var nodes: Array = []
+	s["dmg_nodes"] = nodes
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 7919 * int(s["id"]) + 13
+	var dark := StandardMaterial3D.new()
+	dark.albedo_color = Color("1C1726")
+	dark.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	dark.cull_mode = BaseMaterial3D.CULL_DISABLED
+	var wood := StandardMaterial3D.new()
+	wood.albedo_color = Color("CF9C62")
+	# trous dans la coque et planches arrachées, des deux bords
+	for k in [0, 3, 5, 9][level]:
+		var side := 1.0 if k % 2 == 0 else -1.0
+		var bx := rng.randf_range(-model.length * 0.32, model.length * 0.3)
+		var hw := model.half_width(bx)
+		var at := model.to_local3(Vector2(bx, side * hw * 1.02), -rng.randf_range(0.5, 1.3))
+		var hole := MeshInstance3D.new()
+		var cm := CylinderMesh.new()
+		cm.top_radius = rng.randf_range(0.3, 0.5)
+		cm.bottom_radius = cm.top_radius
+		cm.height = 0.12
+		cm.radial_segments = 7
+		hole.mesh = cm
+		hole.material_override = dark
+		hole.position = at
+		hole.rotation = Vector3(PI * 0.5, 0.0, 0.0)
+		hole.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		model.add_child(hole)
+		nodes.append(hole)
+		for j in 3:
+			var plank := MeshInstance3D.new()
+			var bm := BoxMesh.new()
+			bm.size = Vector3(rng.randf_range(0.5, 0.9), 0.07, 0.16)
+			plank.mesh = bm
+			plank.material_override = wood
+			plank.position = at + Vector3(rng.randf_range(-0.4, 0.4), rng.randf_range(-0.25, 0.3), -side * 0.12)
+			plank.rotation = Vector3(rng.randf_range(-0.5, 0.5), rng.randf_range(-0.6, 0.6), rng.randf_range(-0.8, 0.8))
+			model.add_child(plank)
+			nodes.append(plank)
+	if level < 2:
+		return
+	# voiles déchirées : des lambeaux sombres sur la toile (enfants de la voile : ils la suivent quand elle tourne ou se cargue)
+	for e: Dictionary in model._sails:
+		var mi := e["node"] as MeshInstance3D
+		if mi == null or mi.mesh == null or String(mi.name).contains("patch"):
+			continue
+		var verts: PackedVector3Array = mi.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
+		if verts.is_empty():
+			continue
+		for j in (2 if level == 2 else 4):
+			var v: Vector3 = verts[rng.randi() % verts.size()]
+			for off: float in [0.03, -0.03]:
+				var rag := MeshInstance3D.new()
+				var qm := QuadMesh.new()
+				qm.size = Vector2(rng.randf_range(0.35, 0.7), rng.randf_range(0.5, 1.0))
+				rag.mesh = qm
+				rag.material_override = dark
+				rag.position = v + Vector3(off, 0.0, 0.0)
+				rag.rotation = Vector3(0.0, PI * 0.5, rng.randf_range(-0.5, 0.5))
+				rag.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+				mi.add_child(rag)
+				nodes.append(rag)
+	# fumée qui monte du pont
+	var smoke := CPUParticles3D.new()
+	smoke.amount = 14 if level == 2 else 30
+	smoke.lifetime = 2.6
+	smoke.direction = Vector3(0, 1, 0)
+	smoke.spread = 18.0
+	smoke.initial_velocity_min = 1.2
+	smoke.initial_velocity_max = 2.2
+	smoke.gravity = Vector3(0.6, 0.4, 0.0)
+	smoke.scale_amount_min = 0.6
+	smoke.scale_amount_max = 1.5
+	var sm := SphereMesh.new()
+	sm.radius = 0.35
+	sm.height = 0.7
+	sm.radial_segments = 8
+	sm.rings = 4
+	var smat := StandardMaterial3D.new()
+	smat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	smat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	smat.albedo_color = Color(0.16, 0.14, 0.18, 0.55)
+	sm.material = smat
+	smoke.mesh = sm
+	smoke.position = model.to_local3(Vector2(rng.randf_range(-1.5, 2.5), 0.0), 0.6)
+	model.add_child(smoke)
+	nodes.append(smoke)
 
 
 func _chips(model: ShipModel) -> void:
