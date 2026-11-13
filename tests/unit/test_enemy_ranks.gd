@@ -13,7 +13,7 @@ func _initialize() -> void:
 	var id4 := fleet.spawn("galion", Vector2(800, 500), 0.0, -1, 4)
 	var s1: Dictionary = fleet.ships[fleet.find(id1)]
 	var s4: Dictionary = fleet.ships[fleet.find(id4)]
-	_check("rang 1 : coque +25 %% (%.0f)" % float(s1["hp"]), is_equal_approx(float(s1["hp"]), 70.0 * 1.25))
+	_check("rang 1 : coque x %.2f (%.0f)" % [GameConfig.ENEMY_HP_MULT, float(s1["hp"])], is_equal_approx(float(s1["hp"]), 70.0 * GameConfig.ENEMY_HP_MULT))
 	_check("rang 4 : bien plus résistant (%.0f)" % float(s4["hp"]), float(s4["hp"]) > float(s1["hp"]) * 3.0)
 	# vitesse : un ennemi reste moins rapide qu'un joueur sur le même bateau, mais l'écart ne dépasse plus ~15 %
 	var player_sloop := 9.0 * GameConfig.PLAYER_SHIP_SPEED_MULT
