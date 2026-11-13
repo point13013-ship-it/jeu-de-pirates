@@ -18,6 +18,7 @@ var walk_rects: Array = []   ## [x0, y0, x1, y1] en (x, y) du fichier
 var obstacles: Array = []
 var circles: Array = []
 var island_height: Callable = Callable()   ## (Vector2 monde) -> hauteur du sol d'une île ; vide : tout est plat
+var island_hole: Callable = Callable()     ## (Vector2 monde) -> vrai dans une crique d'île : la mer, pas le sol (13/11)
 var island_steep: Callable = Callable()    ## (Vector2 monde) -> vrai si la pente d'une île est trop raide pour y marcher (13/11 : relief)
 var island_discs: Array = [] ## terre des îles : [x, z, rayon] en coordonnées du monde (sol à la hauteur 0)
 # Ville v3 (13/11, data/town_plan.json) : le sol et les murs viennent du plan, plus de rectangles écrits à la main.
@@ -171,7 +172,7 @@ func _on_ground(m: Vector2) -> bool:
 			return true
 	for d: Array in island_discs:
 		if Vector2(float(d[0]), float(d[1])).distance_to(Vector2(m.x, -m.y)) <= float(d[2]):
-			return true
+			return not (island_hole.is_valid() and island_hole.call(Vector2(m.x, -m.y)))
 	return false
 
 

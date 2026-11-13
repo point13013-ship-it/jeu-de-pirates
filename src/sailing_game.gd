@@ -4558,7 +4558,10 @@ func _update_player(delta: float) -> void:
 	# flèches dirigeaient le saut librement, 1,3 fois plus vite qu'à pied : on planait sur 7 m en courant.
 	if airborne and (_loc == Loc.LAND or (_loc == Loc.SHIP and _walkto == Vector2.INF)):
 		var wish := Vector2.ZERO if talking else move * WALK_SPEED * walk_mul
-		if wish == Vector2.ZERO:
+		if _gliding:   # l'aile file à sa vitesse ; les flèches l'infléchissent
+			var gdir := wish.normalized() if wish != Vector2.ZERO else _air_vel.normalized()
+			_air_vel = _air_vel.move_toward(gdir * GameConfig.GLIDE_SPEED, GameConfig.GLIDE_TURN * delta)
+		elif wish == Vector2.ZERO:
 			_air_vel = _air_vel.move_toward(Vector2.ZERO, GameConfig.AIR_DRAG * delta)   # on lâche les flèches : l'élan s'use un peu
 		else:
 			# on infléchit la trajectoire, sans jamais aller plus vite que l'élan pris (ou que la marche, si on a sauté sur place)
@@ -4680,6 +4683,13 @@ func _sprint_factor() -> float:
 ## Saut : un temps d'accroupissement, puis une parabole. Possible à terre comme sur le pont.
 func _update_jump(delta: float) -> void:
 	_land_t = maxf(_land_t - delta, 0.0)
+	if _gliding:
+		if not (_loc == Loc.LAND or _loc == Loc.SHIP) or _is_down() or _is_dead():
+			_set_gliding(false)
+		elif _glider != null and _sprite != null:
+			_glider.global_position = _sprite.global_position + Vector3.UP * 2.35
+			if _air_vel.length() > 0.1:
+				_glider.rotation.y = atan2(_air_vel.x, _air_vel.y)
 	if (_dialog != null and _dialog.is_open()) or (_shop_menu != null and _shop_menu.is_open()):
 		_jump_wind = 0.0
 	if _notice_t > 0.0:
@@ -4702,6 +4712,9 @@ func _update_jump(delta: float) -> void:
 		_pz += _vz * delta
 		# Lot 2 (2.2) : la descente est plus franche que la montée (on ne flotte plus en haut du saut)
 		_vz -= GRAVITY * (GameConfig.FALL_GRAVITY_MULT if _vz < 0.0 else 1.0) * delta
+		if _gliding:   # sous l'aile, on descend lentement
+			_vz = maxf(_vz, -GameConfig.GLIDE_FALL)
+			_vz = minf(_vz, 1.0)
 		floor_h = _fall_floor()
 		if _pz <= floor_h and _vz < 0.0:
 			_touch_down(floor_h)
@@ -4752,6 +4765,7 @@ func _land_void(p: Vector2, h: float) -> bool:
 
 ## Fin d'un saut : sur le pont ou la terre on se réceptionne, au-dessus de l'eau on y plonge, au-dessus du quai on atterrit dessus.
 func _touch_down(floor_h: float) -> void:
+	_set_gliding(false)
 	_dbg("retombe : sol %.2f, pz %.2f, loc %d, lpos (%.1f, %.1f) ppos (%.1f, %.1f), parti de %s" % [floor_h, _pz, _loc, _lpos.x, _lpos.y, _ppos.x, _ppos.y, _air_origin.get("lpos")])
 	_vz = 0.0
 	if _loc == Loc.SHIP:
@@ -4899,8 +4913,51 @@ func _splash_burst(w: Vector2) -> void:
 		tw.chain().tween_callback(drop.queue_free)
 
 
+## 13/11 (Jimmy) : le deltaplane. En l'air (saut, chute d'une falaise), un second appui sur Espace déploie une petite aile :
+## on descend lentement (GameConfig.GLIDE_FALL) en filant droit devant (GLIDE_SPEED), on se dirige un peu. Un nouvel appui,
+## ou le sol, la replie. Pas d'aile avec les mains prises.
+var _gliding := false
+var _glider: Node3D
+
+
+func _set_gliding(on: bool) -> void:
+	if on == _gliding:
+		return
+	_gliding = on
+	if on and _glider == null:
+		_glider = Node3D.new()
+		var cloth := ProcKit.flat(Color("c4553f"))
+		var st := SurfaceTool.new()
+		st.begin(Mesh.PRIMITIVE_TRIANGLES)
+		for tri: Array in [[Vector3(0, 0.25, 0.55), Vector3(-1.5, 0.0, -0.35), Vector3(0, 0.12, -0.3)],
+				[Vector3(0, 0.25, 0.55), Vector3(0, 0.12, -0.3), Vector3(1.5, 0.0, -0.35)]]:
+			for v: Vector3 in tri:
+				st.set_normal(Vector3.UP)
+				st.add_vertex(v)
+		var wing := MeshInstance3D.new()
+		wing.mesh = st.commit()
+		var wm := cloth.duplicate() as StandardMaterial3D
+		wm.cull_mode = BaseMaterial3D.CULL_DISABLED
+		wing.material_override = wm
+		_glider.add_child(wing)
+		ProcKit.box(_glider, Vector3(3.0, 0.05, 0.05), Vector3(0, 0.02, -0.33), ProcKit.flat(Color("6A4532")))
+		ProcKit.box(_glider, Vector3(0.05, 0.05, 0.9), Vector3(0, 0.16, 0.1), ProcKit.flat(Color("6A4532")))
+		ProcKit.box(_glider, Vector3(0.04, 0.7, 0.04), Vector3(0, -0.3, 0.0), ProcKit.flat(Color("3A2630")))
+		_world_fixed.add_child(_glider)
+	if _glider != null:
+		_glider.visible = on
+	if on:
+		_sfx.play_at(Synth.recorded("sail_fill"), _my_scene_pos() + Vector3.UP, 0.6, 1.4)
+		var dir := _face if _loc == Loc.LAND else _screen_of_ship(_pface)
+		if dir.length() > 0.01:
+			_air_vel = dir.normalized() * maxf(_air_vel.length(), GameConfig.GLIDE_SPEED)
+
+
 func _try_jump() -> void:
 	if _is_down() or _is_dead() or _bound:
+		return
+	if (_pz > 0.35 or _vz != 0.0) and (_loc == Loc.LAND or _loc == Loc.SHIP) and _board_id < 0 and _jump_wind <= 0.0:
+		_set_gliding(not _gliding and not _carrying)
 		return
 	if _board_id >= 0:
 		_leave_board()   # du pont ennemi, Espace : on plonge

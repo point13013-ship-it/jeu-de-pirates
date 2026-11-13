@@ -94,7 +94,7 @@ func _register_island(d: Dictionary, proc: bool) -> int:
 		"id": str(d["id"]), "name": str(d["name"]), "blurb": str(d.get("blurb", "")), "danger": int(d.get("danger", 1)),
 		"center": c, "lobes": [], "radius": 0.0, "items": [], "props": d.get("props", []),
 		"scatter": _scatter_of(d), "cliffs": float(d.get("cliffs", 0.0)), "tone": str(d.get("tone", "lush")), "plateaus": _plateaus_of(d, c),
-		"terrain": _terrain_of(d, c),
+		"terrain": _terrain_of(d, c), "bites": _bites_of(d, c),
 		"blockers_c": [], "blockers_r": [], "chests": [], "enemies": [], "proc": proc, "node": null, "breakable_ids": [],
 	}
 	var bound := 0.0
@@ -133,6 +133,9 @@ static func _scaled_island(d: Dictionary, s: float) -> Dictionary:
 	for l: Array in d["lobes"]:
 		lobes.append([float(l[0]) * s, float(l[1]) * s, float(l[2]) * s])
 	out["lobes"] = lobes
+	for cv: Dictionary in out.get("coves", []):   # les criques suivent la terre agrandie
+		cv["at"] = [float(cv["at"][0]) * s, float(cv["at"][1]) * s]
+		cv["r"] = float(cv["r"]) * s
 	var placed: Array = []
 	for key in ["enemies", "chests", "berries"]:
 		for e: Dictionary in out.get(key, []):
@@ -389,7 +392,7 @@ func _terrain_h(i: int, p: Vector2) -> float:
 	var s := sdf(i, p)
 	if s <= 0.0:
 		return 0.0
-	var beach: float = t["beach"]
+	var beach := _beach_w(i, p)
 	var inland := smoothstep(beach * 0.5, beach + 7.0, s)
 	var shore := smoothstep(0.0, 2.0, s)
 	var h := 0.0
@@ -499,7 +502,39 @@ func sdf(i: int, p: Vector2) -> float:
 	var best := -INF
 	for l: Vector3 in (islands[i] as Dictionary)["lobes"]:
 		best = maxf(best, l.z - Vector2(l.x, l.y).distance_to(p))
+	# 13/11 (Jimmy : « une crique, la mer qui rentre dans la terre ») : chaque crique creuse un disque dans la côte
+	for b: Vector3 in (islands[i] as Dictionary)["bites"]:
+		best = minf(best, Vector2(b.x, b.y).distance_to(p) - b.z)
 	return best
+
+
+## Les criques d'une île (« coves » : [{at, r}] dans data/islands.json) : des disques de mer qui mordent la côte.
+func _bites_of(d: Dictionary, c: Vector2) -> Array:
+	var out: Array = []
+	for cv: Dictionary in d.get("coves", []):
+		out.append(Vector3(c.x + float(cv["at"][0]), c.y + float(cv["at"][1]), float(cv["r"])))
+	return out
+
+
+## Pour Land : vrai si `p` (monde) est dans une crique : c'est la mer, même à l'intérieur du contour de l'île.
+func in_cove(p: Vector2) -> bool:
+	for isl: Dictionary in islands:
+		for b: Vector3 in isl["bites"]:
+			if Vector2(b.x, b.y).distance_to(p) < b.z:
+				return true
+	return false
+
+
+## Largeur de la plage en `p` sur une île à relief : elle varie le long de la côte (de presque rien à près du double), au lieu
+## d'un ruban de sable régulier qui fait le tour de l'île.
+func _beach_w(i: int, p: Vector2) -> float:
+	var isl: Dictionary = islands[i]
+	var t: Dictionary = isl["terrain"]
+	var d := (p - (isl["center"] as Vector2))
+	var a := atan2(d.y, d.x)
+	var seed: float = t["seed"]
+	var n := _vnoise(Vector2(cos(a), sin(a)) * 1.9 + Vector2(seed * 2.3, seed))
+	return float(t["beach"]) * (0.15 + 1.9 * smoothstep(0.25, 0.8, n))
 
 
 ## Un point de rayon `r` peut-il se tenir ici (sur la terre, hors des obstacles) ?
@@ -545,6 +580,10 @@ func ship_hit_index(points: Array) -> int:
 			var isl: Dictionary = islands[k]
 			if p.distance_squared_to(isl["center"]) > pow(float(isl["radius"]) + SHIP_MARGIN + 1.0, 2.0):
 				continue
+			if not (isl["bites"] as Array).is_empty():   # (une île à criques : le vrai contour, criques comprises)
+				if sdf(k, p) > -SHIP_MARGIN:
+					return i
+				continue
 			for l: Vector3 in isl["lobes"]:
 				if Vector2(l.x, l.y).distance_squared_to(p) < pow(l.z + SHIP_MARGIN, 2.0):
 					return i
@@ -570,6 +609,7 @@ func build(parent: Node3D, land: Land) -> void:
 	land.island_discs = walk_discs()
 	land.island_height = ground_h
 	land.island_steep = steep_at
+	land.island_hole = in_cove
 	_ground_mat = ShaderMaterial.new()
 	_ground_mat.shader = load("res://shaders/island_ground.gdshader") as Shader
 	for i in islands.size():
@@ -757,7 +797,7 @@ func _terrain_mesh(i: int) -> ArrayMesh:
 			verts[idx] = Vector3(lx, h, lz)
 			sdfs[idx] = s
 			var noise := sin(lx * 0.9 + lz * 0.7) * 0.5 + sin(lx * 0.37 - lz * 1.1) * 0.5
-			var grass := clampf((s - 2.6 + noise * 0.7) * 2.0 + 0.5, 0.0, 1.0)
+			var grass := clampf((s - (_beach_w(i, wp) * 0.85 + 0.6 if relief else 2.6) + noise * 0.7) * 2.0 + 0.5, 0.0, 1.0)
 			var dp := 99.0
 			if s > 0.0:
 				for sg: Array in segs:

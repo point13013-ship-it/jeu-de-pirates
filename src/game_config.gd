@@ -65,6 +65,10 @@ const LADDER_SWIM_REACH := 1.8
 const SPRINT_SCALE := 0.9
 
 ## 2.2 Saut : on garde l'élan pris au sol, on ne peut que l'infléchir ; la descente est plus rapide que la montée.
+## Deltaplane (13/11) : second appui sur Espace en l'air.
+const GLIDE_FALL := 1.5               ## m/s : vitesse de descente sous l'aile
+const GLIDE_SPEED := 7.5              ## m/s : vitesse horizontale sous l'aile
+const GLIDE_TURN := 9.0               ## m/s² : de combien on infléchit la trajectoire
 const AIR_CONTROL := 6.0              ## m/s² : de combien on peut corriger sa vitesse horizontale en l'air
 const AIR_DRAG := 1.5                 ## m/s² : l'élan s'use un peu si on lâche les flèches
 const AIR_STANDING_SPEED := 0.55      ## saut sur place : vitesse horizontale maximale qu'on peut se donner (x la marche)
