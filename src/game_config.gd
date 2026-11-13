@@ -400,3 +400,12 @@ const SHELTER_WIDTH := 30.0           ## m : distance au bord de l'île sur laqu
 ## Ville v3 (13/11, design/ville-v3/conception.md).
 const TOWN_V3 := false                ## true : la nouvelle ville (maquette grise de data/town_plan.json) remplace le port ; essai : --town=v3
 const LADDER_EXIT_REACH := 2.0        ## m : dans la ville v3, un nageur sort de l'eau à moins de cette distance d'une échelle (ou par la grève)
+const LAMP_EVERY_MAIN := 13.0          ## m entre deux lanternes sur le quai et la Grand-Rue
+const LAMP_EVERY := 21.0               ## … et sur les autres rues
+const LAMP_ENERGY := 9.0               ## force d'une lanterne, la nuit
+const LAMP_RANGE := 9.0                ## m : portée de sa lumière
+const LAMP_CULL := 60.0                ## m : au-delà de cette distance du pirate, une lanterne n'éclaire plus (elle brille encore)
+const LAMP_SHADOWS := 2                ## nombre de lanternes qui portent des ombres (les plus proches du pirate)
+const LAMP_REFLECTION_LENGTH := 6.5    ## m : longueur du reflet d'une lanterne sur l'eau
+const WINDOW_GLOW := 3.0               ## force des fenêtres allumées, la nuit
+const TOWN_SHELTER := Vector3(5.0, -45.0, 85.0)   ## (x, z, rayon) : la houle tombe à SHORE_SWELL dans ce cercle autour de la ville v3 (bassin compris)

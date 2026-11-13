@@ -32,6 +32,7 @@ static func build(parent: Node3D, plan: Dictionary) -> Dictionary:
 	var acc := {}          # couleur -> SurfaceTool : tout le décor fixe, une surface par couleur
 	var circles: Array = []
 	var buildings: Array = []
+	var spills: Array = []      # façades éclairées la nuit : [pied du mur sud, largeur, angle, hauteur du sol]
 	var ramps: Array = plan.get("ramps", [])
 	var levels: Array = plan.get("levels", [])
 
@@ -131,6 +132,12 @@ static func build(parent: Node3D, plan: Dictionary) -> Dictionary:
 					circles.append([c2.x + off.x, c2.y + off.y, 0.4])
 			"halle":
 				buildings.append(_hall(root, circles, c2, size, ang, base, str(b3.get("name", ""))))
+			"maison", "interieur":
+				# 13/11 (étape 5) : de vraies maisons à la place des cubes ; on entre dans celles des services « intérieur »
+				var house := TownHouse.build(root, b3, base, k2)
+				buildings.append(house)
+				if bool(house.get_meta("lit", false)):
+					spills.append([c2 + Vector2(0.0, -size.y * 0.5 - 0.1).rotated(ang), size.x * 0.8, ang, base])
 			_:
 				var service := str(b3.get("kind", "")) == "service"
 				var wall: Color = SERVICE if service else (LANDMARK if mode == "repere" else WALLS[k2 % WALLS.size()])
@@ -145,7 +152,14 @@ static func build(parent: Node3D, plan: Dictionary) -> Dictionary:
 		mi.material_override = _mat(col3)
 		mi.name = "decor_%s" % col3.to_html(false)
 		root.add_child(mi)
-	return {"root": root, "buildings": buildings, "circles": circles}
+	# lanternes : leur pied arrête comme un poteau
+	var lamps: Array = []
+	for lp: Vector2 in TownLights.lamp_points(plan):
+		if _on_ramp(ramps, lp):
+			continue
+		lamps.append([lp, _level_h(levels, lp)])
+		circles.append([lp.x, lp.y, 0.2])
+	return {"root": root, "buildings": buildings, "circles": circles, "lamps": lamps, "spills": spills}
 
 
 # ------------------------------------------------------------------ bâtiments

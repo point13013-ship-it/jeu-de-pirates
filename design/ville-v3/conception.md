@@ -195,6 +195,18 @@ Règles ajoutées, vérifiées par le test :
 - **Étape 3, maquette grise jouable : première version.** `src/town/town_greybox.gd`. Essai : lancer le jeu avec `--town=v3`
   (ou `GameConfig.TOWN_V3`). Laiton = un service, blanc = un repère, carrés rouges = échelles. Les 11 habitants sont devant
   leur boutique, quatre promeneurs suivent les rues. Captures : `maquette-grise-vue-large.png`, `maquette-grise-quai.png`.
+- **Étape 4, lumière : première version.** `src/town/town_lights.gd`. Lanternes le long des rues (une tous les 13 m sur le
+  quai et la Grand-Rue, 21 m ailleurs, une au bout de chaque ponton, trois par place) : poteau, lanterne qui brille, vraie
+  lumière sur le sol et les murs, ombres portées pour les deux plus proches du pirate. Fenêtres allumées dans sept maisons
+  sur dix, avec une tache de lumière au pied de la façade. Reflets en tirets sur l'eau sous les lanternes du quai. Tout
+  s'allume au crépuscule. Le bassin est calme (la baie abrite de la houle, `TOWN_SHELTER`). Réglages : `LAMP_*`, `WINDOW_GLOW`.
+- **Étape 5, kit de maisons : première version.** `src/town/town_house.gd` : le kit est une recette, pas des modèles figés.
+  Chaque maison est fabriquée à la taille de son emprise : soubassement de pierre, enduit aux couleurs du port (7 teintes),
+  bandeaux, porte, fenêtres à volets, balcon de bois pour certaines, toit de tuiles à débord, cheminée. Les trois services
+  « intérieur » (taverne, magasin, tailleur) ont une porte double et une potence d'enseigne. Captures : `ville-jour-large.png`,
+  `ville-jour-rue.png`, `ville-soir-marche.png`, `ville-nuit-quai.png`.
+- **Restent en volumes simples** : les repères (église, maison du gouverneur, moulin, phare, batterie), les tentes, les
+  comptoirs, les halles, les cabanes de pêcheurs.
 - **Pas encore dans la maquette** : les intérieurs (taverne, magasin, tailleur : on parle aux marchands à leur porte), la
   colline du moulin (à plat), la pente de la grève (à plat, à la hauteur du quai), les lanternes, les figurants et les sons.
 - L'ancienne ville reste celle du jeu publié.

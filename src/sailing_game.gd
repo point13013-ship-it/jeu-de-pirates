@@ -798,6 +798,8 @@ func _update_shelters(around: Vector2) -> void:
 		var d := c.distance_to(around) - float(isl["radius"])
 		if d < 260.0:
 			near.append([d, Vector3(c.x, c.y, float(isl["radius"]))])
+	if not _town_plan.is_empty():   # la baie de la ville v3 est un abri elle aussi : le bassin est calme
+		near.append([-1.0, Vector3(GameConfig.TOWN_SHELTER.x, GameConfig.TOWN_SHELTER.y, GameConfig.TOWN_SHELTER.z)])
 	near.sort_custom(func(a: Array, b: Array) -> bool: return float(a[0]) < float(b[0]))
 	_shelters.clear()
 	var sent: Array[Vector3] = []
@@ -972,6 +974,7 @@ func _build_port() -> void:
 ## murs, les pontons et la terre qui arrête les bateaux viennent tous du plan (Land.load_plan) : plus rien n'est écrit à la main.
 ## Essai : --town=v3 (ou GameConfig.TOWN_V3). L'ancienne ville reste celle du jeu tant que la nouvelle n'est pas prête.
 var _town_plan: Dictionary = {}
+var _town_lights: TownLights
 
 
 func _build_town_v3() -> void:
@@ -986,8 +989,12 @@ func _build_town_v3() -> void:
 		_land.circles.append(c)
 	# les bâtiments deviennent transparents quand ils cachent le pirate, comme ceux de l'ancienne ville
 	var surface_shader := load("res://shaders/surface.gdshader") as Shader
+	_town_lights = TownLights.new()
+	_town_lights.name = "lumieres_ville"
 	for mi: MeshInstance3D in made["buildings"]:
 		var cols: Array = mi.get_meta("colors")
+		var kinds: Array = mi.get_meta("kinds", [])   # (matières peintes : enduit, tuiles, bois, pierre ; 4 = couleur unie)
+		var glass := int(mi.get_meta("glass", -1))
 		var record := {"mesh": mi, "normal": {}, "ghost": {}, "alpha": 1.0, "ghosted": false}
 		for s in mi.mesh.get_surface_count():
 			var mat := ShaderMaterial.new()
@@ -995,14 +1002,18 @@ func _build_town_v3() -> void:
 			var ghost := ShaderMaterial.new()
 			ghost.shader = _ghost_shader(surface_shader)
 			for m2: ShaderMaterial in [mat, ghost]:
-				m2.set_shader_parameter("kind", 4)
+				m2.set_shader_parameter("kind", int(kinds[s]) if s < kinds.size() else 4)
 				m2.set_shader_parameter("base", cols[s] as Color)
 				m2.set_shader_parameter("emit", 0.0)
 			mi.set_surface_override_material(s, mat)
 			(record["normal"] as Dictionary)[s] = mat
 			(record["ghost"] as Dictionary)[s] = ghost
+			if s == glass:
+				_town_lights.add_glass(mat, ghost, bool(mi.get_meta("lit", false)))
 		_buildings.append(record)
 	ToonLook.apply_tree(_port)
+	_world_fixed.add_child(_town_lights)
+	_town_lights.setup(made["lamps"], made["spills"], _land, SEA_Y)
 	_moor_at_dock()
 
 
@@ -3348,6 +3359,9 @@ func _process(delta_raw: float) -> void:
 		_swim_loop_gain = move_toward(_swim_loop_gain, 0.0, delta / 0.2)
 		_set_swim_loop(_swim_loop_gain)
 	_update_building_fade(delta)
+	if _town_lights != null and _atmo != null:
+		var here := _lpos if (_loc == Loc.LAND or _loc == Loc.SWIM) else _sim.position
+		_town_lights.update(1.0 - _atmo.sky.daylight, Vector3(here.x, 0.0, here.y), Vector3(here.x, _lh, here.y), delta)
 	_update_interior()
 	_update_npcs(delta)
 	_ship.update_cutaway(_loc == Loc.SHIP and _ship.inside_cabin(_ppos))
