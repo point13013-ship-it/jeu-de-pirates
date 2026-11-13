@@ -2884,11 +2884,24 @@ func _try_shoot(wid: String) -> void:
 		_net.send_shot(wid, _lpos, dir)
 
 
+## Trois coups de marteau sur le bateau ennemi qui répare, et un mot pour le dire s'il est proche.
+func _enemy_repair_fx(at: Vector2) -> void:
+	var where := _world_fixed.to_global(Vector3(at.x, SEA_Y + 1.5, at.y))
+	for k in 3:
+		get_tree().create_timer(0.28 * k).timeout.connect(func() -> void:
+			_sfx.play_at(Synth.hammer(k % 3), where, 1.0, randf_range(0.9, 1.08)))
+	if at.distance_to(_my_world_pos()) < GameConfig.ENEMY_REPAIR_NOTICE:
+		_popup("Ils réparent !", at, Color(1.0, 0.82, 0.42))
+
+
 ## Hôte : le tir de `peer` touche-t-il quelqu'un ? Mêmes règles que le sabre pour l'or et les tonneaux.
 func _resolve_shot(peer: int, wid: String, pos: Vector2, dir: Vector2) -> void:
 	var def := Weapons.get_def(wid)
 	if def.is_empty() or not Weapons.is_gun(wid):
 		return
+	# (1.7 : la balle abîme aussi les coques ; une volée de plombs compte comme la racine de son nombre de plombs)
+	_weapon_hits_ships(pos, dir, float(def.get("range", 10.0)), float(def.get("damage", 1)) * sqrt(float(def.get("pellets", 1))),
+			bool(def.get("pierce", false)))
 	for hit: Dictionary in _islands.shoot(pos, dir.normalized(), def):
 		if int(hit["gold"]) > 0:
 			_give_loot(peer, int(hit["gold"]), hit["at"])
@@ -2921,6 +2934,8 @@ func apply_action(peer: int, kind: String, arg: String, pos: Vector2, dir: Vecto
 	if _args.has("log"):
 		print("[action] joueur %d : %s %s vers %s" % [peer, kind, arg, dir])
 	match kind:
+		"enemy_repair":   # un équipage ennemi répare sa coque
+			_enemy_repair_fx(pos)
 		"ball_hit":   # l'hôte a vu un boulet toucher un ennemi (bateau ou mob) : le choc s'entend chez tous
 			_ball_sound("hull_hit", _world_fixed.to_global(Vector3(pos.x, SEA_Y + 0.6, pos.y)))
 		"act", "act_end":   # lot 2 : une action longue commence ou finit
@@ -3123,8 +3138,50 @@ func _eat_berry(id: String) -> void:
 	apply_berry_got(id)
 
 
+## Hôte, 13/11 (1.7) : un coup de sabre ou une balle abîme aussi les bateaux, les nôtres comme ceux des ennemis. On suit la
+## ligne du coup, de `pos` vers `dir` sur `reach` m : la première coque rencontrée encaisse (toutes, pour une arme perforante).
+## - bateau ennemi : `dmg` x WEAPON_SHIP_DAMAGE points de coque (un boulet en fait 18) ;
+## - notre bateau : seulement si l'on tire ou frappe du dehors (quai, eau, radeau, pont ennemi) ; chaque point de dégât use la
+##   coque de WEAPON_OWN_SHIP_WEAR, et une voie d'eau s'ouvre à chaque unité d'usure. Du pont, on ne perce pas son propre bateau.
+var _own_wear := 0.0
+
+
+func _weapon_hits_ships(pos: Vector2, dir: Vector2, reach: float, dmg: float, pierce: bool) -> void:
+	if not _is_authority() or _ship == null or dmg <= 0.0:
+		return
+	var d := dir.normalized()
+	var aboard := _ship.over_hull(_world_to_ship(pos))
+	var done := {}
+	var own_done := aboard
+	var steps := int(ceil(reach / 0.4))
+	for k in range(1, steps + 1):
+		var q := pos + d * (0.4 * k)
+		var local := Vector3(q.x, SEA_Y + 1.0, q.y)
+		var eid := _fleet.ball_hit(local)
+		if eid >= 0 and not done.has(eid):
+			done[eid] = true
+			_fleet.hurt(eid, dmg * GameConfig.WEAPON_SHIP_DAMAGE)
+			_ball_sound("hull_hit", _world_fixed.to_global(local))
+			_send_action("ball_hit", "", q, Vector2.ZERO)
+			if not pierce:
+				return
+		if not own_done:
+			var b := _world_to_ship(q)
+			if absf(b.x) <= _ship.length * 0.5 and absf(b.y) <= _ship.half_width(b.x) + 0.1:
+				own_done = true
+				_own_wear += dmg * GameConfig.WEAPON_OWN_SHIP_WEAR
+				_ball_sound("hull_hit", _world_fixed.to_global(local))
+				_send_action("ball_hit", "", q, Vector2.ZERO)
+				if _own_wear >= 1.0:
+					_own_wear -= 1.0
+					apply_hit(HIT_BALL, b.x, 1 if b.y >= 0.0 else -1, 1)
+				if not pierce:
+					return
+
+
 ## Hôte : le coup de `peer` touche-t-il quelqu'un ? L'or des ennemis vaincus va à celui qui frappe.
 func _resolve_swing(peer: int, pos: Vector2, dir: Vector2) -> void:
+	_weapon_hits_ships(pos, dir, float(_islands.player_cfg.get("swing_range", 1.9)), float(_islands.player_cfg.get("swing_damage", 1)), false)
 	var hits := _islands.swing(pos, dir.normalized())
 	if not hits.is_empty():   # le coup porte : un choc (chair ou bois), entendu par tout l'équipage
 		var h0: Dictionary = hits[0]
@@ -3485,6 +3542,10 @@ func _process(delta_raw: float) -> void:
 	_update_projectiles(delta)
 	var fwd_p := _sim.forward()
 	_fleet.step(delta, _is_authority(), {"pos": _sim.position, "vel": fwd_p * _sim.speed, "alive": true, "wind": _sim.wind_dir})
+	for ev: Vector2 in _fleet.repairs:   # (3.1 : l'équipage ennemi vient de clouer une planche : ça s'entend chez tous)
+		_enemy_repair_fx(ev)
+		_send_action("enemy_repair", "", ev, Vector2.ZERO)
+	_fleet.repairs.clear()
 	_update_camera(delta)
 	_update_atmosphere(delta)
 	_animate_pirates(delta)

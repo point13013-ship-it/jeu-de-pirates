@@ -170,7 +170,7 @@ const DAY_MOMENTS := [[0.0, "Nuit"], [0.22, "Aube"], [0.3, "Matin"], [0.45, "Mid
 
 # ------------------------------------------------------------------ Lot 5 : ennemis
 
-const ENEMY_HP_MULT := 1.25           ## 6.1 : coques 25 % plus résistantes
+const ENEMY_HP_MULT := 1.5            ## 6.1 : coques 25 % plus résistantes
 ## 6.4 (rééquilibré le 12/11) : vitesse d'un ennemi par rapport à un joueur sur le même bateau, par rang (1 à 4).
 ## Avant la refonte : 0,82 partout. Avec +10 % joueurs et -10 % ennemis, l'écart montait à 33 % : poursuites trop faciles.
 ## Un ★ se sème sans peine, un ★★★ presque aussi rapide que nous ; le galion reste lourd (sa vitesse de base est déjà basse).
@@ -413,3 +413,6 @@ const TOWN_LABELS := false             ## les noms numérotés au-dessus des bâ
 ## Bugs de la liste du 13/11.
 const WATER_EXIT_STEP := 0.9          ## m : en sortant de l'eau sur un quai ou un ponton, le pirate est posé à cette distance du bord
 const WARM_GLOW := Color(1.0, 0.66, 0.26)   ## teinte des fenêtres, vitrines et lanternes allumées (avant : blanc)
+const WEAPON_SHIP_DAMAGE := 1.5        ## 1.7 : points de coque qu'un point de dégât d'arme enlève à un bateau ennemi (un boulet : 18)
+const WEAPON_OWN_SHIP_WEAR := 0.12     ## 1.7 : usure de notre coque par point de dégât reçu du dehors ; une voie d'eau par unité d'usure
+const ENEMY_REPAIR_NOTICE := 60.0      ## m : en deçà, « Ils réparent ! » s'affiche au-dessus du bateau ennemi

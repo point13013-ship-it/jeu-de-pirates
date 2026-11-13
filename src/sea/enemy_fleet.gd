@@ -26,6 +26,7 @@ const STATS := {
 const RANK_NAMES := ["", "Matelots", "Forbans", "Écumeurs", "Terreur des mers"]
 const SKIN := {"sail": "black", "hull": "crimson", "flag": "black"}
 
+var repairs: Array = []        ## hôte : positions des bateaux qui viennent de réparer (vidé par le jeu à chaque image)
 var ships: Array = []          ## {id, kind, sim: ShipSim, hp, hp_max, state, sink_t, model, cannons, label, queue, cd, home, wp, wp_t, target_pos, target_yaw, age}
 var _root: Node3D
 var _next_id := 1
@@ -266,6 +267,7 @@ func _survive(s: Dictionary, delta: float) -> void:
 		return
 	s["repair_t"] = GameConfig.ENEMY_REPAIR_EVERY
 	s["planks"] = int(s["planks"]) - 1
+	repairs.append((s["sim"] as ShipSim).position)   # (13/11 : le jeu fait entendre les coups de marteau)
 	s["hp"] = minf(float(s["hp"]) + GameConfig.ENEMY_REPAIR_HP, float(s["hp_max"]))
 	s["chips_hp"] = float(s["hp"])
 
