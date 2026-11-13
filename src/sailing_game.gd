@@ -36,7 +36,7 @@ const CANNON_SPEED := 19.0             ## m/s : vitesse horizontale du pirate ti
 const CANNON_LIFT := 9.0               ## m/s : vitesse verticale au départ du canon
 const ZOOM_SEA := 0.6                  ## grossissement de la caméra en mer (1 = proche, plus petit = on voit plus loin)
 const ZOOM_LAND := 0.85
-const ZOOM_MIN := 0.4
+const ZOOM_MIN := 0.28   ## (13/11 : 0,4 ; la vigie dézoome à 0,30)
 const ZOOM_MAX := 1.15
 const CLIMB_SPEED := 2.6               ## m/s le long du mât
 const NEST_RADIUS := Vector2(0.38, 0.54)  ## unités du modèle : distance mini / maxi au mât dans le nid
@@ -588,7 +588,7 @@ func _zoom_goal() -> float:
 		Loc.HOLD:
 			base = 1.0
 		Loc.NEST:
-			base = 0.45
+			base = GameConfig.NEST_ZOOM   # (13/11 : 0,45 ; la vigie voit plus loin : le bateau, les îles, les voiles ennemies)
 		Loc.FLIGHT:
 			base = 0.62
 	if _loc == Loc.SHIP and _mode == Mode.HELM:
@@ -2547,7 +2547,7 @@ func _try_attack(secondary: bool = false) -> void:
 		if not _scare_shark():
 			_splash_burst(_lpos)
 		return
-	if _carrying and secondary and (_loc == Loc.SHIP or _loc == Loc.HOLD) and _mode == Mode.WALK:   # sur le pont aussi
+	if _carrying and (_loc == Loc.SHIP or _loc == Loc.HOLD) and _mode == Mode.WALK:   # sur le pont aussi (13/11 : les deux clics)
 		_drop_to_ground()
 		return
 	# 13/11 : les armes servent aussi sur notre pont (demande : « pouvoir se battre à bord »). Le coup part de l'endroit du pont
@@ -2571,10 +2571,7 @@ func _try_attack(secondary: bool = false) -> void:
 	if _loc != Loc.LAND or _atk_cd > 0.0 or _hp <= 0 or _dialog.is_open() or _shop_menu.is_open() or _chart.is_open() or _jump_wind > 0.0:
 		return
 	if _carrying:   # lot 2 (2.4) : les deux mains sont prises ; (12/11) clic droit : on lâche ce qu'on porte
-		if secondary:
-			_drop_to_ground()
-		else:
-			_say("Les mains prises : clic droit (ou G) pour poser ce que tu portes", 2.5)
+		_drop_to_ground()   # (13/11 : clic gauche ou droit, les deux posent ce qu'on porte)
 		return
 	var wid: String = _profile.secondary_weapon() if secondary else _profile.weapon   # clic gauche : arme principale ; clic droit : secondaire
 	if wid != _profile.weapon:
@@ -3650,6 +3647,19 @@ func _try_jump() -> void:
 	if _board_id >= 0:
 		_leave_board()   # du pont ennemi, Espace : on plonge
 		return
+	if _loc == Loc.NEST:
+		# 13/11 : on saute du nid de pie, vers l'extérieur (du mât vers où l'on se tient) ; on retombe à l'eau ou sur le pont
+		var nest := _mast_nest()
+		var out_dir := (_ppos - Vector2(float(nest[0]), float(nest[1]))) if not nest.is_empty() else Vector2(0.0, 1.0)
+		out_dir = out_dir.normalized() if out_dir.length() > 0.01 else Vector2(0.0, 1.0)
+		var wd := Basis(Vector3.UP, _sim.yaw) * Vector3(out_dir.x, 0.0, -out_dir.y)
+		_loc = Loc.SHIP
+		_mode = Mode.WALK
+		_ppos += out_dir * 0.5
+		_vz = GameConfig.NEST_JUMP_UP
+		_air_vel = Vector2(wd.x, wd.z).normalized() * GameConfig.NEST_JUMP_OUT
+		_jump_fx("jump")
+		return
 	if _loc == Loc.SWIM:
 		if not _try_board_raft_from_water():
 			_try_board_from_water()
@@ -4372,15 +4382,24 @@ func _start_mast_climb(up: bool) -> void:
 	if _ship.mast_ladder.is_empty():
 		return
 	_loc = Loc.CLIMB
-	_climb = {"kind": "mast", "t": 0.0 if up else 1.0, "up": up}
-	_ppos = Vector2(float(_ship.mast_ladder[0]) + 0.3, float(_ship.mast_ladder[1]))
+	_climb = {"kind": "mast", "t": 0.03 if up else 0.97, "up": up}
+	# (13/11 : le pirate se tient derrière l'échelle, plus dedans)
+	_ppos = Vector2(float(_ship.mast_ladder[0]) + 0.05, float(_ship.mast_ladder[1]))
+	_say("Échelle de mât — Z : monter   S : descendre   (on peut s'arrêter)", 3.5)
 	_mode = Mode.WALK
 
 
 func _update_climb(delta: float) -> void:
 	if _climb.get("kind") == "mast":
 		var top := maxf(_nest_height(), 0.5)
-		var t: float = _climb["t"] + (1.0 if _climb["up"] else -1.0) * CLIMB_SPEED * delta / top
+		# 13/11 : à la main. Z (ou flèche haut) monte, S (ou flèche bas) descend ; sans appui on reste accroché. Avant, E
+		# lançait la montée jusqu'au nid : un clic de trop et l'on partait là-haut.
+		var climb_in := -_axis([KEY_W, KEY_UP], [KEY_S, KEY_DOWN])
+		if _test_move != Vector2.ZERO:
+			climb_in = -signf(_test_move.y)
+		if _chart.is_open() or _pause.is_open() or _inventory.is_open():
+			climb_in = 0.0
+		var t: float = _climb["t"] + climb_in * CLIMB_SPEED * delta / top
 		_climb["t"] = clampf(t, 0.0, 1.0)
 		_pz = top * float(_climb["t"])
 		if t >= 1.0:
@@ -5652,13 +5671,17 @@ func _interact(secondary: bool) -> void:
 	if swimmer != 0 and not secondary:   # lot 2 (4.5) : un camarade à l'eau, à portée de bras : on le hisse
 		_start_action("hoist", "Hisser %s" % _remote_label(swimmer), swimmer)
 		return
-	var to_hoist := _hoist_candidate()   # (13/11 : rien n'indiquait qu'on pouvait hisser un camarade à l'eau)
-	if to_hoist != 0:
-		_prompt.text = "E : hisser %s à bord" % _remote_label(to_hoist)
-		return
 	var it := _nearest_interactable()
 	if it.is_empty():
 		return
+	# 13/11 : les mains prises, on ne tient ni la barre, ni les voiles, ni l'ancre, ni un canon : il faut d'abord poser ce
+	# qu'on porte. Restent permis : ranger (coffre du capitaine, caisses), charger un canon avec le boulet porté, descendre
+	# dans la cale et l'échelle de coque.
+	if _carrying and not secondary:
+		var kind_b := str(it["kind"])
+		if kind_b in ["chart", "mastladder", "helm", "mast", "anchor", "grapple"] or (kind_b == "cannon" and _carry_kind != "ball"):
+			_say("Tes mains sont prises : pose d'abord ce que tu portes (clic)", 3.0)
+			return
 	match it["kind"]:
 		"chart":
 			if not secondary:
@@ -6984,6 +7007,10 @@ func _update_hud() -> void:
 		return
 	if _mode == Mode.HELM:
 		_prompt.text = "À la barre : Q/D pour virer — E ou Espace : lâcher la barre"
+		return
+	var to_hoist := _hoist_candidate()   # (13/11 : rien n'indiquait qu'on pouvait hisser un camarade à l'eau)
+	if to_hoist != 0:
+		_prompt.text = "E : hisser %s à bord" % _remote_label(to_hoist)
 		return
 	var it := _nearest_interactable()
 	if it.is_empty():

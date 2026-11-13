@@ -372,3 +372,7 @@ const CREW_STRIKE_EVERY := 1.6        ## s entre deux coups reçus à bord
 const CREW_STRIKE_DAMAGE := 1         ## cœurs
 const ENEMY_ANCHOR_TIME := 40.0       ## s pendant lesquelles un ennemi dont on a jeté l'ancre reste sur place
 const BOARD_ANCHOR_REACH := 1.9       ## m : distance au cabestan ennemi pour jeter son ancre
+## Vigie (13/11).
+const NEST_ZOOM := 0.30               ## grossissement de la caméra dans le nid de pie (avant : 0,45)
+const NEST_JUMP_UP := 3.0             ## m/s : élan vers le haut en sautant du nid
+const NEST_JUMP_OUT := 5.5            ## m/s : élan vers l'extérieur
