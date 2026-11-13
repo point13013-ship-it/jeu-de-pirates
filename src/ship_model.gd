@@ -516,7 +516,9 @@ func _index_nodes(node: Node) -> void:
 			# le coffre de la cabine : le coffre du capitaine, où l'équipage dépose les trésors
 			stash_pos = Vector2(n3.position.x - shift, -n3.position.z)
 		if s.begins_with("sail_z"):
-			_sails.append({"node": n3, "top": sail_top(s), "base": n3.transform, "alpha": 1.0})
+			var sail := {"node": n3, "top": sail_top(s), "base": n3.transform, "alpha": 1.0}
+			_find_sail_anchor(sail, s)
+			_sails.append(sail)
 		elif s.begins_with("yard_z") or s.begins_with("yardlow_z"):
 			# les vergues de la voile « sail_zNNN » (13/11) : elles tournent avec elle ; celle du bas remonte quand on cargue
 			var low := s.begins_with("yardlow_z")
@@ -533,6 +535,35 @@ func _index_nodes(node: Node) -> void:
 			_cuts.append(info)
 	for child in node.get_children():
 		_index_nodes(child)
+
+
+## 13/11 (bug 1.4) : une voile triangulaire ne se replie pas vers le haut comme une voile carrée (elle montait « dans le vide »,
+## loin de sa corde). Un foc descend le long de son étai et se ramasse à son point d'amure, au bout du beaupré ; la brigantine
+## se serre contre son mât. On lit les trois coins du triangle dans le maillage : la tête (le plus haut), l'amure (le coin bas
+## le plus loin de la tête, sur l'étai) et l'écoute.
+func _find_sail_anchor(sail: Dictionary, sail_name: String) -> void:
+	var jib := sail_name.contains("jib")
+	var spanker := sail_name.contains("spanker")
+	var mi := sail["node"] as MeshInstance3D
+	if not (jib or spanker) or mi == null or mi.mesh == null or mi.mesh.get_surface_count() == 0:
+		return
+	var verts: PackedVector3Array = mi.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
+	if verts.size() < 3:
+		return
+	var base: Transform3D = sail["base"]
+	var head := base * verts[0]
+	for v: Vector3 in verts:
+		if (base * v).y > head.y:
+			head = base * v
+	if jib:
+		var tack := head
+		for v2: Vector3 in verts:
+			var q := base * v2
+			if Vector2(q.x - head.x, q.z - head.z).length() > Vector2(tack.x - head.x, tack.z - head.z).length():
+				tack = q
+		sail["tack"] = tack
+	else:
+		sail["luff_x"] = head.x   # (la tête de la brigantine est contre le mât : on serre la toile vers cet axe)
 
 
 ## La hauteur du haut d'une voile (unités du modèle), écrite dans son nom : « sail_z743_jib » -> 7,43. On ne lit que les
@@ -811,6 +842,12 @@ func _apply_sails() -> void:
 		var entry: Dictionary = _sails[k]
 		var top: float = entry["top"]
 		var m := Transform3D(m_scale, Vector3(0.0, top * (1.0 - s), 0.0))
+		if entry.has("tack"):      # foc : toute la toile se ramasse vers son amure, la tête descend le long de l'étai
+			var tack: Vector3 = entry["tack"]
+			m = Transform3D(Basis(), tack) * Transform3D(Basis.from_scale(Vector3(s, s, 1.0)), Vector3.ZERO) * Transform3D(Basis(), -tack)
+		elif entry.has("luff_x"):  # brigantine : serrée contre le mât, sous sa corne
+			var lx := float(entry["luff_x"])
+			m = Transform3D(Basis(), Vector3(lx, 0.0, 0.0)) * Transform3D(Basis.from_scale(Vector3(s, 1.0, 1.0)), Vector3.ZERO) * Transform3D(Basis(), Vector3(-lx, 0.0, 0.0))
 		var pivot: float = _sail_pivot[k]
 		if not is_nan(pivot):
 			# le creux de la voile (son bombement, vers l'étrave) autour de l'axe du mât : gonflée ou flasque, et qui bat
