@@ -348,3 +348,12 @@ const SAILS_FURLED_GLIDE := 0.5       ## voiles carguées : freinage divisé par
 ## Canons et crochet.
 const GUN_ARC_DEG := 50.0             ## ° de visée de chaque côté de la perpendiculaire (avant : 180, soit 360° en tout)
 const BALL_SPEED := 31.0              ## m/s à la bouche (avant : 28 ; portée d'environ 27 m -> 32 m)
+## Combat à terre.
+const GUN_KNOCK_SCALE := 0.3          ## recul d'un ennemi touché par balle (x le recul de l'arme ; avant : 1, il reculait de 1 à 2 m
+                                      ## à chaque tir et perdait son élan : « figé », il suffisait de recharger et de tirer)
+const AIM_SPRINT_SPREAD := 2.5        ## dispersion des armes à feu en courant (x la dispersion de l'arme)
+const AIM_SPRINT_ADD := 0.05          ## rad ajoutés en courant (le fusil, sans dispersion, en prend aussi)
+const AIM_JUMP_SPREAD := 3.5          ## dispersion en plein saut
+const AIM_JUMP_ADD := 0.08            ## rad ajoutés en plein saut
+const CARRY_TREASURE_SPEED := 0.85    ## vitesse de marche en portant un trésor (x la normale)
+const CARRY_TREASURE_SPRINT := 0.88   ## et sa course : 1,53 x 0,88 = 1,35 x la marche

@@ -176,7 +176,7 @@ func _move(delta_pos: Vector2, world: IslandWorld) -> void:
 
 
 ## Reçoit un coup de `dmg` venant de `from`. Renvoie vrai s'il en meurt.
-func hurt(dmg: int, from: Vector2, power: float) -> bool:
+func hurt(dmg: int, from: Vector2, power: float, ranged: bool = false) -> bool:
 	if state == State.DEAD:
 		return false
 	hp -= dmg
@@ -191,7 +191,7 @@ func hurt(dmg: int, from: Vector2, power: float) -> bool:
 		return true
 	if state == State.IDLE or state == State.HEAL:
 		state = State.CHASE   # (un coup interrompt son repas)
-	elif state == State.WINDUP:
+	elif state == State.WINDUP and not ranged:   # (13/11 : une balle ne casse plus son élan : il ne se fige plus sous le feu)
 		# un coup reçu en armant le sien le casse parfois : l'ennemi doit reprendre son élan
 		timer = float(cfg["windup"]) * 0.6
 	return false

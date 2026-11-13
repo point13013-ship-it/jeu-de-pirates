@@ -2590,6 +2590,15 @@ func _try_shoot(wid: String) -> void:
 		return
 	_atk_cd = float(def.get("cooldown", 1.0))
 	var dir := _face.normalized()
+	# 13/11 : on vise moins bien en courant ou en plein saut (la balle part de travers, la traînée le montre)
+	var base_spread := float(def.get("spread", 0.0))
+	var extra := 0.0
+	if _pz > 0.05:
+		extra = base_spread * (GameConfig.AIM_JUMP_SPREAD - 1.0) + GameConfig.AIM_JUMP_ADD
+	elif Input.is_physical_key_pressed(KEY_SHIFT) and _lpos.distance_to(_prev_lpos) > 0.005:
+		extra = base_spread * (GameConfig.AIM_SPRINT_SPREAD - 1.0) + GameConfig.AIM_SPRINT_ADD
+	if extra > 0.0:
+		dir = dir.rotated(randf_range(-extra, extra))
 	_sprite.play_action("shoot_" + wid, _screen_of_face(dir))   # le pirate épaule, tire (recul) et reprend sa garde
 	_gun_sound(wid, _my_scene_pos() + Vector3.UP * 0.9)
 	_shot_fx(_lpos, dir, def, INF, WeaponSkins.def_of(wid, _profile.skin_of(wid)))
@@ -3374,7 +3383,10 @@ func _land_point(w: Vector2, h: float) -> Vector3:
 
 ## Maj maintenue : on court (marche du pont, de la cale et de la terre). Lot 2 (2.1) : 10 % moins vite qu'avant.
 func _sprint_factor() -> float:
-	return SPRINT_MULT * GameConfig.SPRINT_SCALE if Input.is_physical_key_pressed(KEY_SHIFT) else 1.0
+	var fast := Input.is_physical_key_pressed(KEY_SHIFT)
+	if _carry_kind == "treasure":   # 13/11 : un coffre dans les bras ralentit un peu (marche et course)
+		return SPRINT_MULT * GameConfig.SPRINT_SCALE * GameConfig.CARRY_TREASURE_SPRINT if fast else GameConfig.CARRY_TREASURE_SPEED
+	return SPRINT_MULT * GameConfig.SPRINT_SCALE if fast else 1.0
 
 
 ## Saut : un temps d'accroupissement, puis une parabole. Possible à terre comme sur le pont.

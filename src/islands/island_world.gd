@@ -934,7 +934,7 @@ func shoot(origin: Vector2, dir: Vector2, w: Dictionary) -> Array:
 			if float(c[0]) > stop:
 				break
 			var en2: IslandEnemy = c[1]
-			var killed := en2.hurt(dmg, origin, power)
+			var killed := en2.hurt(dmg, origin, power * GameConfig.GUN_KNOCK_SCALE, true)   # (13/11 : petit recul, il continue d'avancer)
 			var gold := 0
 			if killed:
 				var g: Array = en2.cfg["gold"]
