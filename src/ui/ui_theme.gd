@@ -164,3 +164,52 @@ static func appear(c: Control) -> void:
 	var tw := c.create_tween().set_parallel(true)
 	tw.tween_property(c, "modulate:a", 1.0, ANIM)
 	tw.tween_property(c, "scale", Vector2.ONE, ANIM * 1.3).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+
+
+# ------------------------------------------------------------------ curseur (13/11/2026)
+# Un curseur dessiné dans le style du jeu : une pointe de sabre en laiton, cernée de sombre, avec un reflet clair. Sur un bouton
+# (main), la même pointe en or vif. Fabriqué par le code (pixel art agrandi sans lissage), posé une fois au lancement.
+const _CURSOR_ROWS := [
+	"X...............",
+	"XX..............",
+	"XoX.............",
+	"XooX............",
+	"XoooX...........",
+	"XolooX..........",
+	"XoloooX.........",
+	"XollooooX.......",
+	"XolloooooX......",
+	"XollooooooX.....",
+	"XolooooXXXXX....",
+	"XooXooX.........",
+	"XoX.XooX........",
+	"XX..XooX........",
+	"X....XooX.......",
+	".....XooX.......",
+	"......XX........",
+]
+
+
+static func _cursor_texture(fill: Color, light: Color, scale: int) -> ImageTexture:
+	var w := 16
+	var h := _CURSOR_ROWS.size()
+	var img := Image.create(w, h, false, Image.FORMAT_RGBA8)
+	img.fill(Color(0, 0, 0, 0))
+	for y in h:
+		var row: String = _CURSOR_ROWS[y]
+		for x in mini(row.length(), w):
+			match row[x]:
+				"X":
+					img.set_pixel(x, y, Color("1C1726"))
+				"o":
+					img.set_pixel(x, y, fill)
+				"l":
+					img.set_pixel(x, y, light)
+	img.resize(w * scale, h * scale, Image.INTERPOLATE_NEAREST)
+	return ImageTexture.create_from_image(img)
+
+
+## Pose le curseur du jeu (flèche, et sa variante sur les boutons).
+static func apply_cursor() -> void:
+	Input.set_custom_mouse_cursor(_cursor_texture(Color("DCAE5C"), Color("FFE2A0"), 2), Input.CURSOR_ARROW, Vector2(1, 1))
+	Input.set_custom_mouse_cursor(_cursor_texture(Color("FFD23F"), Color("FFFFFF"), 2), Input.CURSOR_POINTING_HAND, Vector2(1, 1))

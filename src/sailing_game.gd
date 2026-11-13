@@ -1269,9 +1269,9 @@ func _build_hud() -> void:
 	_hud.add_theme_font_size_override("font_size", 16)
 	_hud_root.add_child(_hud)
 	_prompt = Label.new()
-	_prompt.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+	_prompt.set_anchors_preset(Control.PRESET_CENTER if GameConfig.HUD_MINIMAL else Control.PRESET_CENTER_BOTTOM)
 	_prompt.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	_prompt.position = Vector2(0, -44)
+	_prompt.position = Vector2(0, GameConfig.HUD_PROMPT_BELOW_CENTER) if GameConfig.HUD_MINIMAL else Vector2(0, -44)   # (13/11 : près du centre)
 	_prompt.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_prompt.add_theme_color_override("font_color", Color(1, 0.95, 0.85))
 	_prompt.add_theme_color_override("font_outline_color", Color(0.05, 0.03, 0.1))
@@ -1390,6 +1390,7 @@ func _build_hud() -> void:
 	_hud_root.add_child(_center_label)
 	_rep_hud = ReputationHud.new()   # la réputation : rang, barre de progression et bannière de rang
 	_rep_hud.set_points(_profile.reputation)
+	_rep_hud.minimal = GameConfig.HUD_MINIMAL
 	_hud_root.add_child(_rep_hud)
 	_chart = SeaChart.new()
 	_chart.destination_chosen.connect(func(i: int) -> void: _destination = i)
@@ -2484,7 +2485,7 @@ func _update_island_hud(delta: float) -> void:
 		_chart.ship_dir = Vector2(cos(_sim.yaw), -sin(_sim.yaw))
 		_chart.enemies = _fleet.revealed()   # lot 5 (6.7) : la même liste chez tout l'équipage (état de la flotte)
 	var has_goal := _destination >= 0 and _destination < _islands.islands.size()
-	h.dest_visible = has_goal and not _chart.is_open()
+	h.dest_visible = has_goal and not _chart.is_open() and (_sprite.compass_enabled or not GameConfig.HUD_MINIMAL)   # (13/11 : boussole en main)
 	# la boussole que mon pirate tient en main montre le même cap (point bleu sur l'anneau)
 	var goal_vec := (_chart.shown_pos(_destination) - (_lpos if _loc == Loc.LAND else _sim.position)) if has_goal else Vector2.ZERO
 	if not has_goal and _loc == Loc.LAND:
@@ -2732,6 +2733,9 @@ func _inventory_rows() -> Array:
 	# troisième arme) : cliquer une arme change son apparence quand on en a plusieurs. Seul l'or est à part, dans l'en-tête ;
 	# les provisions (boulets, planches, balles, cartouches) restent des cases du sac.
 	var rows: Array = [{"kind": "purse", "id": "gold", "label": "Or", "count": _profile.gold}]
+	var rep_rank := Reputation.rank_of(_profile.reputation)   # (13/11 : la réputation n'est plus à l'écran en permanence)
+	rows.append({"head": true, "label": "Réputation : %s — %s" % [Reputation.rank_name(rep_rank),
+			"rang maximal" if Reputation.is_max(_profile.reputation) else "%d / %d" % [_profile.reputation, Reputation.points_for(rep_rank + 1)]]})
 	rows.append({"head": true, "label": "Armes"})
 	var main_id: String = _profile.weapon
 	var sec_id: String = _profile.secondary_weapon() if _profile.weapons.size() > 1 else ""
@@ -3236,6 +3240,7 @@ func _process(delta_raw: float) -> void:
 	_sync_pirate_palette()
 	_snap_sprite()
 	_update_hud()
+	_apply_minimal_hud(delta)
 	_net.tick(delta)
 	if _args.has("log"):
 		_log_timer += delta
@@ -4740,6 +4745,8 @@ func _make_name_tag(text: String) -> Label3D:
 	l.outline_size = 8
 	l.outline_modulate = Color(0.08, 0.04, 0.02)
 	l.no_depth_test = true
+	l.render_priority = 20   # (13/11 : après la mer et la pluie, sinon l'eau le recouvrait quand le pirate nage)
+	l.outline_render_priority = 19
 	l.position = Vector3(0.0, 2.35, 0.0)
 	return l
 
@@ -6913,6 +6920,49 @@ func _update_gauge() -> void:
 	_gauge_fill.size.x = (_gauge_back.size.x - 4.0) * f
 	_gauge_fill.color = Color(0.25, 0.6, 0.85) if f < 0.5 else (Color(0.95, 0.65, 0.2) if f < 0.8 else Color(0.9, 0.2, 0.15))
 	_gauge_label.text = "Cale %d %%   Voies d'eau : %d" % [int(f * 100.0), leaks]
+
+
+## Interface épurée (13/11) : après _update_hud, on cache ce qui n'est pas utile dans l'instant et on ne garde de la ligne du bas
+## que l'indication de touche du poste visé, courte, sous le centre de l'écran (« [E] Prendre la barre »).
+var _siren_dry_t := 0.0
+
+
+func _apply_minimal_hud(delta: float) -> void:
+	# la sirène s'en va quelques secondes après qu'on est sorti de l'eau
+	if _siren != null and _loc != Loc.SWIM:
+		_siren_dry_t += delta
+		if _siren_dry_t >= GameConfig.SIREN_LEAVE_AFTER:
+			_clear_water_threats()
+	else:
+		_siren_dry_t = 0.0
+	if not GameConfig.HUD_MINIMAL:
+		return
+	_hud.visible = false                 # le bandeau du haut (vitesse, voiles, ancre, barre, vent, heure)
+	_sail_hud.visible = false            # le cadran rond (cap, vent, voiles)
+	_gold_label.visible = false          # coffre et trésor porté : dans le sac
+	_weapon_label.visible = false        # la ligne d'aide des armes
+	_quest_label.visible = _quest_panel.is_open()   # les quêtes en cours : dans le journal
+	_prompt.text = _short_prompt(_prompt.text)
+
+
+## « À la nage — E : monter à l'échelle   R : … » -> « [E] Monter à l'échelle ». Les messages (notice) passent tels quels ; les
+## lignes d'aide sans touche d'action disparaissent.
+func _short_prompt(text: String) -> String:
+	if text == "" or _notice_t > 0.0:
+		return text
+	var i := text.find("E : ")
+	if i < 0:
+		return ""
+	if i > 0 and text[i - 1] != " ":
+		return ""   # (« … Espace : sauter » : ce n'est pas la touche E)
+	var rest := text.substr(i + 4)
+	var cut := rest.find("   ")
+	if cut >= 0:
+		rest = rest.substr(0, cut)
+	rest = rest.strip_edges()
+	if rest == "":
+		return ""
+	return "[E] " + rest[0].to_upper() + rest.substr(1)
 
 
 func _update_hud() -> void:

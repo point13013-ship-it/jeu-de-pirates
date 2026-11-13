@@ -380,3 +380,7 @@ const NEST_JUMP_OUT := 5.5            ## m/s : élan vers l'extérieur
 ## tout l'équipage et tenu par l'hôte (le coffre à boulets, la caisse à planches et l'étagère de la cale ouvrent le même menu).
 const BAG_MAX := 10                   ## planches, et boulets, qu'un pirate porte dans son sac (avant : 99)
 const SHIP_CHEST_STEP := 1            ## ce qu'un clic prend ou range (Maj + clic : tout ce qui rentre)
+## Interface épurée (13/11, retours de la session à 3) : à l'écran, seulement ce qui sert dans l'instant. `false` : l'ancien HUD.
+const HUD_MINIMAL := true
+const HUD_PROMPT_BELOW_CENTER := 96.0 ## pixels sous le centre de l'écran : l'indication de touche du poste visé
+const SIREN_LEAVE_AFTER := 3.0        ## s après être sorti de l'eau avant que la sirène disparaisse

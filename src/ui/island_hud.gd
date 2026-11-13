@@ -43,14 +43,30 @@ func _draw() -> void:
 		_draw_spells()
 	if dest_visible:
 		var font := get_theme_default_font()
-		var c := Vector2(size.x * 0.5, 58)
-		draw_circle(c, 30.0, Color(0.05, 0.03, 0.1, 0.7))
-		draw_arc(c, 30.0, 0, TAU, 32, Color(0.85, 0.68, 0.3), 2.0)
+		# 13/11 : une vraie boussole (elle ne s'affiche que boussole en main) : boîtier de laiton, cadran sombre, graduations,
+		# aiguille dorée vers le cap, nom et distance dessous sur deux lignes
+		var c := Vector2(size.x * 0.5, 70)
+		var brass := Color("DCAE5C")
+		draw_circle(c, 40.0, Color("3A2630"))
+		draw_circle(c, 35.0, Color("1C1726"))
+		draw_arc(c, 40.0, 0, TAU, 48, brass, 3.0)
+		draw_arc(c, 34.0, 0, TAU, 48, Color(brass, 0.45), 1.0)
+		for k in 16:
+			var a := TAU * float(k) / 16.0
+			var v := Vector2(sin(a), -cos(a))
+			var major := k % 4 == 0
+			draw_line(c + v * (27.0 if major else 30.0), c + v * 33.0, Color(brass, 0.9 if major else 0.5), 2.0 if major else 1.0)
+		draw_string(font, c + Vector2(-5, -15), "N", HORIZONTAL_ALIGNMENT_LEFT, 20, 12, Color("EFE4CC"))
 		var d := Vector2(sin(dest_angle), -cos(dest_angle))
 		var n := Vector2(-d.y, d.x)
-		draw_colored_polygon(PackedVector2Array([c + d * 24.0, c - d * 10.0 + n * 13.0, c - d * 4.0, c - d * 10.0 - n * 13.0]), Color(1.0, 0.82, 0.3))
-		var text := "%s — %d m" % [dest_name, int(dest_dist)]
-		draw_string(font, Vector2(c.x - 200, c.y + 50), text, HORIZONTAL_ALIGNMENT_CENTER, 400, 16, Color(1, 0.95, 0.8))
+		draw_colored_polygon(PackedVector2Array([c + d * 30.0, c + n * 6.0, c - n * 6.0]), Color("FFD23F"))
+		draw_colored_polygon(PackedVector2Array([c - d * 22.0, c + n * 6.0, c - n * 6.0]), Color("7D7488"))
+		draw_circle(c, 4.0, brass)
+		draw_string_outline(font, Vector2(c.x - 200, c.y + 60), dest_name, HORIZONTAL_ALIGNMENT_CENTER, 400, 16, 5, Color(0.05, 0.03, 0.1))
+		draw_string(font, Vector2(c.x - 200, c.y + 60), dest_name, HORIZONTAL_ALIGNMENT_CENTER, 400, 16, Color("EFE4CC"))
+		var dist := "%d m" % int(dest_dist)
+		draw_string_outline(font, Vector2(c.x - 200, c.y + 78), dist, HORIZONTAL_ALIGNMENT_CENTER, 400, 13, 4, Color(0.05, 0.03, 0.1))
+		draw_string(font, Vector2(c.x - 200, c.y + 78), dist, HORIZONTAL_ALIGNMENT_CENTER, 400, 13, Color("DCAE5C"))
 
 
 ## Les 4 sorts de la baie, en bas à gauche : une case par sort (touche 1 à 4), voile sombre qui descend pendant la recharge.

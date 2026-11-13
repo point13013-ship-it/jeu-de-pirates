@@ -17,6 +17,7 @@ var _camera: Camera2D
 
 
 func _ready() -> void:
+	UiTheme.apply_cursor()   # (13/11 : le curseur du jeu)
 	DisplaySettings.setup()   # le mode d'affichage choisi (fenêtré, plein écran…)
 	_ship_defs = _load_ships()
 	_camera = Camera2D.new()

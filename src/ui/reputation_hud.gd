@@ -20,6 +20,7 @@ var banner_title := ""
 var banner_lines: Array = []
 var _floaters: Array = []    ## [{text, age}]
 var _last_rank := 0
+var minimal := false         ## 13/11 : la barre ne s'affiche qu'au moment d'un gain (elle est dans le sac le reste du temps)
 var _t := 0.0
 
 
@@ -76,6 +77,8 @@ func _process(delta: float) -> void:
 
 
 func _draw() -> void:
+	if minimal and active_t <= 0.0 and banner_t < 0.0 and _floaters.is_empty():
+		return
 	var font := get_theme_default_font()
 	var p := int(shown)
 	var r := Reputation.rank_of(p)
