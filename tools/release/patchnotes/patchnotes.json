@@ -2,6 +2,15 @@
   "_commentaire": "Les nouveautés affichées dans la salle de jeux (bouton Nouveautés, et après chaque mise à jour). La plus récente d'abord. 'version': 'prochaine' est remplacé par le numéro de la version au moment de la publication (publish.ps1). Les images sont les fichiers de ce dossier ; publish.ps1 les envoie avec la version.",
   "versions": [
     {
+      "version": "2026.11.13-1539",
+      "titre": "Une seule longue-vue par bateau",
+      "points": [
+        "Il n'y a plus qu'une longue-vue à bord. Celui qui la prend au coffre du bateau laisse sa boussole ; les autres voient qui l'a, et doivent attendre qu'il la repose.",
+        "Elle revient au coffre au début de chaque partie, et si celui qui la tient quitte la partie.",
+        "Tout l'équipage doit mettre à jour (les anciennes versions ne peuvent plus se rejoindre)."
+      ]
+    },
+    {
       "version": "2026.11.13-1532",
       "titre": "La longue-vue",
       "points": [
