@@ -160,9 +160,27 @@ Autrement dit : pas de lumière « physique » comme le HDRP, mais une nuit où 
 
 Les étapes 1 à 4 se font sans un seul bel objet : c'est voulu. L'ancienne ville reste jouable jusqu'à l'étape 6.
 
-## 10. Questions à trancher avant le plan v1
+## 10. Décisions de Jimmy (13/11)
 
-1. **Forme** : baie en croissant avec cap et phare (la maquette), ou autre chose ?
-2. **Ambiance** : port caribéen coloré et prospère, ou repaire de flibustiers plus rude (épaves réemployées, planches, toile) ?
-3. **Boutiques** : garder les intérieurs en coupe, ou des comptoirs ouverts sur la rue (on achète sans entrer) ?
-4. **Modèles** : continuer à tout fabriquer par scripts Blender, ou partir d'un kit de modèles acheté ou libre ?
+| Question | Décision |
+|---|---|
+| Forme | **Baie en croissant**, celle de la maquette |
+| Ambiance | **Port caribéen coloré** |
+| Boutiques | **Mixte.** Quelques vraies maisons où l'on entre (taverne, magasin général, tailleur), pour l'ambiance. Des **grandes tentes ouvertes sur la rue**, façon Sea of Thieves, où l'on voit l'intérieur sans entrer ni charger (receleur, armurier et doreur, voilerie). Des comptoirs et des halles (tableau des quêtes, forge, marché, chantier naval) |
+| Modèles | Bâtiments, quais et relief par nos scripts Blender ; petits objets (tonneaux, caisses, étals, barques) depuis un kit libre CC0 repeint à notre palette. Pas de kit payant : le dépôt est public |
+| Sortie de l'eau | Dans la nouvelle ville, on ne sort de l'eau que par une échelle ou par la grève (`LADDER_EXIT_REACH`) : le quai est trop haut |
+| Publication | Publier dans le lanceur à chaque palier jouable, sans redemander |
+
+## 11. Où on en est
+
+- **Étape 1, plan v1 : fait.** `data/town_plan.json`, écrit par `tools/art/town_plan_svg.py` (ne pas le modifier à la main).
+- **Étape 2, socle technique : fait.** `src/land.gd` lit le plan (`load_plan`) : sol en polygones, murs tournés, terrasses en
+  polygones, rampes orientées, terre qui arrête les bateaux. Test : `tests/unit/test_town_v3.gd` (aucun bâtiment fermé ne se
+  traverse, chaque rampe se monte et se redescend, receleur et magasin à moins de 35 m du bateau, une échelle à moins de 12 m
+  de tout point du quai).
+- **Étape 3, maquette grise jouable : première version.** `src/town/town_greybox.gd`. Essai : lancer le jeu avec `--town=v3`
+  (ou `GameConfig.TOWN_V3`). Laiton = un service, blanc = un repère, carrés rouges = échelles. Les 11 habitants sont devant
+  leur boutique, quatre promeneurs suivent les rues. Captures : `maquette-grise-vue-large.png`, `maquette-grise-quai.png`.
+- **Pas encore dans la maquette** : les intérieurs (taverne, magasin, tailleur : on parle aux marchands à leur porte), la
+  colline du moulin (à plat), la pente de la grève (à plat, à la hauteur du quai), les lanternes, les figurants et les sons.
+- L'ancienne ville reste celle du jeu publié.

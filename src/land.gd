@@ -19,6 +19,78 @@ var obstacles: Array = []
 var circles: Array = []
 var island_height: Callable = Callable()   ## (Vector2 monde) -> hauteur du sol d'une île ; vide : tout est plat
 var island_discs: Array = [] ## terre des îles : [x, z, rayon] en coordonnées du monde (sol à la hauteur 0)
+# Ville v3 (13/11, data/town_plan.json) : le sol et les murs viennent du plan, plus de rectangles écrits à la main.
+var walk_polys: Array = []   ## sol où l'on marche : polygones (PackedVector2Array) en (x, y) du fichier
+var obbs: Array = []         ## murs : rectangles tournés [cx, cy, demi-largeur, demi-profondeur, angle]
+var sand_polys: Array = []   ## plages de la ville (on y sort de l'eau à pied)
+var ladders: Array = []      ## échelles du quai et des pontons : Vector2 en (x, y) du fichier
+static var ship_polys: Array = []   ## terre qui arrête les bateaux, en coordonnées du monde ; vide : les rectangles SHIP_LAND
+
+
+## Charge le plan de la ville v3 : sol (terre et pontons), murs des bâtiments, plages, échelles.
+func load_plan(plan: Dictionary) -> void:
+	walk_rects = []
+	obstacles = []
+	circles = []
+	walk_polys = [_poly(plan.get("land", []))]
+	sand_polys = [_poly(plan.get("sand", []))]
+	ship_polys = [_world_poly(plan.get("land", []))]
+	for pt: Dictionary in plan.get("pontoons", []):
+		var a := Vector2(float(pt["a"][0]), float(pt["a"][1]))
+		var b := Vector2(float(pt["b"][0]), float(pt["b"][1]))
+		var side := (b - a).normalized().orthogonal() * float(pt["width"]) * 0.5
+		var quad := [[a.x + side.x, a.y + side.y], [b.x + side.x, b.y + side.y], [b.x - side.x, b.y - side.y], [a.x - side.x, a.y - side.y]]
+		walk_polys.append(_poly(quad))
+		ship_polys.append(_world_poly(quad))
+	obbs = []
+	for b: Dictionary in plan.get("buildings", []):
+		if str(b.get("mode", "")) in ["tente", "comptoir", "halle", "jardin"]:
+			continue   # ouverts : on y entre à pied (leurs poteaux et comptoirs sont des cercles, posés par la maquette)
+		obbs.append([float(b["x"]), float(b["y"]), float(b["w"]) * 0.5, float(b["d"]) * 0.5, float(b["ang"])])
+	ladders = []
+	for l: Array in plan.get("ladders", []):
+		ladders.append(Vector2(float(l[0]), float(l[1])))
+
+
+static func _poly(pts: Array) -> PackedVector2Array:
+	var out := PackedVector2Array()
+	for q: Array in pts:
+		out.append(Vector2(float(q[0]), float(q[1])))
+	return out
+
+
+static func _world_poly(pts: Array) -> PackedVector2Array:
+	var out := PackedVector2Array()
+	for q: Array in pts:
+		out.append(Vector2(float(q[0]), -float(q[1])))
+	return out
+
+
+static func _in_obb(m: Vector2, o: Array) -> bool:
+	var d := (m - Vector2(float(o[0]), float(o[1]))).rotated(-float(o[4]))
+	return absf(d.x) < float(o[2]) and absf(d.y) < float(o[3])
+
+
+## Vrai si le point monde `p` est sur le sol de la ville v3 (terre ou ponton), pas sur une île.
+func on_town(p: Vector2) -> bool:
+	for poly: PackedVector2Array in walk_polys:
+		if Geometry2D.is_point_in_polygon(Vector2(p.x, -p.y), poly):
+			return true
+	return false
+
+
+## Ville v3 : un nageur ne sort de l'eau que par une plage ou par une échelle (à moins de `reach` m).
+func can_exit_water(p: Vector2, reach: float) -> bool:
+	if walk_polys.is_empty() or not on_town(p):
+		return true
+	var m := Vector2(p.x, -p.y)
+	for poly: PackedVector2Array in sand_polys:
+		if Geometry2D.is_point_in_polygon(m, poly):
+			return true
+	for l: Vector2 in ladders:
+		if l.distance_to(m) <= reach:
+			return true
+	return false
 
 
 func load_meta(meta: Dictionary) -> void:
@@ -45,6 +117,9 @@ func _on_ground(m: Vector2) -> bool:
 	for r: Array in walk_rects:
 		if m.x >= float(r[0]) and m.x <= float(r[2]) and m.y >= float(r[1]) and m.y <= float(r[3]):
 			return true
+	for poly: PackedVector2Array in walk_polys:
+		if Geometry2D.is_point_in_polygon(m, poly):
+			return true
 	for d: Array in island_discs:
 		if Vector2(float(d[0]), float(d[1])).distance_to(Vector2(m.x, -m.y)) <= float(d[2]):
 			return true
@@ -63,6 +138,9 @@ func _ground_level(m: Vector2) -> float:
 func _blocked(m: Vector2) -> bool:
 	for o: Array in obstacles:
 		if m.x > float(o[0]) and m.x < float(o[2]) and m.y > float(o[1]) and m.y < float(o[3]):
+			return true
+	for o: Array in obbs:
+		if _in_obb(m, o):
 			return true
 	for c: Array in circles:
 		if m.distance_to(Vector2(float(c[0]), float(c[1]))) < float(c[2]):
@@ -101,19 +179,28 @@ func nearest_walkable(p: Vector2, max_dist: float = 8.0) -> Vector2:
 ## Vrai si l'un des points est sur la terre ferme.
 static func hits_land(points: Array) -> bool:
 	for p: Vector2 in points:
-		for r: Array in SHIP_LAND:
-			if p.x > float(r[0]) and p.x < float(r[2]) and p.y > float(r[1]) and p.y < float(r[3]):
+		if _ship_hits(p):
+			return true
+	return false
+
+
+static func _ship_hits(p: Vector2) -> bool:
+	if not ship_polys.is_empty():
+		for poly: PackedVector2Array in ship_polys:
+			if Geometry2D.is_point_in_polygon(p, poly):
 				return true
+		return false
+	for r: Array in SHIP_LAND:
+		if p.x > float(r[0]) and p.x < float(r[2]) and p.y > float(r[1]) and p.y < float(r[3]):
+			return true
 	return false
 
 
 ## Indice du premier point sur la terre ferme, ou -1.
 static func hit_index(points: Array) -> int:
 	for i in points.size():
-		var p: Vector2 = points[i]
-		for r: Array in SHIP_LAND:
-			if p.x > float(r[0]) and p.x < float(r[2]) and p.y > float(r[1]) and p.y < float(r[3]):
-				return i
+		if _ship_hits(points[i]):
+			return i
 	return -1
 
 
@@ -180,6 +267,9 @@ func air_clear(p: Vector2, alt: float) -> bool:
 	for o: Array in obstacles:
 		if m.x > float(o[0]) and m.x < float(o[2]) and m.y > float(o[1]) and m.y < float(o[3]):
 			return false
+	for o: Array in obbs:
+		if _in_obb(m, o):
+			return false
 	if alt < LOW_CLEAR:
 		for c: Array in circles:
 			if m.distance_to(Vector2(float(c[0]), float(c[1]))) < float(c[2]):
@@ -214,6 +304,9 @@ func blocker_at(p: Vector2) -> String:
 	for o: Array in obstacles:
 		if m.x > float(o[0]) and m.x < float(o[2]) and m.y > float(o[1]) and m.y < float(o[3]):
 			return "mur"
+	for o: Array in obbs:
+		if _in_obb(m, o):
+			return "mur"
 	for c: Array in circles:
 		if m.distance_to(Vector2(float(c[0]), float(c[1]))) < float(c[2]):
 			return "objet"
@@ -233,8 +326,29 @@ static func _in_rect(m: Vector2, r: Array) -> bool:
 	return m.x >= float(r[0]) and m.x <= float(r[2]) and m.y >= float(r[1]) and m.y <= float(r[3])
 
 
+## Ville v3 : une surface est un rectangle (« rect »), un polygone (« poly » : terrasse, cap) ou une rampe orientée (« ramp » :
+## [ax, ay, bx, by, largeur], la hauteur va de h0 en a à h1 en b ; escalier ou pente).
+static func _in_surface(m: Vector2, s: Dictionary) -> bool:
+	if s.has("rect"):
+		return _in_rect(m, s["rect"])
+	if s.has("ramp"):
+		var r: Array = s["ramp"]
+		var a := Vector2(float(r[0]), float(r[1]))
+		var ab := Vector2(float(r[2]), float(r[3])) - a
+		var t := (m - a).dot(ab) / ab.length_squared()
+		return t >= 0.0 and t <= 1.0 and absf((m - a).cross(ab.normalized())) <= float(r[4]) * 0.5
+	if s.has("poly"):
+		return Geometry2D.is_point_in_polygon(m, s["poly"])
+	return false
+
+
 ## Hauteur de la surface `s` au point m : plate, ou en pente le long de son axe.
 static func _rect_h(s: Dictionary, m: Vector2) -> float:
+	if s.has("ramp"):
+		var rr: Array = s["ramp"]
+		var a := Vector2(float(rr[0]), float(rr[1]))
+		var ab := Vector2(float(rr[2]), float(rr[3])) - a
+		return lerpf(float(s["h0"]), float(s["h1"]), clampf((m - a).dot(ab) / ab.length_squared(), 0.0, 1.0))
 	if not s.has("axis"):
 		return float(s["h"])
 	var r: Array = s["rect"]
@@ -303,12 +417,17 @@ func _candidates(m: Vector2) -> Array[float]:
 	else:
 		base_ok = _on_ground(m) and (not _blocked(m) or _in_door_cut(m))
 	var carved := false
+	var on_ramp := false   # (ville v3 : là où passe une rampe, elle seule compte : elle entaille la terrasse qu'elle rejoint)
 	for s: Dictionary in surfaces:
-		if _in_rect(m, s["rect"]) and s.get("solid", false):
+		if _in_surface(m, s) and s.get("solid", false):
 			carved = true
+			if s.has("ramp"):
+				on_ramp = true
 	for s: Dictionary in surfaces:
-		if not _in_rect(m, s["rect"]):
+		if not _in_surface(m, s) or (on_ramp and s.has("poly")):
 			continue
+		if s.has("poly") and _blocked(m):
+			continue   # (un mur de bâtiment posé sur une terrasse arrête comme au sol)
 		if s.get("base", false):
 			if not carved and not _blocked_by(m, s):
 				cands.append(float(s["h"]))

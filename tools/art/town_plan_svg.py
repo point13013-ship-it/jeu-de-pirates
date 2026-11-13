@@ -99,8 +99,8 @@ STREETS = [
     ("contre_allee_o", [(66, 84), (72, 76), (84, 72), (100, 75)], 3.5),
     ("contre_allee_e", [(106, 84), (120, 82), (134, 86), (140, 96)], 3.5),
     ("montee_fort", [(160, 114), (168, 118), (176, 124)], 3.5),
-    ("escalier_est", [(134, 86), (142, 74), (146, 62)], 2.4),
-    ("escalier_ouest", [(72, 76), (68, 68), (66, 60)], 2.4),
+    ("escalier_est", [(134, 86), (142, 74), (146, 62), (146, 45)], 2.4),
+    ("escalier_ouest", [(72, 76), (68, 68), (66, 60), (62, 50.5)], 2.4),
     ("rue_haute", [(60, 50), (76, 46), (92, 48), (110, 46), (128, 48), (146, 44), (164, 48)], 4.0),
     ("chemin_moulin", [(60, 50), (48, 50), (38, 48), (28, 46)], 2.4),
     ("chemin_jungle", [(28, 46), (18, 34), (12, 20)], 2.0),
@@ -304,7 +304,7 @@ path([(210, 186), (210, 180)], "#EFE4CC", 0.5)
 # légende
 LEG_X, LEG_Y = 160, 4
 out.append('<rect x="%s" y="%s" width="%s" height="%s" fill="#EFE4CC" stroke="%s" stroke-width="%s" opacity="0.95"/>' % (px(LEG_X), px(LEG_Y), px(57), px(8 + 3.1 * (len(NAMED) + 5)), INK, px(0.3)))
-text(LEG_X + 2, LEG_Y + 4.4, "Port-Cayonne : maquette en plan (v0)", 2.5, anchor="start", weight="bold", halo=False)
+text(LEG_X + 2, LEG_Y + 4.4, "Port-Cayonne : maquette en plan (v1)", 2.5, anchor="start", weight="bold", halo=False)
 yy = LEG_Y + 8.6
 for num, name, *_ in NAMED:
     text(LEG_X + 2, yy, "%d  %s" % (num, name), 2.15, anchor="start", halo=False)
@@ -314,6 +314,78 @@ for col, label in (("#E8352B", "échelle pour sortir de l'eau"), ("#FFB35C", "vi
     out.append('<rect x="%s" y="%s" width="%s" height="%s" fill="%s"/>' % (px(LEG_X + 2), px(yy - 1.7), px(2.2), px(1.7), col))
     text(LEG_X + 5.4, yy, label, 2.05, anchor="start", halo=False)
     yy += 3.1
+
+
+# ------------------------------------------------------------------ le plan en données : data/town_plan.json
+# C'est CE fichier que lit le jeu (maquette grise : src/town/town_greybox.gd ; collisions : src/land.gd). Coordonnées du
+# « fichier du port », comme l'ancienne ville : x vers l'est, y vers le nord, le bord du quai au grand ponton en (0, 0) ;
+# le monde de jeu est (x, -y). Les angles tournent dans le sens trigonométrique de ce repère.
+import json
+
+
+def fx(x):
+    return round(x - 105.0, 2)
+
+
+def fy(y):
+    return round(117.0 - y, 2)
+
+
+def fp(pt):
+    return [fx(pt[0]), fy(pt[1])]
+
+
+# 13/11, décisions de Jimmy : boutiques « mixtes ». intérieur = on entre, coupe sans toit ; tente = grande tente ouverte sur la
+# rue, on voit dedans sans entrer (façon Sea of Thieves) ; comptoir = étal ou comptoir sur la rue ; repère = décor et quêtes.
+MODES = {1: "tente", 2: "comptoir", 3: "interieur", 4: "interieur", 5: "halle", 6: "tente", 7: "tente", 8: "interieur", 9: "comptoir",
+         10: "halle", 11: "repere", 12: "repere", 13: "repere", 14: "repere", 15: "repere", 16: "maison", 17: "jardin", 18: "cabanes", 19: "repere"}
+STOREYS = {3: 2, 4: 2, 5: 2, 8: 2, 11: 3, 12: 3, 13: 3, 14: 5, 15: 1, 16: 2, 19: 1}
+# qui se tient devant quel bâtiment (identifiants de data/npcs.json) ; décalage le long de la façade en m
+STAFF = {1: [("corbin", 0.0)], 3: [("barnabe", -2.5), ("ysolde", 2.5)], 4: [("petronille", 0.0)], 5: [("mathurin", 0.0)], 6: [("ariane", 0.0)],
+         7: [("armand", -1.8), ("prosper", 1.8)], 8: [("gaspard", 0.0)], 15: [("odilon", 0.0)], 11: [("hector", 4.0)]}
+
+land = [fp(q) for q in COAST] + [[115.0, 30.0], [108.0, 78.0], [84.0, 100.0], [40.0, 108.0], [-20.0, 110.0], [-70.0, 104.0], [-100.0, 80.0], [-105.0, 20.0]]
+buildings, npcs = [], {}
+for num, name, x, y, w, d, a, c in NAMED:
+    ang = -math.radians(a)
+    mode = MODES.get(num, "repere")
+    buildings.append({"id": "b%d" % num, "num": num, "name": name, "x": fx(x), "y": fy(y), "w": w, "d": d, "ang": round(ang, 3),
+                      "storeys": STOREYS.get(num, 1), "kind": "service" if mode in ("tente", "comptoir", "interieur", "halle") else "repere", "mode": mode})
+    for who, off in STAFF.get(num, []):
+        # devant la façade sud (vers la caméra), à 1,3 m du mur
+        lx, ly = off, -(d * 0.5 + 1.3)
+        npcs[who] = [round(fx(x) + math.cos(ang) * lx - math.sin(ang) * ly, 2), round(fy(y) + math.sin(ang) * lx + math.cos(ang) * ly, 2)]
+for k, (cx, cy, hw, hd, ang, up) in enumerate(houses):
+    buildings.append({"id": "m%d" % k, "x": fx(cx), "y": fy(cy), "w": round(hw, 2), "d": round(hd, 2), "ang": round(-ang, 3),
+                      "storeys": 1 + (k * 7 % 3 > 0) + (k % 5 == 0), "kind": "maison", "mode": "maison"})
+plan = {
+    "_commentaire": "Plan de la ville v3 (Port-Cayonne), produit par tools/art/town_plan_svg.py : ne pas modifier à la main, changer le script. Coordonnées du fichier du port : x est, y nord, monde de jeu = (x, -y). Lu par src/town/town_greybox.gd (maquette grise) et src/land.gd (collisions).",
+    "name": "Port-Cayonne",
+    "land": land,
+    "sand": [fp(q) for q in [(0, 118), (16, 121), (32, 124), (46, 124), (54, 121), (52, 128), (44, 134), (30, 136), (14, 133), (0, 131)]],
+    "levels": [{"id": "haute_ville", "poly": [fp(q) for q in UP], "h": 3.0, "style": "terrasse"},
+               {"id": "cap", "poly": [fp(q) for q in FORT], "h": 3.0, "style": "fort"}],
+    "ramps": [{"id": "rampe_grand_rue", "a": fp((104, 66.5)), "b": fp((111, 58)), "width": 6.0, "h0": 0.0, "h1": 3.0, "stairs": False},
+              {"id": "escalier_est", "a": fp((142.5, 72)), "b": fp((146.5, 60)), "width": 2.4, "h0": 0.0, "h1": 3.0, "stairs": True},
+              {"id": "escalier_ouest", "a": fp((68.4, 69.5)), "b": fp((66, 59)), "width": 2.4, "h0": 0.0, "h1": 3.0, "stairs": True},
+              {"id": "montee_fort", "a": fp((166, 117)), "b": fp((177.5, 125.5)), "width": 3.5, "h0": 0.0, "h1": 3.0, "stairs": False}],
+    "streets": [{"id": n, "pts": [fp(q) for q in pts], "width": w} for n, pts, w in STREETS],
+    "plazas": [{"name": n, "x": fx(x), "y": fy(y), "rx": rx, "ry": ry} for n, x, y, rx, ry in PLAZAS],
+    "buildings": buildings,
+    "pontoons": [{"name": n, "a": fp((x0, y0 - 1.0)), "b": fp((x1, y1)), "width": w} for n, x0, y0, x1, y1, w in PONTOONS],
+    "ladders": [fp(q) for q in LADDERS],
+    "dock": {"pier_x1": 1.8, "y": -19.0, "heading": "sud"},
+    "spawn": [0.0, 6.0],
+    "npcs": npcs,
+    "wanderers": [{"id": "w_quai", "path": [fp(q) for q in [(64, 119), (92, 113.5), (118, 113.5), (146, 119)]]},
+                  {"id": "w_grand_rue", "path": [fp(q) for q in [(105, 104), (102, 94), (106, 84), (100, 75)]]},
+                  {"id": "w_marche", "path": [fp(q) for q in [(96, 102), (86, 97), (76, 93), (68, 91)]]},
+                  {"id": "w_cordiers", "path": [fp(q) for q in [(116, 102), (128, 99), (140, 101), (152, 106)]]}],
+    "life": [{"x": fx(x), "y": fy(y), "what": what} for x, y, what in LIFE],
+}
+here0 = os.path.dirname(os.path.abspath(__file__))
+with open(os.path.normpath(os.path.join(here0, "..", "..", "data", "town_plan.json")), "w", encoding="utf-8", newline="\n") as f:
+    json.dump(plan, f, ensure_ascii=False, indent=1)
 
 svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 %s %s" width="%s" height="%s">\n%s\n</svg>\n' % (px(W), px(H), px(W), px(H), "\n".join(out))
 here = os.path.dirname(os.path.abspath(__file__))

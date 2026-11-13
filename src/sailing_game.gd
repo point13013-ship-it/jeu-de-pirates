@@ -895,6 +895,9 @@ func _print_bounds() -> void:
 ## Charge la ville portuaire à l'origine du monde et amarre le bateau le long du ponton principal,
 ## étrave vers le large (sud). Les sols sont repeints par shaders/ground.gdshader.
 func _build_port() -> void:
+	if GameConfig.TOWN_V3 or str(_args.get("town", "")) == "v3":
+		_build_town_v3()
+		return
 	var scene := load("res://assets/models/port/port.glb") as PackedScene
 	var f := FileAccess.open("res://assets/models/port/port_meta.json", FileAccess.READ)
 	if scene == null or f == null:
@@ -962,7 +965,94 @@ func _build_port() -> void:
 		if is_building and not (record["normal"] as Dictionary).is_empty():
 			_buildings.append(record)
 	ToonLook.apply_tree(_port)   # prototype de refonte : lumière en paliers
-	# amarrage : coque contre le flanc est du ponton, étrave au sud (+z dans le jeu)
+	_moor_at_dock()
+
+
+## Ville v3 (13/11, design/ville-v3/conception.md) : la maquette grise de data/town_plan.json à la place du port. Le sol, les
+## murs, les pontons et la terre qui arrête les bateaux viennent tous du plan (Land.load_plan) : plus rien n'est écrit à la main.
+## Essai : --town=v3 (ou GameConfig.TOWN_V3). L'ancienne ville reste celle du jeu tant que la nouvelle n'est pas prête.
+var _town_plan: Dictionary = {}
+
+
+func _build_town_v3() -> void:
+	_town_plan = _read_json("res://data/town_plan.json")
+	if _town_plan.is_empty():
+		return
+	_port_meta = {"dock": _town_plan.get("dock", {})}
+	_land.load_plan(_town_plan)
+	var made := TownGreybox.build(_world_fixed, _town_plan)
+	_port = made["root"] as Node3D
+	for c: Array in made["circles"]:
+		_land.circles.append(c)
+	# les bâtiments deviennent transparents quand ils cachent le pirate, comme ceux de l'ancienne ville
+	var surface_shader := load("res://shaders/surface.gdshader") as Shader
+	for mi: MeshInstance3D in made["buildings"]:
+		var cols: Array = mi.get_meta("colors")
+		var record := {"mesh": mi, "normal": {}, "ghost": {}, "alpha": 1.0, "ghosted": false}
+		for s in mi.mesh.get_surface_count():
+			var mat := ShaderMaterial.new()
+			mat.shader = surface_shader
+			var ghost := ShaderMaterial.new()
+			ghost.shader = _ghost_shader(surface_shader)
+			for m2: ShaderMaterial in [mat, ghost]:
+				m2.set_shader_parameter("kind", 4)
+				m2.set_shader_parameter("base", cols[s] as Color)
+				m2.set_shader_parameter("emit", 0.0)
+			mi.set_surface_override_material(s, mat)
+			(record["normal"] as Dictionary)[s] = mat
+			(record["ghost"] as Dictionary)[s] = ghost
+		_buildings.append(record)
+	ToonLook.apply_tree(_port)
+	_moor_at_dock()
+
+
+## Vrai s'il y a un port (l'ancien, en rectangles, ou la ville v3, en polygones).
+func _has_port() -> bool:
+	return not _land.walk_rects.is_empty() or not _land.walk_polys.is_empty()
+
+
+## Ville v3 : terrasses et rampes du plan, habitants à leur place du plan (devant leur boutique), promeneurs sur les rues.
+func _build_town_life_v3() -> void:
+	var lv: Array = []
+	for l: Dictionary in _town_plan.get("levels", []):
+		lv.append({"id": str(l["id"]), "poly": Land._poly(l["poly"]), "h": float(l["h"]), "solid": true})
+	for r: Dictionary in _town_plan.get("ramps", []):
+		lv.append({"id": str(r["id"]), "ramp": [float(r["a"][0]), float(r["a"][1]), float(r["b"][0]), float(r["b"][1]), float(r["width"])],
+				"h0": float(r["h0"]), "h1": float(r["h1"]), "solid": true})
+	_land.load_town({"levels": lv, "interiors": []})
+	var cfg := _read_json("res://data/npcs.json")
+	_npc_range = float(cfg.get("range", 2.3))
+	var at: Dictionary = _town_plan.get("npcs", {})
+	var list: Array = []
+	for d: Dictionary in cfg.get("npcs", []):
+		if not at.has(str(d["id"])):
+			continue
+		var d2 := d.duplicate()
+		d2["pos"] = at[str(d["id"])]
+		d2["h"] = 0.0
+		list.append([d2, false])
+	var k := 0
+	for w: Dictionary in _town_plan.get("wanderers", []):
+		k += 1
+		list.append([{"id": str(w["id"]), "name": "Passant", "role": "passant", "path": w["path"], "seed": k + 2, "lines": ["Belle journée pour prendre la mer."]}, true])
+	for e: Array in list:
+		var npc := TownNpc.from_data(e[0], bool(e[1]))
+		if not bool(e[1]):
+			var h := _land.surface_below(npc.pos, 50.0)   # (sur la terrasse de la haute ville ou sur le cap)
+			npc.h = h if h != Land.NO_SURFACE else 0.0
+			if npc.h == 0.0:
+				_land.circles.append([npc.pos.x, -npc.pos.y, 0.45])
+		_world_fixed.add_child(npc.sprite)
+		npc.blob = _blob.duplicate() as MeshInstance3D
+		_world_fixed.add_child(npc.blob)
+		npc.interior = -1
+		_npcs.append(npc)
+		_quests.names[npc.id] = npc.display_name
+	_update_npcs(0.0)
+
+
+## Amarrage : coque contre le flanc est du ponton, étrave au sud (+z dans le jeu).
+func _moor_at_dock() -> void:
 	if not _args.has("player") and not _args.has("yaw"):
 		var dock: Dictionary = _port_meta.get("dock", {})
 		var half_beam := _ship.beam * ShipModel.SCALE * 0.5
@@ -1677,7 +1767,7 @@ func _setup_hull() -> void:
 	ToonLook.apply_tree(_hold)   # (refonte v2 : la cale aussi, en lumière à paliers)
 	_hold.visible = false
 	_hold_items = _hold_layout.items()
-	if not _land.walk_rects.is_empty():
+	if _has_port():
 		_build_town()
 	_interactables.append({"kind": "hatch", "pos": _ship.hatch_pos()})
 	if _ship.ship_name == "sloop":
@@ -1757,6 +1847,9 @@ func _read_json(path: String) -> Dictionary:
 
 ## La vie de la ville : terrasses et escaliers, intérieurs, habitants et promeneurs (data/town.json, npcs.json).
 func _build_town() -> void:
+	if not _town_plan.is_empty():
+		_build_town_life_v3()
+		return
 	var town_cfg := _read_json("res://data/town.json")
 	# la haute ville (12/11) : son plateau est décrit par la méta du port (fabriquée avec le modèle), au même format
 	var town_levels: Array = (town_cfg.get("levels", []) as Array).duplicate()
@@ -2298,7 +2391,7 @@ func _nearest_enemy_center(pos: Vector2) -> Vector2:
 
 ## Ce que la coque touche à cette position : {} si rien, sinon {kind, bx, side}.
 func _touch(pos: Vector2, yaw: float) -> Dictionary:
-	if not _land.walk_rects.is_empty():
+	if _has_port():
 		var pts := _ship.hull_points_world(pos, yaw)
 		var i := Land.hit_index(pts)
 		if i >= 0:
@@ -3934,6 +4027,8 @@ func _update_swim(move: Vector2, delta: float) -> void:
 	_face = move.normalized()
 	var next := _lpos + move * SWIM_SPEED * delta   # (move : déjà corrigé pour la vitesse à l'écran, voir _screen_move)
 	if _land.is_walkable(next) and not _land.is_over_water(next):
+		if not _land.can_exit_water(next, GameConfig.LADDER_EXIT_REACH):
+			return   # (ville v3 : le quai est trop haut, on sort par une échelle ou par la grève)
 		_loc = Loc.LAND
 		_lpos = next
 		_lh = _land.walk_height(next, 0.0) if _land.walk_height(next, 0.0) != Land.NO_SURFACE else 0.0

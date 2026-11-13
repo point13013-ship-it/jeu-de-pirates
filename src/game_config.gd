@@ -397,3 +397,6 @@ const WORK_VOL_VAR := 0.25            ## … et volume tiré entre 75 % et 100 %
 ## Refonte graphique, eau (13/11).
 const SHORE_SWELL := 0.2              ## part de la houle qui reste au bord d'une île (1 = comme au large)
 const SHELTER_WIDTH := 30.0           ## m : distance au bord de l'île sur laquelle la houle reprend toute sa hauteur
+## Ville v3 (13/11, design/ville-v3/conception.md).
+const TOWN_V3 := false                ## true : la nouvelle ville (maquette grise de data/town_plan.json) remplace le port ; essai : --town=v3
+const LADDER_EXIT_REACH := 2.0        ## m : dans la ville v3, un nageur sort de l'eau à moins de cette distance d'une échelle (ou par la grève)
