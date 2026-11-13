@@ -71,7 +71,10 @@ static func add(root: Node3D, acc: Dictionary, circles: Array, plan: Dictionary,
 		circles.append([p2.x, p2.y, 0.32])
 		shades.append([p2, 2.3])
 		if (sand.size() >= 3 and Geometry2D.is_point_in_polygon(p2, sand)) or p2.y < 16.0:
-			_palm(acc, p2, h, rng)
+			# 13/11 (Jimmy : « le modèle du palmier est vraiment moche, refais-en un vrai ») : le palmier des îles (tronc courbé
+			# en anneaux, palmes à folioles, noix), un peu plus grand, à la place des boîtes et des pans plats
+			var palm := IslandDecor.make(root, "palm", Vector2(p2.x, -p2.y), rng.randf() * TAU, rng.randi() % 100000, {}, h)
+			palm.scale = Vector3.ONE * rng.randf_range(1.25, 1.6)
 		else:
 			_tree(root, acc, p2, h, rng, ball, leaf_mats)
 

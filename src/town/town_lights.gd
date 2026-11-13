@@ -196,16 +196,26 @@ func setup(lamps: Array, spills: Array, land: Land, sea_y: float, extras: Dictio
 		var half := float(s[1]) * 0.5
 		var ang := float(s[2])
 		var y := float(s[3]) + 0.09
-		var near := Color(0.55, 0.36, 0.16)
-		var corners: Array[Vector3] = []
-		for v: Vector2 in [Vector2(-half, 0.0), Vector2(half, 0.0), Vector2(half + 0.8, -2.8), Vector2(-half - 0.8, -2.8)]:
-			var q2 := c + v.rotated(ang)
-			corners.append(Vector3(q2.x, y, -q2.y))
-		var cols: Array[Color] = [near, near, Color(0, 0, 0), Color(0, 0, 0)]
-		for i: int in [0, 1, 2, 0, 2, 3]:
-			spill.set_color(cols[i])
-			spill.set_normal(Vector3.UP)
-			spill.add_vertex(corners[i])
+		# 13/11 (retour : « le reflet blanc un peu transparent des boutiques n'est pas beau ») : la tache était un trapèze aux
+		# bords nets, trop clair, qui virait au blanc dans la brume du soir. Elle est plus courte, plus chaude, deux fois moins
+		# vive, et ses côtés se fondent dans le sol.
+		var near := Color(0.26, 0.15, 0.05)
+		var none := Color(0, 0, 0)
+		var xs: Array[float] = [-half - 0.6, -half * 0.55, half * 0.55, half + 0.6]
+		var rows: Array = []   # [points du pied du mur, points du bout de la tache]
+		for depth: float in [0.0, -2.0]:
+			var row: Array[Vector3] = []
+			for xv: float in xs:
+				var q2 := c + Vector2(xv * (1.0 if depth == 0.0 else 1.12), depth).rotated(ang)
+				row.append(Vector3(q2.x, y, -q2.y))
+			rows.append(row)
+		var near_cols: Array[Color] = [none, near, near, none]
+		for k in 3:
+			var quad: Array = [[rows[0][k], near_cols[k]], [rows[0][k + 1], near_cols[k + 1]], [rows[1][k + 1], none], [rows[1][k], none]]
+			for i: int in [0, 1, 2, 0, 2, 3]:
+				spill.set_color(quad[i][1] as Color)
+				spill.set_normal(Vector3.UP)
+				spill.add_vertex(quad[i][0] as Vector3)
 	var sm := MeshInstance3D.new()
 	sm.mesh = spill.commit()
 	sm.material_override = _spill_mat
