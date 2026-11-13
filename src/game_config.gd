@@ -496,7 +496,13 @@ const TOWN_WALKERS_STREET := 2          ## sur chaque autre rue
 const TOWN_KIDS_PER_PLAZA := 2          ## des enfants qui courent autour de chaque grande place
 ## Tableau des quêtes (13/11, demande de Jimmy) : des contrats qui se renouvellent ; on revient au tableau toucher la récompense.
 const BOARD_REACH := 2.6                ## m : distance à laquelle on consulte le tableau (E)
-const BOARD_CONTRACTS := 3              ## contrats affichés en même temps
+## 13/11 (Jimmy : « 6 à 8 missions, avec des raretés ») : quatre raretés, chacune avec sa chance d'apparition (en %), son
+## nom et sa couleur. Une mission plus rare demande plus et paie plus que le prorata (BOARD_TIER_BONUS).
+const BOARD_TIER_NAMES := ["Commune", "Rare", "Épique", "Légendaire"]
+const BOARD_TIER_CHANCE := [55, 28, 13, 4]
+const BOARD_TIER_BONUS := [1.0, 1.3, 1.7, 2.4]
+const BOARD_TIER_COLORS := ["b9ad9c", "5f8fd0", "b56be0", "ffb030"]
+const BOARD_CONTRACTS := 7              ## contrats affichés en même temps
 const SIGN_RANGE := 16.0                ## m : un panneau indicateur se lit à moins de cette distance
 const TOWN_SPOT_NEAR := 6.0
 const TOWN_SPOT_FAR := 40.0

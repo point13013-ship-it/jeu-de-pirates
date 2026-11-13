@@ -48,6 +48,11 @@ static func icon(kind: String, id: String) -> Texture2D:
 				"bullets", "bullet": _bullets(img)
 				"shells", "shell": _shells(img)
 				"flint": _flint(img)
+				"m_ships": _m_ship(img)
+				"m_chests": _chest(img)
+				"m_sales": _coins(img)
+				"m_capture": _m_flag(img)
+				"m_discover": _m_island(img)
 				"butt": _butt(img)
 				"treasure": _chest(img)
 				_: _scroll(img)
@@ -74,6 +79,44 @@ static func _flint(img: Image) -> void:
 				c = c.darkened(0.18)
 			img.set_pixel(clampi(x, 0, N - 1), y, OUT if edge else c)
 	_line(img, Vector2(15, 7), Vector2(13, 24), 1.0, Color("dfe5ee"))
+
+
+## Missions du tableau : un navire (à couler), un pavillon (île à capturer), une île (à découvrir).
+static func _m_ship(img: Image) -> void:
+	for y in range(20, 27):   # la coque, plus étroite vers le bas
+		var inset := (y - 20) * 1
+		_rect(img, 4 + inset, y, 27 - inset, y, WOOD if y > 20 else WOOD_L)
+	_rect(img, 4, 19, 27, 19, OUT)
+	_rect(img, 15, 4, 16, 19, WOOD_D)   # le mât
+	for y in range(6, 17):   # la voile, gonflée
+		var w := 4 + int(round(5.0 * sin(float(y - 6) / 10.0 * PI)))
+		_rect(img, 17, y, 17 + w, y, PAPER)
+		_rect(img, 14 - w + 1, y, 14, y, PAPER.darkened(0.12))
+	_rect(img, 15, 2, 20, 4, Color("c4553f"))   # la flamme
+	_rect(img, 2, 28, 29, 29, Color("5f8fb0"))   # la mer
+
+
+static func _m_flag(img: Image) -> void:
+	_rect(img, 8, 3, 9, 28, WOOD_D)
+	_rect(img, 6, 28, 12, 29, WOOD)
+	for y in range(5, 17):
+		var wave := int(round(sin(float(y) * 0.9) * 1.0))
+		_rect(img, 10, y, 25 + wave, y, OUT if y == 5 or y == 16 else Color("2a2430"))
+	_disc(img, 17.5, 10.0, 3.0, PAPER, false)   # le crâne
+	_rect(img, 16, 12, 19, 13, PAPER)
+	_rect(img, 16, 9, 16, 10, OUT)
+	_rect(img, 19, 9, 19, 10, OUT)
+
+
+static func _m_island(img: Image) -> void:
+	_rect(img, 1, 25, 30, 29, Color("5f8fb0"))
+	for x in range(5, 27):   # la butte de sable
+		var h := int(round(5.0 * sin(float(x - 5) / 21.0 * PI)))
+		_rect(img, x, 25 - h, x, 25, Color("e0c080"))
+	_line(img, Vector2(16, 21), Vector2(18, 9), 1.6, WOOD)   # le palmier
+	for a: float in [-2.6, -2.0, -1.2, -0.5, 0.2]:
+		_line(img, Vector2(18, 9), Vector2(18, 9) + Vector2.from_angle(a) * 7.5, 1.4, Color("5a9440"))
+	_disc(img, 25.0, 6.0, 3.2, GOLD, false)   # le soleil
 
 
 ## L'emplacement vide : une paire de fesses.

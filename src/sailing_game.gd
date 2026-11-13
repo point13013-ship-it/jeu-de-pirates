@@ -9055,12 +9055,14 @@ func _open_cabin_chest(island: int) -> void:
 # Le tableau propose GameConfig.BOARD_CONTRACTS contrats. Chacun compte tout seul (les mêmes événements que la réputation :
 # navire coulé, coffre ouvert, trésors vendus, île capturée ; et les îles découvertes). Quand il est rempli, on revient au
 # tableau toucher l'or ; un nouveau contrat le remplace aussitôt. Ils sont gardés dans le profil.
+# 13/11 (Jimmy) : 7 missions affichées, de quatre raretés. `need` : ce qu'il faut faire à chaque rareté (commune, rare, épique,
+# légendaire) ; `gold` : l'or par unité, multiplié par le bonus de la rareté.
 const CONTRACT_KINDS := {
-	"ships": {"why": "bateau ennemi coulé", "label": "Coule %d navire%s ennemi%s", "min": 1, "max": 3, "gold": 90},
-	"chests": {"why": "coffre ouvert", "label": "Ouvre %d coffre%s sur les îles", "min": 2, "max": 5, "gold": 30},
-	"sales": {"why": "trésors vendus", "label": "Vends des trésors au receleur, %d fois", "min": 1, "max": 3, "gold": 55},
-	"capture": {"why": "île capturée", "label": "Capture %d île%s", "min": 1, "max": 1, "gold": 160},
-	"discover": {"why": "", "label": "Découvre %d île%s que tu ne connais pas", "min": 1, "max": 2, "gold": 70},
+	"ships": {"why": "bateau ennemi coulé", "label": "Coule %d navire%s ennemi%s", "need": [1, 2, 4, 7], "gold": 90},
+	"chests": {"why": "coffre ouvert", "label": "Ouvre %d coffre%s sur les îles", "need": [2, 4, 7, 12], "gold": 30},
+	"sales": {"why": "trésors vendus", "label": "Vends des trésors au receleur, %d fois", "need": [1, 2, 4, 6], "gold": 55},
+	"capture": {"why": "île capturée", "label": "Capture %d île%s", "need": [1, 1, 2, 3], "gold": 160},
+	"discover": {"why": "", "label": "Découvre %d île%s que tu ne connais pas", "need": [1, 2, 3, 5], "gold": 70},
 }
 var _signposts: Array = []          ## {pos (monde), label, lines: [[nom, position monde]]}
 var _sign_t := 0.0
@@ -9078,20 +9080,33 @@ func _near_quest_board() -> bool:
 	return p != Vector2.INF and _lpos.distance_to(p) <= GameConfig.BOARD_REACH + 1.2
 
 
-## Complète la liste des contrats (jamais deux fois le même genre en même temps).
+## Complète la liste des missions. Chaque nouvelle mission tire sa rareté (GameConfig.BOARD_TIER_CHANCE) puis son genre ;
+## jamais deux fois la même paire (genre, rareté) en même temps. Les missions d'avant les raretés sont remplacées.
 func _fill_contracts() -> void:
+	_profile.contracts = _profile.contracts.filter(func(c: Dictionary) -> bool: return c.has("tier"))
 	var kinds: Array = CONTRACT_KINDS.keys()
-	while _profile.contracts.size() < GameConfig.BOARD_CONTRACTS:
-		var free: Array = kinds.filter(func(k: String) -> bool:
-			for c: Dictionary in _profile.contracts:
-				if str(c["kind"]) == k:
-					return false
-			return true)
-		var kind: String = free[randi() % free.size()]
+	var guard := 0
+	while _profile.contracts.size() < GameConfig.BOARD_CONTRACTS and guard < 400:
+		guard += 1
+		var roll := randi() % 100
+		var tier := 0
+		var acc := 0
+		for k in GameConfig.BOARD_TIER_CHANCE.size():
+			acc += int(GameConfig.BOARD_TIER_CHANCE[k])
+			if roll < acc:
+				tier = k
+				break
+		var kind: String = kinds[randi() % kinds.size()]
+		var taken := false
+		for c: Dictionary in _profile.contracts:
+			if str(c["kind"]) == kind and int(c["tier"]) == tier:
+				taken = true
+		if taken:
+			continue
 		var def: Dictionary = CONTRACT_KINDS[kind]
-		var need := randi_range(int(def["min"]), int(def["max"]))
-		_profile.contracts.append({"kind": kind, "need": need, "have": 0, "reward": int(def["gold"]) * need,
-				"base": _profile.discovered.size()})
+		var need := int((def["need"] as Array)[tier])
+		var reward := int(round(float(def["gold"]) * need * float(GameConfig.BOARD_TIER_BONUS[tier]) / 5.0)) * 5
+		_profile.contracts.append({"kind": kind, "tier": tier, "need": need, "have": 0, "reward": reward, "base": _profile.discovered.size()})
 	_profile.save()
 
 
@@ -9128,20 +9143,25 @@ func _open_quest_board() -> void:
 		return
 	_fill_contracts()
 	_chest_island = -3
-	_inventory.set_texts("Tableau des quêtes", "Clic ou E sur un contrat rempli : toucher la récompense     R / Échap : fermer")
+	_inventory.set_texts("Tableau des quêtes", "Clic ou E sur une mission remplie : toucher la récompense     R / Échap : fermer")
 	_inventory.open(_board_rows())
 
 
 func _board_rows() -> Array:
-	var rows: Array = [{"head": true, "label": "Contrats en cours — ils avancent tout seuls ; reviens ici quand c'est fait"}]
-	for i in _profile.contracts.size():
+	var rows: Array = [{"head": true, "label": "Missions — elles avancent toutes seules ; reviens ici toucher l'or"}]
+	var order: Array = range(_profile.contracts.size())
+	order.sort_custom(func(a: int, b: int) -> bool:   # les plus rares d'abord
+		return int((_profile.contracts[a] as Dictionary)["tier"]) > int((_profile.contracts[b] as Dictionary)["tier"]))
+	for i: int in order:
 		var c: Dictionary = _profile.contracts[i]
 		var have := _contract_have(c)
 		var done := have >= int(c["need"])
-		rows.append({"kind": "contract", "id": str(i), "label": _contract_label(c), "count": have,
-				"right": ("toucher %d or" % int(c["reward"])) if done else "%d / %d" % [have, int(c["need"])], "enabled": done,
-				"desc": "%s. Avancement : %d sur %d. Récompense : %d or.%s" % [_contract_label(c), have, int(c["need"]), int(c["reward"]),
-						" Clique pour toucher ta récompense." if done else ""]})
+		var tier := clampi(int(c.get("tier", 0)), 0, 3)
+		rows.append({"kind": "contract", "id": str(i), "label": _contract_label(c), "have": have, "need": int(c["need"]),
+				"reward": int(c["reward"]), "tier_name": str(GameConfig.BOARD_TIER_NAMES[tier]), "tier_color": str(GameConfig.BOARD_TIER_COLORS[tier]),
+				"icon": "m_" + str(c["kind"]), "enabled": done,
+				"desc": "Mission %s : %s. Avancement : %d sur %d. Récompense : %d or.%s" % [str(GameConfig.BOARD_TIER_NAMES[tier]).to_lower(),
+						_contract_label(c), have, int(c["need"]), int(c["reward"]), " Clique pour toucher ta récompense." if done else ""]})
 	return rows
 
 

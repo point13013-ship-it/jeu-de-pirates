@@ -235,6 +235,17 @@ func _rebuild() -> void:
 			_right.add_child(card)
 			_slot_nodes[i] = card
 			continue
+		if kind == "contract":   # 13/11 : le tableau des quêtes, en cartes sur deux colonnes
+			if grid == null or grid.columns != 2:
+				grid = GridContainer.new()
+				grid.columns = 2
+				grid.add_theme_constant_override("h_separation", 10)
+				grid.add_theme_constant_override("v_separation", 10)
+				target.add_child(grid)
+			var mc := _contract_card(i, r)
+			grid.add_child(mc)
+			_slot_nodes[i] = mc
+			continue
 		if grid == null:
 			grid = GridContainer.new()
 			grid.columns = COLS
@@ -348,6 +359,82 @@ func _purse_entry(r: Dictionary) -> Control:
 
 
 ## Une fiche de recette : icône, nom, ingrédients (vert : on les a ; rouge : il en manque).
+## Une mission du tableau : icône du type de mission dans un cadre à la couleur de sa rareté, intitulé, rareté, jauge
+## d'avancement, récompense. Remplie, la carte s'éclaire : un clic touche l'or.
+func _contract_card(i: int, r: Dictionary) -> Control:
+	var tier_col := Color(str(r.get("tier_color", "b9ad9c")))
+	var done := bool(r.get("enabled", false))
+	var p := PanelContainer.new()
+	p.custom_minimum_size = Vector2(400, 96)
+	var sb := UiTheme.slot(false).duplicate() as StyleBoxFlat
+	sb.border_color = tier_col
+	sb.set_border_width_all(2)
+	sb.border_width_left = 7
+	sb.bg_color = sb.bg_color.lerp(tier_col, 0.16 if done else 0.05)
+	sb.content_margin_left = 14
+	sb.content_margin_right = 12
+	sb.content_margin_top = 9
+	sb.content_margin_bottom = 9
+	p.add_theme_stylebox_override("panel", sb)
+	var h := HBoxContainer.new()
+	h.add_theme_constant_override("separation", 12)
+	p.add_child(h)
+	var frame := PanelContainer.new()
+	var fb := StyleBoxFlat.new()
+	fb.bg_color = Color(0, 0, 0, 0.28)
+	fb.border_color = tier_col
+	fb.set_border_width_all(2)
+	fb.set_corner_radius_all(6)
+	fb.set_content_margin_all(5)
+	frame.add_theme_stylebox_override("panel", fb)
+	frame.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	h.add_child(frame)
+	var ic := TextureRect.new()
+	ic.texture = ItemIcons.icon("item", str(r.get("icon", "")))
+	ic.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	ic.custom_minimum_size = Vector2(56, 56)
+	ic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	ic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	frame.add_child(ic)
+	var v := VBoxContainer.new()
+	v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	v.add_theme_constant_override("separation", 3)
+	h.add_child(v)
+	var top := HBoxContainer.new()
+	v.add_child(top)
+	var tl := UiTheme.label(str(r.get("tier_name", "")).to_upper(), 12, tier_col, 2)
+	tl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	top.add_child(tl)
+	top.add_child(UiTheme.label("%d or" % int(r.get("reward", 0)), 15, UiTheme.BRASS, 2))
+	var title := UiTheme.label(str(r["label"]), 16, UiTheme.CREAM, 3)
+	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	title.custom_minimum_size = Vector2(280, 0)
+	v.add_child(title)
+	var bar := ProgressBar.new()
+	bar.min_value = 0.0
+	bar.max_value = maxf(float(r.get("need", 1)), 1.0)
+	bar.value = float(r.get("have", 0))
+	bar.show_percentage = false
+	bar.custom_minimum_size = Vector2(0, 9)
+	var bg := StyleBoxFlat.new()
+	bg.bg_color = Color(0, 0, 0, 0.4)
+	bg.set_corner_radius_all(4)
+	var fg := StyleBoxFlat.new()
+	fg.bg_color = UiTheme.GREEN if done else tier_col
+	fg.set_corner_radius_all(4)
+	bar.add_theme_stylebox_override("background", bg)
+	bar.add_theme_stylebox_override("fill", fg)
+	v.add_child(bar)
+	v.add_child(UiTheme.label("Rempli : clique pour toucher l'or" if done else "%d / %d" % [int(r.get("have", 0)), int(r.get("need", 1))], 13,
+			UiTheme.GREEN if done else UiTheme.MUTED, 2))
+	for c in [h, frame, ic, v, top, title, bar]:
+		(c as Control).mouse_filter = Control.MOUSE_FILTER_IGNORE
+	for c2 in v.get_children() + top.get_children():
+		(c2 as Control).mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_wire_mouse(p, i)
+	return p
+
+
 func _recipe_card(i: int, r: Dictionary) -> Control:
 	var p := PanelContainer.new()
 	p.add_theme_stylebox_override("panel", UiTheme.slot(false))
