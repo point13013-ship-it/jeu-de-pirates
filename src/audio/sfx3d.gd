@@ -77,7 +77,9 @@ func play_at(stream: AudioStream, at: Vector3, vol: float = 1.0, pitch: float = 
 
 
 ## Un son qui dure tant qu'on ne l'arrête pas (`key` : par ex. l'action en cours d'un joueur). Relancé s'il tourne déjà.
-func loop_at(key: String, stream: AudioStream, at: Vector3, vol: float = 1.0, pitch: float = 1.0) -> void:
+## `sync` : la boucle démarre là où elle en serait si elle tournait depuis le lancement du jeu (les instruments de musique :
+## deux pirates qui jouent le même air tombent ensemble, quel que soit le moment où chacun a commencé).
+func loop_at(key: String, stream: AudioStream, at: Vector3, vol: float = 1.0, pitch: float = 1.0, sync: bool = false) -> void:
 	var p: AudioStreamPlayer3D = _loops.get(key)
 	if p == null:
 		p = _make_player()
@@ -86,7 +88,10 @@ func loop_at(key: String, stream: AudioStream, at: Vector3, vol: float = 1.0, pi
 	p.global_position = at
 	if p.stream != stream or not p.playing:
 		p.stream = stream
-		p.play()
+		var from := 0.0
+		if sync and stream != null and stream.get_length() > 0.0:
+			from = fmod(Time.get_ticks_msec() / 1000.0, stream.get_length())
+		p.play(from)
 	p.volume_db = linear_to_db(maxf(vol, 0.001)) + GameConfig.SFX_DB
 	p.pitch_scale = pitch
 

@@ -544,14 +544,14 @@ func _update_music(delta: float) -> void:
 	if _playing != "" and (_bound or _is_down() or _is_dead() or _carrying or _loc == Loc.SWIM or _loc == Loc.CLIMB or _loc == Loc.FLIGHT or _atk_cd > 0.0):
 		_set_playing("")
 	if _playing != "":
-		_sfx.loop_at("music_me", Synth.instrument(_playing), _my_scene_pos() + Vector3.UP * 0.9, GameConfig.INSTRUMENT_VOL)
+		_sfx.loop_at("music_me", Synth.instrument(_playing), _my_scene_pos() + Vector3.UP * 0.9, GameConfig.INSTRUMENT_VOL, 1.0, true)
 	for id: int in _musicians.keys():
 		if not _remotes.has(id):
 			_musicians.erase(id)
 			_set_music_prop(id, "")
 			_sfx.stop_loop("music_%d" % id)
 			continue
-		_sfx.loop_at("music_%d" % id, Synth.instrument(str(_musicians[id])), ((_remotes[id]["sprite"]) as Node3D).global_position + Vector3.UP * 0.9, GameConfig.INSTRUMENT_VOL)
+		_sfx.loop_at("music_%d" % id, Synth.instrument(str(_musicians[id])), ((_remotes[id]["sprite"]) as Node3D).global_position + Vector3.UP * 0.9, GameConfig.INSTRUMENT_VOL, 1.0, true)
 	var to_cam := _cam.global_transform.basis.z
 	var beat := _music_t / Synth.TUNE_STEP
 	_note_in -= delta

@@ -561,7 +561,30 @@ const TUNE := [62, 0, 65, 69, 69, 67, 65, 64, 62, 0, 65, 69, 72, 0, 69, 0, 70, 0
 const TUNE_STEP := 0.2   ## s par croche
 
 
+## 13/11 (retour de Jimmy : de vrais instruments) : l'air est maintenant un enregistrement (Epidemic Sound), en boucle :
+## assets/audio/sfx/instr_<instrument>_1.ogg. Le violon et le tambour sont deux pistes séparées du même morceau irlandais
+## (« The Fiddle Tamer » : le violon seul, le bodhrán seul, 64 temps = 30,72 s) : joués ensemble, ils tombent juste, parce
+## que le jeu les cale sur la même horloge (Sfx3D.loop_at, `sync`). L'accordéon joue une valse de port (« Port De
+## Marseille », la piste de l'accordéon seul, 35,56 s). L'air fabriqué ci-dessous ne sert plus que si le fichier manque.
+static var _instr_rec: Dictionary = {}
+
+
 static func instrument(kind: String) -> AudioStream:
+	if not _instr_rec.has(kind):
+		var path := "%sinstr_%s_1.ogg" % [SFX_DIR, kind]
+		var s: AudioStreamOggVorbis = null
+		if ResourceLoader.exists(path):
+			s = load(path) as AudioStreamOggVorbis
+			if s != null:
+				s = s.duplicate() as AudioStreamOggVorbis
+				s.loop = true
+		_instr_rec[kind] = s
+	if _instr_rec[kind] != null:
+		return _instr_rec[kind]
+	return _instrument_synth(kind)
+
+
+static func _instrument_synth(kind: String) -> AudioStream:
 	return _cached("instr_" + kind, func() -> AudioStreamWAV:
 		var step := int(TUNE_STEP * RATE)
 		var total := step * TUNE.size()

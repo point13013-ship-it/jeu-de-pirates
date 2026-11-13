@@ -2,6 +2,14 @@
   "_commentaire": "Les nouveautés affichées dans la salle de jeux (bouton Nouveautés, et après chaque mise à jour). La plus récente d'abord. 'version': 'prochaine' est remplacé par le numéro de la version au moment de la publication (publish.ps1). Les images sont les fichiers de ce dossier ; publish.ps1 les envoie avec la version.",
   "versions": [
     {
+      "version": "prochaine",
+      "titre": "Fusil et instruments : de vrais sons",
+      "points": [
+        "Le fusil de précision tire enfin comme un vrai fusil à poudre noire (6 prises enregistrées, avec leur écho).",
+        "Les instruments jouent de vrais airs : un violon et un tambour irlandais qui tombent ensemble quand deux pirates jouent, et un accordéon de port."
+      ]
+    },
+    {
       "version": "2026.11.13-1722",
       "titre": "Une vraie pluie",
       "points": [
