@@ -371,7 +371,7 @@ func _setup_ship(ship_name: String) -> void:
 		_profile.save()
 	if not _is_client():   # le bateau porte les couleurs de son hôte (ou les miennes en solo) ; un client reçoit les siennes
 		_ship_skin = ShipSkin.sanitize(_profile.ship_skin)
-	ShipSkin.apply(_ship, _ship_skin)
+	ShipSkin.apply(_ship, _ship_skin if GameConfig.SHIP_SKINS_ENABLED else ShipSkin.default_skin())
 	_sim.configure(_load_stats(ship_name))
 	_sim.max_speed *= GameConfig.PLAYER_SHIP_SPEED_MULT        # lot 3 (3.6) : +10 %
 	_sim.penalty_scale = GameConfig.PLAYER_UPWIND_PENALTY_SCALE   # lot 3 (3.6) : malus de mauvais vent -25 %
@@ -1917,6 +1917,10 @@ func _on_dialog_closed(accepted: bool) -> void:
 		if accepted:
 			_sell_to_fence()
 	elif _shop_defs.has(npc.id):
+		if str((_shop_defs[npc.id] as Dictionary).get("kind", "")) == "skin" and not GameConfig.SHIP_SKINS_ENABLED:
+			# 13/11 : les skins de bateau sont masqués le temps d'être refaits (les achats restent dans les profils)
+			_say("%s refait toutes ses toiles : les voiles, coques et proues reviendront bientôt" % npc.display_name, 4.0)
+			return
 		_shop_menu.open(Shop.new(_profile, _shop_defs[npc.id], _local_look()))
 
 
@@ -1938,7 +1942,7 @@ func _on_purchase(result: Dictionary) -> void:
 			_say("Ces couleurs seront celles de ton bateau quand tu seras l'hôte.", 4.5)
 		else:
 			_ship_skin = ShipSkin.sanitize(_profile.ship_skin)
-			ShipSkin.apply(_ship, _ship_skin)
+			ShipSkin.apply(_ship, _ship_skin if GameConfig.SHIP_SKINS_ENABLED else ShipSkin.default_skin())
 			_net.broadcast_skin()
 		return
 	if not bool(result.get("look_changed", false)):
@@ -4840,7 +4844,7 @@ func apply_ship_skin_json(json: String) -> void:
 		return
 	_ship_skin = ShipSkin.sanitize(parsed)
 	if _ship != null:
-		ShipSkin.apply(_ship, _ship_skin)
+		ShipSkin.apply(_ship, _ship_skin if GameConfig.SHIP_SKINS_ENABLED else ShipSkin.default_skin())
 
 
 ## « arme|skin » de ce que je tiens en main : envoyé aux autres joueurs avec mon apparence.

@@ -251,7 +251,7 @@ const SAIL_PANEL_DARK := 0.95         ## teinte des panneaux sombres (x la toile
 const SAIL_PANEL_LIGHT := 1.02        ## teinte des panneaux clairs (le modèle : 1,04)
 
 ## 3.9 Roue du gouvernail.
-const HELM_WHEEL_RADIUS := 0.5        ## unités du modèle (la taille de l'ancien disque)
+const HELM_WHEEL_RADIUS := 0.44       ## unités du modèle (13/11 : 0,5 ; la barre est un peu plus petite, -12 %)
 const HELM_GAIN_MIN := 0.55            ## chaque coup de barre grince entre 55 % et 100 % du volume (tiré au hasard)
 const HELM_CRACK_PER_S := 0.6          ## craquements de bois par seconde (au plus vite de la roue), par-dessus le grincement
 const HELM_WHEEL_TURNS := 1.5        ## tours de roue d'une butée à l'autre
@@ -384,3 +384,6 @@ const SHIP_CHEST_STEP := 1            ## ce qu'un clic prend ou range (Maj + cli
 const HUD_MINIMAL := true
 const HUD_PROMPT_BELOW_CENTER := 96.0 ## pixels sous le centre de l'écran : l'indication de touche du poste visé
 const SIREN_LEAVE_AFTER := 3.0        ## s après être sorti de l'eau avant que la sirène disparaisse
+## Skins de bateau (proue, voiles, coque, pavillon) : masqués le temps d'être refaits (13/11, ils dégradaient le nouveau bateau).
+## Les joueurs gardent leurs achats ; les ennemis gardent les couleurs de leur rang.  : tout revient.
+const SHIP_SKINS_ENABLED := false
