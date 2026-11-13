@@ -274,6 +274,12 @@ var _pending: Dictionary = {}        ## pseudo -> or gardé pour un absent (hôt
 const SEA_PATH := "res://data/sea.json"
 const SEA_MESH_SIZE := 200.0      ## m : la surface suit la caméra (12/11 : 110 ; en vue rasante on voyait son bord, du vide au loin)
 const SEA_MESH_STEP := 0.5        ## m entre deux sommets de la surface (le maillage glisse par pas de 1 m : diviseur entier)
+const SEA_FAR_SIZE := 400.0       ## m : surface étendue (vigie, vue dézoomée ou rasante)
+const SEA_FAR_STEP := 1.0         ## m entre deux sommets de la surface étendue
+const SEA_FAR_ZOOM := 0.5         ## en dessous de ce grossissement, on passe à la surface étendue
+const SEA_FAR_ELEV := 30.0        ## ° : en dessous de cette inclinaison de caméra aussi
+var _sea_near_mesh: PlaneMesh
+var _sea_far_mesh: PlaneMesh
 
 
 func _ready() -> void:
@@ -706,6 +712,13 @@ func _build_view() -> void:
 	plane.subdivide_width = segments
 	plane.subdivide_depth = segments
 	_sea.mesh = plane
+	_sea_near_mesh = plane
+	# 13/11 : depuis la vigie (ou en vue très dézoomée ou rasante) on voyait le bord de la surface : plus de vagues au loin.
+	# Une seconde surface, deux fois plus étendue et à maille double (même nombre de sommets), prend alors le relais.
+	_sea_far_mesh = PlaneMesh.new()
+	_sea_far_mesh.size = Vector2(SEA_FAR_SIZE, SEA_FAR_SIZE)
+	_sea_far_mesh.subdivide_width = int(SEA_FAR_SIZE / SEA_FAR_STEP) - 1
+	_sea_far_mesh.subdivide_depth = int(SEA_FAR_SIZE / SEA_FAR_STEP) - 1
 	_water_mat = ShaderMaterial.new()
 	_water_mat.shader = load("res://shaders/water.gdshader")
 	_sea.material_override = _water_mat
@@ -4836,6 +4849,10 @@ func _update_camera(delta: float) -> void:
 		_shake_t -= delta
 		shake = Vector2(randf_range(-1.0, 1.0), randf_range(-1.0, 1.0)) * 5.0 * clampf(_shake_t / 0.4, 0.0, 1.0)
 	_container.position = Vector2(-_factor, -_factor) - frac_px * float(_factor) + shake
+	var far_sea: bool = _loc == Loc.NEST or _zoom < SEA_FAR_ZOOM or _elev_user < SEA_FAR_ELEV
+	var want_mesh: PlaneMesh = _sea_far_mesh if far_sea else _sea_near_mesh
+	if _sea.mesh != want_mesh:
+		_sea.mesh = want_mesh
 	_sea.position = Vector3(snappedf(_world_origin.x + focus.x, 1.0), SEA_Y, snappedf(_world_origin.z + focus.z, 1.0))
 
 
