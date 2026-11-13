@@ -429,3 +429,8 @@ const LAMP_LIGHT := Color(1.0, 0.80, 0.26)     ## couleur de la lumière jetée 
 const LAMP_GLASS := Color(1.0, 0.86, 0.55)     ## couleur du verre de la lanterne
 const LAMP_GLASS_ENERGY := 1.0                 ## force de son éclat (6 dans le modèle : il virait au blanc)
 const NIGHT_WARM_KEEP := 0.85               ## part de la couleur d'origine gardée, la nuit, là où une lumière chaude éclaire (0 : tout est bleui)
+## Longue-vue (13/11, 4.1).
+const SPY_ELEV := 16.0                  ## ° : inclinaison de la vue, l'œil à la longue-vue (presque à hauteur d'homme)
+const SPY_AHEAD := 85.0                 ## m : le regard porte à cette distance devant le pirate
+const SPY_ZOOM := 0.9                   ## grossissement (la vue de mer ordinaire est vers 0,55)
+const SPY_PAN := 0.9                    ## rad/s : vitesse de balayage avec Q/D

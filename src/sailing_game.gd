@@ -461,9 +461,63 @@ func _back_to_menu() -> void:
 
 
 func _toggle_compass() -> void:
+	if _profile.tool == "spyglass":
+		_toggle_spyglass()
+		return
 	_sprite.compass_enabled = not _sprite.compass_enabled
 	_pause.refresh_compass(_sprite.compass_enabled)
 	_say("Boussole sortie (B pour la ranger)" if _sprite.compass_enabled else "Boussole rangée (B pour la ressortir)", 2.5)
+
+
+## 13/11 (4.1) — la longue-vue. On a en poche la boussole OU la longue-vue (échange au coffre du bateau : il faut se parler).
+## B la porte à l'œil : la vue descend presque à hauteur d'homme, vise loin devant dans la direction où regarde le pirate, grossit,
+## et se resserre dans un rond noir. Q/D : balayer l'horizon. B de nouveau, un saut ou une action : on la baisse.
+var _spy := false
+var _spy_yaw := 0.0
+var _spy_keep := Vector2.ZERO       # (cap, inclinaison) de la caméra avant de regarder
+var _spy_mask: ColorRect
+
+
+func _toggle_spyglass() -> void:
+	if _spy:
+		_spy = false
+		_cam_yaw = _spy_keep.x
+		_elev_user = _spy_keep.y
+		_spy_mask.visible = false
+		return
+	if _is_down() or _is_dead() or _loc == Loc.HOLD or _loc == Loc.SWIM or _loc == Loc.CLIMB or _loc == Loc.FLIGHT or _gun_i >= 0:
+		return
+	var dir := _face
+	if _loc == Loc.SHIP or _loc == Loc.NEST:
+		var wd := Basis(Vector3.UP, _sim.yaw) * Vector3(_pface.x, 0.0, -_pface.y)
+		dir = Vector2(wd.x, wd.z)
+	if dir.length() < 0.01:
+		dir = Vector2(0.0, -1.0)
+	_spy = true
+	_spy_keep = Vector2(_cam_yaw, _elev_user)
+	_spy_yaw = atan2(-dir.x, -dir.y)   # (la caméra regarde vers -z quand son cap est nul)
+	if _spy_mask == null:
+		_spy_mask = ColorRect.new()
+		_spy_mask.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		_spy_mask.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var sm := ShaderMaterial.new()
+		var sh := Shader.new()
+		sh.code = """shader_type canvas_item;
+// Le rond de la longue-vue : tout est noir autour, un cerclage de laiton, un léger assombrissement au bord du verre.
+void fragment() {
+	vec2 d = (UV - 0.5) * vec2(SCREEN_PIXEL_SIZE.y / SCREEN_PIXEL_SIZE.x, 1.0);
+	float r = length(d);
+	float edge = smoothstep(0.40, 0.445, r);
+	vec3 col = mix(vec3(0.0), vec3(0.86, 0.68, 0.36), step(0.445, r) * step(r, 0.458));
+	col = mix(col, vec3(0.02, 0.02, 0.04), step(0.458, r));
+	COLOR = vec4(col, max(edge * 0.55, step(0.445, r)));
+}
+"""
+		sm.shader = sh
+		_spy_mask.material = sm
+		_hud_root.add_child(_spy_mask)
+		_hud_root.move_child(_spy_mask, 0)
+	_spy_mask.visible = true
 
 
 func _toggle_invite() -> void:
@@ -608,6 +662,8 @@ func _zoom_goal() -> float:
 			base = 0.62
 	if _loc == Loc.SHIP and _mode == Mode.HELM:
 		base = 0.52   # à la barre : on veut voir devant
+	if _spy:
+		return GameConfig.SPY_ZOOM   # (la longue-vue grossit, quel que soit le réglage de la molette)
 	var goal := clampf(base * _zoom_user, ZOOM_MIN, ZOOM_MAX)
 	return goal * SHOULDER_ZOOM if _shoulder_active() else goal
 
@@ -1759,7 +1815,7 @@ func _apply_test_args() -> void:
 		get_tree().create_timer(float(_args["raft-ride"])).timeout.connect(func() -> void: _board_raft())
 	if _args.has("press"):
 		# test : --press=E@2,SPACE@3.5 appuie sur ces touches aux secondes indiquées
-		var codes := {"M": KEY_M, "E": KEY_E, "R": KEY_R, "SPACE": KEY_SPACE, "DOWN": KEY_DOWN, "UP": KEY_UP, "F": KEY_F, "ESC": KEY_ESCAPE, "1": KEY_1, "2": KEY_2, "3": KEY_3, "4": KEY_4, "T": KEY_T, "TAB": KEY_TAB, "X": KEY_X, "G": KEY_G, "C": KEY_C, "H": KEY_H, "V": KEY_V, "J": KEY_J}
+		var codes := {"M": KEY_M, "E": KEY_E, "R": KEY_R, "SPACE": KEY_SPACE, "DOWN": KEY_DOWN, "UP": KEY_UP, "F": KEY_F, "ESC": KEY_ESCAPE, "1": KEY_1, "2": KEY_2, "3": KEY_3, "4": KEY_4, "T": KEY_T, "TAB": KEY_TAB, "X": KEY_X, "G": KEY_G, "C": KEY_C, "H": KEY_H, "V": KEY_V, "J": KEY_J, "B": KEY_B}
 		for item in str(_args["press"]).split(","):
 			var kv := item.split("@")
 			var code: Key = codes.get(kv[0], KEY_E)
@@ -1832,6 +1888,8 @@ func _apply_test_args() -> void:
 		get_tree().create_timer(float(_args["down"])).timeout.connect(_go_down)
 	if _args.has("water-time"):   # essai : --water-time=85 (avec --swim) : déjà ce temps passé dans l'eau
 		get_tree().create_timer(0.4).timeout.connect(func() -> void: _water_t = float(_args["water-time"]))
+	if _args.has("tool"):   # essai : --tool=spyglass met la longue-vue en poche (--press=B@6 la porte à l'œil)
+		_profile.tool = "spyglass" if str(_args["tool"]) == "spyglass" else "compass"
 	if _args.has("gold"):   # essai : --gold=150 donne de l'or
 		_profile.gold = int(_args["gold"])
 	if _args.has("quest"):   # essai : --quest=tonnelet met cette quête en cours
@@ -3637,6 +3695,14 @@ func _update_player(delta: float) -> void:
 		move = _test_move
 	if _chart.is_open() or _pause.is_open() or _inventory.is_open():
 		return   # penché sur la carte, dans le menu Échap ou le sac : on ne bouge pas
+	if _spy:
+		if _is_down() or _loc == Loc.SWIM or _loc == Loc.HOLD or _loc == Loc.CLIMB or _loc == Loc.FLIGHT or _pz > 0.05:
+			_toggle_spyglass()   # on tombe à l'eau, on saute : on la baisse
+		else:
+			_spy_yaw = wrapf(_spy_yaw - move.x * GameConfig.SPY_PAN * delta, -PI, PI)
+			_cam_yaw = _spy_yaw
+			_elev_user = GameConfig.SPY_ELEV
+			return   # l'œil à la longue-vue, on ne marche pas
 	if _loc == Loc.CLIMB:
 		_update_climb(delta)
 		return
@@ -5647,6 +5713,8 @@ func _camera_target() -> Vector3:
 		var ahead := clampf(hs.speed / maxf(hs.max_speed, 0.1), 0.0, 1.0) * GameConfig.CAM_LOOKAHEAD * (0.5 + 1.5 * low)
 		var fw := hs.forward() * ahead
 		rel += Vector3(fw.x, 0.0, fw.y)
+	if _spy:   # la longue-vue : le regard porte loin dans la direction visée
+		rel += Vector3(-sin(_spy_yaw), 0.0, -cos(_spy_yaw)) * GameConfig.SPY_AHEAD
 	return Vector3(rel.x, cam_h, rel.z)
 
 
@@ -7857,6 +7925,12 @@ func _ship_chest_rows() -> Array:
 		rows.append({"kind": "cab_put", "id": kind, "label": "%s  %d / %d" % [names[kind], have, GameConfig.BAG_MAX], "count": have,
 				"right": "ranger" if have > 0 else "", "enabled": have > 0,
 				"desc": "Le coffre du bateau est à tout l'équipage. On recharge un canon et on bouche une voie d'eau avec ce qu'on a dans le sac."})
+	# 13/11 (4.1) : l'instrument. On porte la boussole OU la longue-vue ; l'autre reste au coffre.
+	var spy := _profile.tool == "spyglass"
+	rows.append({"head": true, "label": "Ton instrument (touche B) — clic : échanger"})
+	rows.append({"kind": "cab_tool", "id": "tool", "label": "En poche : %s" % ("longue-vue" if spy else "boussole"), "count": 1,
+			"right": "prendre la %s" % ("boussole" if spy else "longue-vue"), "enabled": true,
+			"desc": "La boussole montre le cap de l'île choisie. La longue-vue fait voir très loin devant soi. On n'a que l'une des deux : à l'équipage de se répartir les rôles."})
 	rows.append({"head": true, "label": "Dans le coffre du bateau — clic : prendre"})
 	for kind: String in ["plank", "ball"]:
 		var inside := int(_ship_stock.get(kind, 0))
@@ -7869,6 +7943,15 @@ func _ship_chest_rows() -> Array:
 
 ## Clic dans le coffre du bateau : je range ou je demande à prendre (l'hôte décide de ce qui sort : pas de doublon possible).
 func _ship_chest_use(kind: String, item: String) -> void:
+	if kind == "cab_tool":
+		if _spy:
+			_toggle_spyglass()
+		_profile.tool = "compass" if _profile.tool == "spyglass" else "spyglass"
+		_sprite.compass_enabled = false   # (la boussole n'est plus en main : la longue-vue la remplace, ou elle est rangée)
+		_profile.save()
+		_sfx.play_at(Synth.thump(), _my_scene_pos(), 0.6)
+		_refresh_chest_ui()
+		return
 	if item != "plank" and item != "ball":
 		return
 	var all := Input.is_key_pressed(KEY_SHIFT)

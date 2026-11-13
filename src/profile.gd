@@ -9,6 +9,7 @@ const START_PLANKS := 4
 const START_BALLS := 8
 
 var gold := 0
+var tool := "compass"         ## l'instrument en poche : « compass » (boussole) ou « spyglass » (longue-vue) ; on l'échange à bord
 var quests: Dictionary = {}   ## id de quête -> "active" ou "done" (absent : pas encore proposée)
 var planks := START_PLANKS    ## planches en réserve (une prise à l'étagère de la cale en consomme une)
 var balls := START_BALLS      ## boulets dans le sac (13/11 : 10 au plus, GameConfig.BAG_MAX)
@@ -85,6 +86,7 @@ func load_file() -> void:
 		var cb: Variant = d.get("cabins", {})
 		cabins = (cb as Dictionary).duplicate(true) if cb is Dictionary else {}
 		reputation = maxi(int(d.get("reputation", 0)), 0)
+		tool = "spyglass" if str(d.get("tool", "compass")) == "spyglass" else "compass"
 
 
 func save() -> void:
@@ -92,7 +94,7 @@ func save() -> void:
 		return
 	var f := FileAccess.open(PATH, FileAccess.WRITE)
 	if f != null:
-		f.store_string(JSON.stringify({"gold": gold, "quests": quests, "planks": planks, "balls": balls, "ship_planks": ship_planks, "ship_balls": ship_balls, "owned": owned, "ship_skin": ship_skin, "ships": ships, "ship": ship, "discovered": discovered, "berry": berry, "known_spells": known_spells, "berries": berries, "weapons": weapons, "weapon": weapon, "weapon2": weapon2, "skins_owned": skins_owned, "skin_worn": skin_worn, "bullets": bullets, "shells": shells, "captured": captured, "cabins": cabins, "reputation": reputation}, "\t"))
+		f.store_string(JSON.stringify({"gold": gold, "quests": quests, "planks": planks, "balls": balls, "ship_planks": ship_planks, "ship_balls": ship_balls, "owned": owned, "ship_skin": ship_skin, "ships": ships, "ship": ship, "discovered": discovered, "berry": berry, "known_spells": known_spells, "berries": berries, "weapons": weapons, "weapon": weapon, "weapon2": weapon2, "skins_owned": skins_owned, "skin_worn": skin_worn, "bullets": bullets, "shells": shells, "captured": captured, "cabins": cabins, "reputation": reputation, "tool": tool}, "\t"))
 
 
 ## Gagne `n` points de réputation. Renvoie {from, to, rank_from, rank_to} (pour l'animation de progression), ou {} si rien n'a changé.
