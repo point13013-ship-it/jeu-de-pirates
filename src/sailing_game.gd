@@ -1115,7 +1115,14 @@ func _build_view() -> void:
 	_layout_view.call_deferred()
 
 	var env := Environment.new()
-	env.background_mode = Environment.BG_COLOR
+	# ciel en bandes plates (shaders/ciel.gdshader), piloté par SkyCycle ; la couleur de fond ne sert plus que de secours
+	var sky_mat := ShaderMaterial.new()
+	sky_mat.shader = load("res://shaders/ciel.gdshader")
+	var sky := Sky.new()
+	sky.sky_material = sky_mat
+	sky.radiance_size = Sky.RADIANCE_SIZE_32
+	env.sky = sky
+	env.background_mode = Environment.BG_SKY
 	env.background_color = Color(0.10, 0.10, 0.22)
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	var day := str(_args.get("light", "jour")) == "jour"

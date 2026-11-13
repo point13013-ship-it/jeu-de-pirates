@@ -102,7 +102,7 @@ float waves_at(vec2 p) {
 }
 
 // pente de la surface (houle + vaguelettes) et hauteur des vaguelettes
-vec3 slope_at(vec2 p, float t_ripple) {
+vec3 slope_at(vec2 p, float t_ripple, float calm) {
 	vec2 g = vec2(0.0);
 	for (int i = 0; i < 4; i++) {
 		g += waves[i].x * wave_slope(p.x * waves[i].y + p.y * waves[i].z + sea_time * waves[i].w) * waves[i].yz;
@@ -115,7 +115,7 @@ vec3 slope_at(vec2 p, float t_ripple) {
 	float gust = 0.55 + 0.45 * sin(p.x * 0.09 + p.y * 0.13) * sin(p.x * 0.05 - p.y * 0.11 + 1.3);
 	for (int i = 0; i < 5; i++) {
 		float ph = q.x * RIPPLES[i].y + q.y * RIPPLES[i].z + t_ripple * RIPPLES[i].w;
-		float a = RIPPLES[i].x * gust;
+		float a = RIPPLES[i].x * gust * calm;
 		g += a * cos(ph) * RIPPLES[i].yz;
 		hr += a * sin(ph);
 	}
@@ -172,7 +172,12 @@ void fragment() {
 	// animation continue : à la bonne cadence (144 images/s), des paliers font « sauter » toute la mer
 	float t_rip = TIME * 0.8;
 	float st = TIME * 0.6;
-	vec3 s = slope_at(wp.xz, t_rip);
+	// vue 4 (perspective) : au loin, les vaguelettes s'apaisent (la houle reste) : une mer plus claire à lire vers l'horizon, sans bruit de pixels.
+	// Rien ne change en orthographique (PROJECTION_MATRIX[3][3] = 1).
+	float calm = 1.0 - 0.8 * smoothstep(55.0, 230.0, length(VERTEX)) * (1.0 - PROJECTION_MATRIX[3][3]);
+	vec3 s = slope_at(wp.xz, t_rip, calm);
+	// direction du regard, par pixel (en perspective elle change d'un pixel à l'autre ; en orthographique c'est la même partout)
+	vec3 vdir = normalize((INV_VIEW_MATRIX * vec4(VIEW, 0.0)).xyz);
 	vec3 n = normalize(vec3(-s.x, 1.0, -s.y));
 
 	// 4 tons selon l'orientation de la surface vers le soleil (écart à une mer parfaitement plate)
@@ -189,10 +194,10 @@ void fragment() {
 	col = mix(col, c_lit, step(1.5, tone));
 	col = mix(col, c_crest, step(2.5, tone));
 	// reflet du ciel sur les pentes nettement tournées vers la caméra
-	float facing = dot(n, view_dir) - view_dir.y;
+	float facing = dot(n, vdir) - vdir.y;
 	col = mix(col, c_sky, step(band_width * 2.4, facing) * step(lit, band_width * 0.9));
 	// éclats du soleil : là où la vaguelette renvoie le soleil vers la caméra
-	vec3 half_v = normalize(sun_dir + view_dir);
+	vec3 half_v = normalize(sun_dir + vdir);
 	float spec = dot(n, half_v) - half_v.y;
 	col = mix(col, c_glint, step(band_width * 3.2, spec));
 	// moutons d'écume sur les plus hautes crêtes (houle + vaguelettes)

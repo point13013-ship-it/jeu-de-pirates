@@ -284,6 +284,23 @@ func _apply(_delta: float) -> void:
 	_env.background_color = _env.fog_light_color.darkened(0.15)
 	_env.fog_enabled = true
 	_env.fog_density = maxf(_env.fog_density, 0.35)
+	_env.fog_sky_affect = 0.0   # la brume ne recouvre plus le ciel (sinon il resterait gris uni) ; son horizon a déjà la couleur de la brume
+	# ciel (shaders/ciel.gdshader) : l'horizon reprend EXACTEMENT la couleur de la brume (la mer lointaine s'y fond sans couture) ;
+	# le zénith suit l'heure (bleu le jour, violet au crépuscule, nuit profonde), se couvre avec la brume, la pluie et l'orage
+	if _env.sky != null and _env.sky.sky_material is ShaderMaterial:
+		var sm := _env.sky.sky_material as ShaderMaterial
+		var zen := Color(0.03, 0.05, 0.13).lerp(Color(0.36, 0.60, 0.84), daylight)
+		zen = zen.lerp(Color(0.42, 0.36, 0.60), dusk * 0.5)
+		zen = zen.lerp(_env.fog_light_color, oc * 0.8)
+		var cl_lit := Color(0.34, 0.37, 0.54).lerp(Color(0.97, 0.97, 0.98), daylight).lerp(Color(1.0, 0.80, 0.70), dusk * 0.6)
+		var cl_shade := Color(0.22, 0.24, 0.40).lerp(Color(0.76, 0.83, 0.90), daylight).lerp(Color(0.80, 0.60, 0.66), dusk * 0.6)
+		sm.set_shader_parameter("horizon", _env.fog_light_color)
+		sm.set_shader_parameter("zenith", zen)
+		sm.set_shader_parameter("cloud_lit", cl_lit.lerp(GREY, oc * 0.5))
+		sm.set_shader_parameter("cloud_shade", cl_shade.lerp(GREY.darkened(0.25), oc * 0.5))
+		sm.set_shader_parameter("cover", clampf(0.3 + 0.7 * oc, 0.0, 1.0))
+		sm.set_shader_parameter("drift", Time.get_ticks_msec() / 1000.0 * 0.004)
+		sm.set_shader_parameter("flash", flash)
 	# lueur (bloom) : discrète le jour, nette la nuit pour les lanternes et les fenêtres
 	_env.glow_enabled = true
 	_env.glow_intensity = lerpf(0.95, 0.35, daylight)
