@@ -109,12 +109,20 @@ uniform float push = 0.6;
 uniform float roll = 0.0;          // à la nage : le corps roule d'un côté à l'autre à chaque brassée (rad)
 uniform float roll_pivot = 0.8;    // m au-dessus des pieds : l'axe du roulis (la surface de l'eau)
 uniform float clip_below = -10000.0;   // à la nage : rien sous la surface de l'eau (on ne voit que la tête et les épaules)
+uniform float step_phase = 0.0;    // -1…1 : de face et de dos, les pas ne se voient pas (les jambes viennent vers la caméra) : on lève un pied puis l'autre
+uniform vec2 sheet = vec2(8.0, 8.0);   // images par ligne, directions
 varying float world_y;
 void vertex() {
 	vec2 rp = VERTEX.xy - vec2(0.0, roll_pivot);
 	VERTEX.xy = vec2(cos(roll) * rp.x - sin(roll) * rp.y, sin(roll) * rp.x + cos(roll) * rp.y) + vec2(0.0, roll_pivot);%s}
 void fragment() {
-	vec4 t = texture(tex, UV);
+	vec2 suv = UV;
+	vec2 fr = fract(UV * sheet);   // position dans l'image (0…1)
+	if (fr.y > 0.75 && abs(step_phase) > 0.01) {
+		float lift = floor(abs(step_phase) * 3.99) / 72.0;   // 0 à 3 pixels
+		if ((fr.x < 0.5) == (step_phase > 0.0)) { suv.y += min(lift, 0.999 - fr.y) / sheet.y; }
+	}
+	vec4 t = texture(tex, suv);
 	if (t.a * COLOR.a < 0.5 || world_y < clip_below) { discard; }
 	ALBEDO = t.rgb * COLOR.rgb;
 }
@@ -129,12 +137,20 @@ uniform float roll_pivot = 0.8;    // m au-dessus des pieds : l'axe du roulis (l
 uniform vec4 xray_color : source_color = vec4(0.85, 0.9, 1.0, 0.4);
 uniform float xray_tint = 0.15;    // part de la teinte claire mêlée aux vraies couleurs du pirate (1 : silhouette unie)
 uniform float clip_below = -10000.0;
+uniform float step_phase = 0.0;    // -1…1 : de face et de dos, les pas ne se voient pas (les jambes viennent vers la caméra) : on lève un pied puis l'autre
+uniform vec2 sheet = vec2(8.0, 8.0);   // images par ligne, directions
 varying float world_y;
 void vertex() {
 	vec2 rp = VERTEX.xy - vec2(0.0, roll_pivot);
 	VERTEX.xy = vec2(cos(roll) * rp.x - sin(roll) * rp.y, sin(roll) * rp.x + cos(roll) * rp.y) + vec2(0.0, roll_pivot);%s}
 void fragment() {
-	vec4 t = texture(tex, UV);
+	vec2 suv = UV;
+	vec2 fr = fract(UV * sheet);   // position dans l'image (0…1)
+	if (fr.y > 0.75 && abs(step_phase) > 0.01) {
+		float lift = floor(abs(step_phase) * 3.99) / 72.0;   // 0 à 3 pixels
+		if ((fr.x < 0.5) == (step_phase > 0.0)) { suv.y += min(lift, 0.999 - fr.y) / sheet.y; }
+	}
+	vec4 t = texture(tex, suv);
 	if (t.a * COLOR.a < 0.5 || world_y < clip_below) { discard; }
 	ALBEDO = mix(t.rgb * COLOR.rgb, xray_color.rgb, xray_tint);   // (13/11 : les vraies couleurs, plus une silhouette blanche)
 	ALPHA = xray_color.a;
@@ -363,6 +379,15 @@ func _apply() -> void:
 	if texture != tex:
 		texture = tex
 	frame = direction * frames + (_forced_frame if _forced_frame >= 0 else int(_time) % frames)
+	# 13/11 : de face (direction 0) et de dos (4), les images de marche ne montrent pas les pas (les jambes viennent vers la
+	# caméra) : le pirate glissait, surtout en portant un coffre. Le shader lève un pied puis l'autre, au rythme de la marche.
+	var phase := 0.0
+	if used.ends_with("walk") and (direction == 0 or direction == 4):
+		phase = sin(TAU * _time / float(frames))
+	for m: ShaderMaterial in [_main_mat, _xray_mat]:
+		if m != null:
+			m.set_shader_parameter("step_phase", phase)
+			m.set_shader_parameter("sheet", Vector2(frames, 8.0))
 	_sync_depth_and_xray()
 	_update_compass()
 
