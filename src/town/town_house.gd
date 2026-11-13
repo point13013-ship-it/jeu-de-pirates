@@ -55,10 +55,17 @@ static func build(root: Node3D, b: Dictionary, base: float, seed: int) -> MeshIn
 	# façade sud : la porte, puis les fenêtres de chaque étage
 	var slots := maxi(int((w - 1.0) / 2.1), 1)
 	var door_slot := rng.randi() % slots
+	var lamp_at := Vector3.INF
 	var fixed_door := b.has("door_u")   # (un service où l'on entre : la porte est là où l'intérieur l'attend)
 	if fixed_door:
 		door_slot = -1
 		_door(st, f, float(b["door_u"]), -d * 0.5, service, not bool(b.get("terrace", false)))
+		# une lanterne à gauche de la porte, sur sa potence de fer
+		var lu := float(b["door_u"]) - 1.45
+		_box(st[S_STONE], f, Vector3(lu, -d * 0.5 - 0.22, PLINTH + 2.62), Vector3(0.06, 0.44, 0.06))
+		_box(st[S_TRIM], f, Vector3(lu, -d * 0.5 - 0.4, PLINTH + 2.36), Vector3(0.24, 0.24, 0.34))
+		_box(st[S_STONE], f, Vector3(lu, -d * 0.5 - 0.4, PLINTH + 2.56), Vector3(0.3, 0.3, 0.06))
+		lamp_at = _p(f, Vector3(lu, -d * 0.5 - 0.75, PLINTH + 2.2))
 	for k in slots:
 		var u := -w * 0.5 + w * (float(k) + 0.5) / slots
 		for s2 in storeys:
@@ -107,6 +114,8 @@ static func build(root: Node3D, b: Dictionary, base: float, seed: int) -> MeshIn
 	mi.set_meta("colors", [facade, roof, shutter, STONE, TRIM, GLASS])
 	mi.set_meta("kinds", KINDS)
 	mi.set_meta("glass", S_GLASS)
+	if lamp_at.is_finite():
+		mi.set_meta("door_lamp", lamp_at)
 	mi.set_meta("see_through", b.has("interior"))   # (on entre dans ce bâtiment : ses vitres laissent voir l'intérieur)
 	mi.set_meta("lit", rng.randf() < 0.7)   # (la nuit, sept maisons sur dix ont de la lumière)
 	root.add_child(mi)

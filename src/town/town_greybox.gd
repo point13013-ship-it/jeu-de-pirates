@@ -157,6 +157,8 @@ static func build(parent: Node3D, plan: Dictionary) -> Dictionary:
 				# 13/11 (étape 5) : de vraies maisons à la place des cubes ; on entre dans celles des services « intérieur »
 				var house := TownHouse.build(root, b3, base, k2)
 				buildings.append(house)
+				if house.has_meta("door_lamp"):   # (la lanterne à la porte d'une boutique où l'on entre : elle éclaire la nuit)
+					(extras["lamps"] as Array).append(house.get_meta("door_lamp"))
 				if bool(house.get_meta("lit", false)):
 					spills.append([c2 + Vector2(0.0, -size.y * 0.5 - 0.1).rotated(ang), size.x * 0.8, ang, base])
 			_:
@@ -171,11 +173,12 @@ static func build(parent: Node3D, plan: Dictionary) -> Dictionary:
 			var top := base + (STOREY * storeys + 2.6 if mode in ["maison", "interieur", "repere", "cabanes"] else 4.2)
 			_label(root, "%d. %s" % [int(b3.get("num", 0)), str(b3["name"])], _w(c2, top + 0.8))
 
-	TownDressing.add(root, acc, circles, plan, land, levels)   # (niveau 2 : arbres, palmiers, bittes, caisses, tonneaux, bancs)
+	var shades := TownDressing.add(root, acc, circles, plan, land, levels)   # (niveau 2 : arbres, palmiers, bittes, caisses, tonneaux, bancs)
+	var ground_mat := TownGround.material(plan, shades)
 	for col3: Color in acc:
 		var mi := MeshInstance3D.new()
 		mi.mesh = (acc[col3] as SurfaceTool).commit()
-		mi.material_override = TownGround.material(plan) if col3 == GROUND else _mat(col3)
+		mi.material_override = ground_mat if col3 == GROUND else _mat(col3)
 		# (niveau 2 : bois en planches et pierre de taille peints, comme sur les maisons, au lieu d'aplats)
 		var painted := {WOOD: 2, WOOD.darkened(0.25): 2, WOOD_DARK: 2, STONE: 3, STONE_DARK: 3}
 		if painted.has(col3):
@@ -193,7 +196,7 @@ static func build(parent: Node3D, plan: Dictionary) -> Dictionary:
 			continue
 		lamps.append([lp, _level_h(levels, lp)])
 		circles.append([lp.x, lp.y, 0.2])
-	return {"root": root, "buildings": buildings, "circles": circles, "lamps": lamps, "spills": spills, "extras": extras}
+	return {"root": root, "buildings": buildings, "circles": circles, "lamps": lamps, "spills": spills, "extras": extras, "ground": ground_mat}
 
 
 # ------------------------------------------------------------------ bâtiments

@@ -12,7 +12,9 @@ const CRATE := Color("9c6a43")
 const BARREL := Color("7a4a2e")
 
 
-static func add(root: Node3D, acc: Dictionary, circles: Array, plan: Dictionary, land: PackedVector2Array, levels: Array) -> void:
+## Renvoie [centre, rayon] de ce qui fait une ombre de contact au sol (les arbres).
+static func add(root: Node3D, acc: Dictionary, circles: Array, plan: Dictionary, land: PackedVector2Array, levels: Array) -> Array:
+	var shades: Array = []
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 20261113
 	var segs: Array = []      # [a, b, demi-largeur]
@@ -61,6 +63,7 @@ static func add(root: Node3D, acc: Dictionary, circles: Array, plan: Dictionary,
 			continue
 		placed.append(p2)
 		circles.append([p2.x, p2.y, 0.32])
+		shades.append([p2, 2.3])
 		if (sand.size() >= 3 and Geometry2D.is_point_in_polygon(p2, sand)) or p2.y < 16.0:
 			_palm(acc, p2, h, rng)
 		else:
@@ -136,6 +139,7 @@ static func add(root: Node3D, acc: Dictionary, circles: Array, plan: Dictionary,
 			for e2: float in [-0.5, 0.5]:
 				var cp := bp2 + Vector2(e2, 0.0).rotated(a2 + PI * 0.5)
 				circles.append([cp.x, cp.y, 0.45])
+	return shades
 
 
 ## Vrai si `p` est sur une rue (à `margin` m près), une place ou une maison.

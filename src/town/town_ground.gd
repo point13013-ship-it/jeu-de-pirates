@@ -9,11 +9,13 @@ extends RefCounted
 ## Carte : rouge = pavé (0,5 au bord de la rue, 1 à 80 cm dedans, 0 à 80 cm dehors), vert = grande rue ou place, bleu = sable.
 
 const PPM := 4.0          ## pixels par mètre
+const CONTACT := 1.5      ## m : largeur de l'ombre de contact au pied des murs
 const SOFT := 1.6         ## m : largeur de la transition codée dans le rouge (de part et d'autre du bord)
 
 
 ## Fabrique la carte et la matière du sol. Coordonnées du fichier du port (x, y).
-static func material(plan: Dictionary) -> ShaderMaterial:
+## `discs` : [centre, rayon] de ce qui est posé sur le sol (arbres…), pour l'ombre de contact.
+static func material(plan: Dictionary, discs: Array = []) -> ShaderMaterial:
 	var land := Land._poly(plan.get("land", []))
 	var lo := land[0]
 	var hi := land[0]
@@ -55,10 +57,44 @@ static func material(plan: Dictionary) -> ShaderMaterial:
 		if str(lvl.get("style", "")) == "fort":
 			_polygon(data, w, h, lo, Land._poly(lvl["poly"]), 0, true)   # la plate-forme du fort : dallée
 	_polygon(data, w, h, lo, Land._poly(plan.get("sand", [])), 2, false)
+	# 13/11 (niveau 2, lumière) : l'ombre de contact. Une seconde carte dit à quel point le sol est près d'un mur ou d'un tronc :
+	# le shader l'assombrit, ce qui « pose » les maisons et les arbres au lieu de les laisser flotter sur un aplat.
+	var shade := PackedByteArray()
+	shade.resize(w * h)
+	shade.fill(0)
+	for b: Dictionary in plan.get("buildings", []):
+		if str(b.get("mode", "")) in ["jardin", "comptoir"]:
+			continue
+		var c := Vector2(float(b["x"]), float(b["y"]))
+		var half := Vector2(float(b["w"]), float(b["d"])) * 0.5
+		var ang := float(b["ang"])
+		var open := str(b.get("mode", "")) in ["tente", "halle"]   # (sous une tente ou une halle : une ombre plus légère)
+		var reach := half.length() + CONTACT
+		var x0 := maxi(int(floor((c.x - reach - lo.x) * PPM)), 0)
+		var x1 := mini(int(ceil((c.x + reach - lo.x) * PPM)), w - 1)
+		var y0 := maxi(int(floor((c.y - reach - lo.y) * PPM)), 0)
+		var y1 := mini(int(ceil((c.y + reach - lo.y) * PPM)), h - 1)
+		for iy in range(y0, y1 + 1):
+			for ix in range(x0, x1 + 1):
+				var l := (lo + Vector2(ix + 0.5, iy + 0.5) / PPM - c).rotated(-ang).abs() - half
+				var d := Vector2(maxf(l.x, 0.0), maxf(l.y, 0.0)).length()
+				var v := int(clampf(1.0 - d / CONTACT, 0.0, 1.0) * (150.0 if open else 255.0))
+				if v > shade[iy * w + ix]:
+					shade[iy * w + ix] = v
+	for disc: Array in discs:
+		var dc: Vector2 = disc[0]
+		var dr := float(disc[1])
+		for iy in range(maxi(int(floor((dc.y - dr - lo.y) * PPM)), 0), mini(int(ceil((dc.y + dr - lo.y) * PPM)), h - 1) + 1):
+			for ix in range(maxi(int(floor((dc.x - dr - lo.x) * PPM)), 0), mini(int(ceil((dc.x + dr - lo.x) * PPM)), w - 1) + 1):
+				var dv := int(clampf(1.0 - (lo + Vector2(ix + 0.5, iy + 0.5) / PPM).distance_to(dc) / dr, 0.0, 1.0) * 200.0)
+				if dv > shade[iy * w + ix]:
+					shade[iy * w + ix] = dv
+	var shade_img := Image.create_from_data(w, h, false, Image.FORMAT_L8, shade)
 	var img := Image.create_from_data(w, h, false, Image.FORMAT_RGB8, data)
 	var mat := ShaderMaterial.new()
 	mat.shader = load("res://shaders/town_ground.gdshader") as Shader
 	mat.set_shader_parameter("mask", ImageTexture.create_from_image(img))
+	mat.set_shader_parameter("shade", ImageTexture.create_from_image(shade_img))
 	mat.set_shader_parameter("origin", lo)
 	mat.set_shader_parameter("extent", Vector2(w, h) / PPM)
 	return mat

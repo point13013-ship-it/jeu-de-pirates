@@ -4,7 +4,15 @@ shader_type spatial;
 // battue entre la rue et l'herbe ; herbe en taches de trois verts ; sable. Les limites sont déformées par un bruit : aucun bord
 // droit. Couleurs de la palette v1 (design/bible-v2.md). Pas de rendu particulier ici : ToonLook lui donne la lumière à paliers.
 
+// (son propre rendu : lumière à paliers, mais avec les reflets : les pavés mouillés brillent sous les lanternes et le soleil)
+render_mode diffuse_toon;
+
 uniform sampler2D mask : filter_linear, repeat_disable;
+uniform sampler2D shade : filter_linear, repeat_disable;   // ombre de contact : 1 au pied d'un mur ou d'un tronc
+uniform float contact = 0.34;     // assombrissement maximal de l'ombre de contact
+uniform float cloud = 1.0;        // force des ombres de nuages (0 la nuit)
+uniform float cloud_dark = 0.20;  // assombrissement sous un nuage
+uniform float wet = 0.0;          // 0 sec … 1 détrempé (il pleut, ou il vient de pleuvoir)
 uniform vec2 origin = vec2(0.0);
 uniform vec2 extent = vec2(100.0);
 
@@ -76,7 +84,21 @@ void fragment() {
 	stone = mix(stone, dirt, rim * step(0.86, hash(cell + 13.0)));
 	col = mix(col, stone, paved);
 
+	// ombre de contact : au pied des murs et sous les arbres, un ton plus sombre, tiré vers le violet (jamais du noir)
+	float ao = texture(shade, (p - origin) / extent).r;
+	ao = smoothstep(0.0, 1.0, ao + wob * 0.25 * step(0.02, ao));
+	col = mix(col, col * vec3(0.62, 0.60, 0.74), ao * contact / 0.34 * 0.9);
+
+	// ombres de nuages : de grandes taches douces qui traversent lentement la ville
+	float cl = vn(p * 0.035 + vec2(TIME * 0.011, TIME * 0.004)) * 0.68 + vn(p * 0.085 - vec2(TIME * 0.008, 0.0)) * 0.32;
+	col *= 1.0 - cloud_dark * cloud * smoothstep(0.50, 0.66, cl);
+
+	// pavés mouillés : plus sombres, brillants, avec des flaques qui renvoient la lumière des lanternes et du ciel
+	float puddle = smoothstep(0.58, 0.66, vn(p * 0.42 + 31.0) * 0.7 + vn(p * 1.3) * 0.3) * paved;
+	float soak = wet * mix(0.55, 1.0, paved);
+	col = mix(col, col * vec3(0.66, 0.70, 0.80), soak * (0.75 + 0.25 * puddle));
+
 	ALBEDO = srgb(col);
-	ROUGHNESS = 1.0;
-	SPECULAR = 0.0;
+	ROUGHNESS = mix(1.0, mix(0.32, 0.10, puddle), wet * paved);
+	SPECULAR = mix(0.0, mix(0.55, 0.9, puddle), wet * paved);
 }

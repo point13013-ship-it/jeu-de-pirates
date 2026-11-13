@@ -1413,6 +1413,8 @@ var _vitrines: Array[ShaderMaterial] = []   ## les vitres à intérieur peint de
 var _vitrine_lit := -1.0
 var _port_lamps: Array[OmniLight3D] = []   ## les réverbères de l'ancienne ville (allumés la nuit)
 var _town_lights: TownLights
+var _town_ground_mat: ShaderMaterial   ## le sol peint de la ville v3 : il reçoit la pluie (pavés mouillés) et les ombres de nuages
+var _town_wet := 0.0
 
 
 func _build_town_v3() -> void:
@@ -1457,6 +1459,7 @@ func _build_town_v3() -> void:
 	ToonLook.apply_tree(_port)
 	_world_fixed.add_child(_town_lights)
 	_town_lights.setup(made["lamps"], made["spills"], _land, SEA_Y, made["extras"])
+	_town_ground_mat = made["ground"] as ShaderMaterial
 	_moor_at_dock()
 
 
@@ -4037,6 +4040,12 @@ func _process(delta_raw: float) -> void:
 		for pl: OmniLight3D in _port_lamps:
 			pl.light_energy = GameConfig.LAMP_ENERGY * on
 			pl.visible = on > 0.01
+	if _town_ground_mat != null and _atmo != null:
+		# les pavés se mouillent vite sous la pluie et sèchent lentement ; les ombres de nuages ne se voient que de jour
+		var raining := _atmo.sky.rain > 0.15
+		_town_wet = move_toward(_town_wet, 1.0 if raining else 0.0, delta / (GameConfig.GROUND_WET_TIME if raining else GameConfig.GROUND_DRY_TIME))
+		_town_ground_mat.set_shader_parameter("wet", _town_wet)
+		_town_ground_mat.set_shader_parameter("cloud", _atmo.sky.daylight * (1.0 - 0.6 * _atmo.sky.rain))
 	if _town_lights != null and _atmo != null:
 		var here := _lpos if (_loc == Loc.LAND or _loc == Loc.SWIM) else _sim.position
 		_town_lights.update(1.0 - _atmo.sky.daylight, Vector3(here.x, 0.0, here.y), Vector3(here.x, _lh, here.y), delta)
