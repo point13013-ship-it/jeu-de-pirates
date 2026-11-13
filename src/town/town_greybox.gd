@@ -171,6 +171,7 @@ static func build(parent: Node3D, plan: Dictionary) -> Dictionary:
 			var top := base + (STOREY * storeys + 2.6 if mode in ["maison", "interieur", "repere", "cabanes"] else 4.2)
 			_label(root, "%d. %s" % [int(b3.get("num", 0)), str(b3["name"])], _w(c2, top + 0.8))
 
+	TownDressing.add(root, acc, circles, plan, land, levels)   # (niveau 2 : arbres, palmiers, bittes, caisses, tonneaux, bancs)
 	for col3: Color in acc:
 		var mi := MeshInstance3D.new()
 		mi.mesh = (acc[col3] as SurfaceTool).commit()

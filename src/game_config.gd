@@ -453,3 +453,4 @@ const PORT_SHELTER := Vector3(0.0, -46.0, 64.0)   ## (x, z, rayon) : la houle to
 const WINDOW_GLASS := Color(0.72, 0.84, 0.90)   ## teinte du verre de ces vitres
 const WINDOW_INTERIORS := true          ## un intérieur peint derrière les vitres (étagères des boutiques, rideaux, silhouettes)
 const WINDOW_DAY_LIGHT := 0.55          ## lumière de ces vitres en plein jour (1 la nuit)
+const TOWN_TREES := 70                  ## arbres et palmiers de la ville v3 (tirés au sort, hors des rues et des maisons)
