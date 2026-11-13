@@ -2,6 +2,17 @@
   "_commentaire": "Les nouveautés affichées dans la salle de jeux (bouton Nouveautés, et après chaque mise à jour). La plus récente d'abord. 'version': 'prochaine' est remplacé par le numéro de la version au moment de la publication (publish.ps1). Les images sont les fichiers de ce dossier ; publish.ps1 les envoie avec la version.",
   "versions": [
     {
+      "version": "2026.11.13-1403",
+      "titre": "Nouvelle ville : repères, tentes et intérieurs",
+      "points": [
+        "Aperçu de la nouvelle ville (bouton du menu, en solo) : l'église et son clocher, la maison du gouverneur, le moulin qui tourne, le phare et son faisceau, la batterie du fort.",
+        "Grandes tentes rayées ouvertes sur la rue (receleur, armurier, voilerie), halle du marché, chantier naval avec une coque sur cale, forge en plein air.",
+        "On entre dans la taverne (par sa terrasse), le magasin général et le tailleur.",
+        "Chaque maison regarde sa rue ; les maisons en retrait ont un sentier jusqu'à elle.",
+        "Les étiquettes de chantier au-dessus des bâtiments sont retirées."
+      ]
+    },
+    {
       "version": "2026.11.13-1311",
       "titre": "Aperçu de la nouvelle ville",
       "points": [
