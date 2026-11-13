@@ -2,6 +2,16 @@
   "_commentaire": "Les nouveautés affichées dans la salle de jeux (bouton Nouveautés, et après chaque mise à jour). La plus récente d'abord. 'version': 'prochaine' est remplacé par le numéro de la version au moment de la publication (publish.ps1). Les images sont les fichiers de ce dossier ; publish.ps1 les envoie avec la version.",
   "versions": [
     {
+      "version": "prochaine",
+      "titre": "Corrections et Le Croc",
+      "points": [
+        "On ne traverse plus les murs des maisons : on entre par la porte.",
+        "Les pouvoirs des baies marchent aussi à bord du bateau.",
+        "Les palmiers de la ville sont refaits.",
+        "Le Croc fait maintenant environ 260 m, à l'est du port."
+      ]
+    },
+    {
       "version": "2026.11.13-2027",
       "titre": "Le Croc, en grand",
       "points": [

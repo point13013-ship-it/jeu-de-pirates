@@ -2357,6 +2357,14 @@ func _apply_test_args() -> void:
 				break
 	if _args.has("gun"):   # essai : --gun=0 prend le canon 0 au bout de 3 s (puis --move pour régler pivot et hausse)
 		get_tree().create_timer(3.0).timeout.connect(func() -> void: _gun_enter(int(_args["gun"])))
+	if _args.has("where"):   # essai : --where=t écrit où est le pirate à cet instant
+		get_tree().create_timer(float(_args["where"])).timeout.connect(func() -> void:
+			_dbg("position (%.2f, %.2f) h %.2f intérieur %d" % [_lpos.x, _lpos.y, _lh, _land.interior_at(_lpos)])
+			if _args.has("probe"):   # --probe=x,z : ce que le terrain dit de ce point du monde
+				var q := str(_args["probe"]).split(",")
+				var m := Vector2(float(q[0]), -float(q[1]))
+				_dbg("sonde %s : sol %s, bloqué %s, hauteurs %s, intérieur %d, obbs %d, intérieurs %d" % [m, _land._on_ground(m), _land._blocked(m),
+						_land._candidates(m), _land.interior_at(Vector2(m.x, -m.y)), _land.obbs.size(), _land.interiors.size()]))
 	if _args.has("swim"):   # essai : --swim=x,z met le pirate à l'eau à cet endroit du monde
 		var sw := str(_args["swim"]).split(",")
 		get_tree().create_timer(0.2).timeout.connect(func() -> void: _enter_swim(Vector2(float(sw[0]), float(sw[1]))))
@@ -2811,6 +2819,7 @@ func _update_interior() -> void:
 	if idx == _interior_active:
 		return
 	_interior_active = idx
+	_dbg("intérieur : %d en (%.1f, %.1f) h %.2f" % [idx, _lpos.x, _lpos.y, _lh])
 	for i in _interior_nodes.size():
 		var e: Dictionary = _interior_nodes[i]
 		(e["root"] as Node3D).visible = i == idx or GameConfig.WINDOWS_SHOW_INSIDE   # (visible du dehors, à travers les vitres)
@@ -4047,6 +4056,25 @@ func apply_swing(peer: int, pos: Vector2, dir: Vector2) -> void:
 
 ## Je lance le sort `slot` (0 à 3) de ma baie vers là où je regarde. Le nom du sort n'est révélé qu'à la première fois.
 func _try_cast(slot: int) -> void:
+	# 13/11 (retour : « on peut taper sur le bateau, il faut aussi pouvoir y utiliser les pouvoirs ») : à bord, le sort part
+	# de l'endroit du pont où l'on se tient, comme le coup de sabre
+	if _loc == Loc.SHIP and _mode == Mode.WALK and _gun_i < 0 and not _hook_aim and _profile.berry != "":
+		var keep_pos := _lpos
+		var keep_h := _lh
+		var keep_face := _face
+		var wd := Basis(Vector3.UP, _sim.yaw) * Vector3(_pface.x, 0.0, -_pface.y)
+		_lpos = _ship_to_world(_ppos)
+		_lh = _ship.position.y + _ship.deck_height(_ppos.x)
+		_face = Vector2(wd.x, wd.z).normalized() if wd.length() > 0.01 else Vector2(1.0, 0.0)
+		_loc = Loc.LAND
+		_cast_aboard = true
+		_try_cast(slot)
+		_cast_aboard = false
+		_loc = Loc.SHIP
+		_lpos = keep_pos
+		_lh = keep_h
+		_face = keep_face
+		return
 	if _profile.berry == "" or _loc != Loc.LAND or _hp <= 0 or _spell_cd[slot] > 0.0 or _dialog.is_open() or _shop_menu.is_open() or _chart.is_open() or _jump_wind > 0.0:
 		return
 	if _carrying:   # lot 2 (2.4) : les mains prises, pas de pouvoir non plus
@@ -4076,7 +4104,7 @@ func _try_cast(slot: int) -> void:
 		"dash":
 			_inv_t = maxf(_inv_t, 0.4)
 			var dir := _face.normalized()
-			var left := float(spell["dist"])
+			var left := 0.0 if _cast_aboard else float(spell["dist"])   # (à bord, la ruée ne déplace pas : le pont a ses propres murs)
 			while left > 0.0:
 				var stp := minf(left, 0.5)
 				var r := _land.step(_lpos, dir * stp, _lh)
@@ -4545,6 +4573,8 @@ func _update_player(delta: float) -> void:
 				var ld := Basis(Vector3.UP, -(bs["sim"] as ShipSim).yaw) * Vector3(step_l.x, 0.0, step_l.y)
 				_bpos = bm.move_with_slide(_bpos, Vector2(ld.x, -ld.z) / ShipModel.SCALE)
 				return
+			if _args.has("log") and _land.walk_height(_lpos, _lh) == Land.NO_SURFACE:
+				_dbg("COINCÉ en (%.2f, %.2f) h %.2f : hauteurs %s" % [_lpos.x, _lpos.y, _lh, _land._candidates(Vector2(_lpos.x, -_lpos.y))])
 			var r := _land.step(_lpos, step_l, _lh)
 			# 13/11 (Jimmy : « un mur invisible m'empêche de tomber dans l'eau ») : au bord d'un quai ou d'un ponton, on tombe à
 			# l'eau en avançant (tout de suite en courant, après un instant à pousser en marchant)
@@ -4904,6 +4934,7 @@ var _board_id := -1                 ## l'ennemi sur le pont duquel je suis (-1 :
 var _bpos := Vector2.ZERO           ## ma position sur son pont (repère de son modèle)
 var _board_strike_t := 0.0          ## délai avant le prochain coup d'un squelette
 var _muffle := 0.0                  ## 0…1 : étouffement du son (1 dans la cale)
+var _cast_aboard := false           ## vrai le temps d'un sort lancé depuis le pont
 var _edge_push_t := 0.0             ## s passées à pousser contre le bord d'un quai (voir QUAY_FALL_PUSH)
 var _prev_bpos := Vector2.ZERO      ## ma position sur son pont à l'image d'avant
 var _board_walk := Vector2.ZERO     ## mon pas sur son pont pendant la dernière image (monde) : le bateau qui m'emporte ne compte pas

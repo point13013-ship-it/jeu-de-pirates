@@ -221,19 +221,34 @@ static func _tree(root: Node3D, acc: Dictionary, p: Vector2, h: float, rng: Rand
 
 ## Un palmier : un tronc qui penche, en trois tronçons, et six palmes qui retombent.
 static func _palm(acc: Dictionary, p: Vector2, h: float, rng: RandomNumberGenerator) -> void:
-	var lean := Vector2.from_angle(rng.randf() * TAU) * rng.randf_range(0.25, 0.55)
-	var th := rng.randf_range(3.2, 4.6)
-	for k in 3:
-		TownGreybox._box(acc, TRUNK.lightened(0.1), p + lean * k, Vector2(0.3 - 0.04 * k, 0.3 - 0.04 * k), 0.0, h + th * k / 3.0, h + th * (k + 1) / 3.0 + 0.05)
-	var top := p + lean * 2.0
+	# 13/11 (retour : « les palmiers sont mal faits », le tronc était en trois morceaux qui ne se touchaient pas) : un tronc
+	# d'un seul tenant, en sept anneaux qui se recouvrent et s'incurvent, huit palmes en trois pans qui retombent, des noix.
+	var lean := Vector2.from_angle(rng.randf() * TAU) * rng.randf_range(0.5, 1.1)
+	var th := rng.randf_range(3.4, 4.8)
+	var turn := rng.randf() * TAU
+	for k in 7:
+		var t0 := float(k) / 7.0
+		var w := 0.36 - 0.022 * k
+		TownGreybox._box(acc, TRUNK.lightened(0.12 if k % 2 == 0 else 0.02), p + lean * t0 * t0, Vector2(w, w), turn + 0.5 * k,
+				h + th * t0 - 0.03, h + th * (t0 + 1.0 / 7.0) + 0.05)
+	var top := p + lean * (36.0 / 49.0)
 	var y := h + th
+	for n in 3:   # les noix, sous la couronne
+		var nd := Vector2.from_angle(turn + TAU * n / 3.0) * 0.22
+		TownGreybox._box(acc, TRUNK.darkened(0.25), top + nd, Vector2(0.2, 0.2), turn, y - 0.28, y - 0.08)
 	var start := rng.randf() * TAU
-	for k2 in 6:
-		var dir := Vector2.from_angle(start + TAU * k2 / 6.0)
-		var side := dir.orthogonal() * 0.42
-		var mid := top + dir * 1.3
-		var tip := top + dir * 2.5
-		TownGreybox._quad(acc, PALM if k2 % 2 == 0 else PALM.darkened(0.15), TownGreybox._w(top - side * 0.4, y), TownGreybox._w(top + side * 0.4, y),
-				TownGreybox._w(mid + side, y + 0.25), TownGreybox._w(mid - side, y + 0.25), Vector3.UP)
-		TownGreybox._quad(acc, PALM if k2 % 2 == 0 else PALM.darkened(0.15), TownGreybox._w(mid - side, y + 0.25), TownGreybox._w(mid + side, y + 0.25),
-				TownGreybox._w(tip + side * 0.15, y - 0.75), TownGreybox._w(tip - side * 0.15, y - 0.75), Vector3.UP)
+	for k2 in 8:
+		var dir := Vector2.from_angle(start + TAU * k2 / 8.0 + rng.randf_range(-0.12, 0.12))
+		var side := dir.orthogonal() * 0.46
+		var reach := rng.randf_range(2.3, 3.0)
+		var a := top + dir * reach * 0.36
+		var b := top + dir * reach * 0.72
+		var tip := top + dir * reach
+		var col := PALM if k2 % 2 == 0 else PALM.darkened(0.16)
+		var lift := 0.3 if k2 % 2 == 0 else 0.5
+		TownGreybox._quad(acc, col, TownGreybox._w(top - side * 0.3, y), TownGreybox._w(top + side * 0.3, y),
+				TownGreybox._w(a + side, y + lift), TownGreybox._w(a - side, y + lift), Vector3.UP)
+		TownGreybox._quad(acc, col.lightened(0.06), TownGreybox._w(a - side, y + lift), TownGreybox._w(a + side, y + lift),
+				TownGreybox._w(b + side * 0.7, y + lift - 0.35), TownGreybox._w(b - side * 0.7, y + lift - 0.35), Vector3.UP)
+		TownGreybox._quad(acc, col.darkened(0.08), TownGreybox._w(b - side * 0.7, y + lift - 0.35), TownGreybox._w(b + side * 0.7, y + lift - 0.35),
+				TownGreybox._w(tip + side * 0.1, y + lift - 1.25), TownGreybox._w(tip - side * 0.1, y + lift - 1.25), Vector3.UP)

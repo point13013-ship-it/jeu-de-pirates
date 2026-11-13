@@ -297,13 +297,46 @@ func walk_height(p: Vector2, cur: float, r: float = 0.22) -> float:
 ## Fait avancer un pirate de `delta` à partir de `from` (hauteur `cur`), en glissant le long des obstacles.
 ## Renvoie (x, z, hauteur).
 func step(from: Vector2, delta: Vector2, cur: float) -> Vector3:
+	var inside_from := interior_at(from)
 	for t: Vector2 in [from + delta, Vector2(from.x + delta.x, from.y), Vector2(from.x, from.y + delta.y)]:
 		var h := walk_height(t, cur)
 		if h != NO_SURFACE:
+			# 13/11 (retour : « on traverse les murs des maisons où l'on peut entrer ») : on ne passe du dehors au dedans (et
+			# l'inverse) que par la porte
+			var inside_to := interior_at(t)
+			if inside_to != inside_from and not _through_door(from, t, inside_to if inside_to >= 0 else inside_from):
+				continue
 			return Vector3(t.x, t.y, h)
 	if walk_height(from, cur) == NO_SURFACE:
+		# 13/11 (retour : « on traverse les murs des maisons ») : un pirate posé à la mauvaise hauteur (au pied d'une terrasse,
+		# après un saut) passait pour « coincé » et traversait alors tout, murs compris. S'il y a un sol sous lui à une autre
+		# hauteur, on le recale dessus au lieu de le laisser filer ; il ne sort librement que s'il est vraiment dans un obstacle.
+		var m := Vector2(from.x, -from.y)
+		if _surface_h(m, cur) == NO_SURFACE:
+			var best := NO_SURFACE
+			for h2 in _candidates(m):
+				if best == NO_SURFACE or absf(h2 - cur) < absf(best - cur):
+					best = h2
+			if best != NO_SURFACE:
+				return Vector3(from.x, from.y, best)
 		return Vector3(from.x + delta.x, from.y + delta.y, cur)   # coincé : on laisse sortir
 	return Vector3(from.x, from.y, cur)
+
+
+## Vrai si le pas de `a` à `b` (monde x/z) passe par la porte de l'intérieur `idx` : l'un des deux points est dans
+## l'embrasure (élargie d'un demi-pas). Un intérieur sans porte décrite laisse passer partout (comme avant).
+func _through_door(a: Vector2, b: Vector2, idx: int) -> bool:
+	if idx < 0 or idx >= interiors.size():
+		return true
+	var it: Dictionary = interiors[idx]
+	if not it.has("door_cut"):
+		return true
+	var r: Array = it["door_cut"]
+	for p: Vector2 in [a, b]:
+		var m := _lm(Vector2(p.x, -p.y), it)
+		if m.x >= float(r[0]) - 0.35 and m.x <= float(r[2]) + 0.35 and m.y >= float(r[1]) - 0.7 and m.y <= float(r[3]) + 0.7:
+			return true
+	return false
 
 
 ## Hauteur de saut (m au-dessus du sol) qui suffit pour passer au-dessus d'un poteau, d'un tonneau ou d'un arbuste.

@@ -734,7 +734,7 @@ func _terrain_mesh(i: int) -> ArrayMesh:
 	var ext: float = float(isl["radius"]) + SLOPE + 1.0
 	# les grandes îles (agrandies) ont un maillage un peu plus lâche : sinon le calcul au lancement serait trop long
 	var relief := not (isl["terrain"] as Dictionary).is_empty()
-	var grid := GRID * clampf(ext / 40.0, 1.0, 2.6 if relief else 2.0)
+	var grid := GRID * clampf(ext / 40.0, 1.0, 3.4 if relief else 2.0)
 	var n := int(ceil(ext * 2.0 / grid)) + 1
 	var verts := PackedVector3Array()
 	var norms := PackedVector3Array()
