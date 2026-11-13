@@ -76,8 +76,8 @@ const JUMP_SQUASH_TIME := 0.12        ## s
 
 ## 2.4 Porter : un trésor posé au sol y reste ce temps (s), puis disparaît ; à terre on le reprend avec E.
 const DROPPED_TTL := 300.0
-const CARRY_HANDS_HEIGHT := 0.82      ## m : hauteur de l'objet porté (dans les mains, devant le torse)
-const CARRY_TREASURE_SCALE := 1.1     ## taille de la maquette d'un trésor porté (avant : 1,5 au-dessus de la tête)
+const CARRY_HANDS_HEIGHT := 0.80      ## m : hauteur de l'objet porté (dans les mains, devant le torse)
+const CARRY_TREASURE_SCALE := 0.68    ## taille de la maquette d'un trésor porté (avant : 1,5 au-dessus de la tête)
 const CARRY_TOWARD_CAMERA := 0.35     ## m : avancé vers la caméra, pour passer devant le sprite
 
 ## Sons placés dans le monde (Sfx3D).
@@ -410,3 +410,5 @@ const LAMP_REFLECTION_LENGTH := 6.5    ## m : longueur du reflet d'une lanterne 
 const WINDOW_GLOW := 3.0               ## force des fenêtres allumées, la nuit
 const TOWN_SHELTER := Vector3(5.0, -45.0, 85.0)   ## (x, z, rayon) : la houle tombe à SHORE_SWELL dans ce cercle autour de la ville v3 (bassin compris)
 const TOWN_LABELS := false             ## les noms numérotés au-dessus des bâtiments de la ville v3 (repères de chantier)
+## Bugs de la liste du 13/11.
+const WATER_EXIT_STEP := 0.9          ## m : en sortant de l'eau sur un quai ou un ponton, le pirate est posé à cette distance du bord

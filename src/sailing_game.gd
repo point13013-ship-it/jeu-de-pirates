@@ -1650,6 +1650,10 @@ func _apply_test_args() -> void:
 		_sim.wind_dir = Vector2.from_angle(_sim.wind_angle)
 	if _args.has("sail"):
 		_sim.sail_level = int(_args["sail"])
+	if _args.has("cam-yaw"):   # essai : --cam-yaw=90 tourne la caméra autour du pirate (degrés), --elev=25 l'incline
+		_cam_yaw = deg_to_rad(float(_args["cam-yaw"]))
+	if _args.has("elev"):
+		_elev_deg = float(_args["elev"])
 		_sim.sail_open = float(_sim.sail_level) / ShipSim.SAIL_LEVELS
 		_sim.auto_trim_pending = false
 		_sim.sail_trim_target = _sim.optimal_trim()
@@ -2274,6 +2278,32 @@ func _start_carry(kind: String) -> void:
 	_plank_icon.visible = kind == "plank"
 
 
+## 13/11 (bug 1.6) : deux mains de la couleur de peau du pirate, posées sur les flancs de ce qu'il porte : il le tient vraiment.
+func _add_carry_hands(node: Node3D, look: Dictionary) -> void:
+	var box := AABB()
+	var first := true
+	for c: Node in node.get_children():
+		if c is MeshInstance3D and (c as MeshInstance3D).mesh != null:
+			var b: AABB = (c as MeshInstance3D).transform * (c as MeshInstance3D).mesh.get_aabb()
+			box = b if first else box.merge(b)
+			first = false
+	if first:
+		return
+	var skin := Color.html(str((look.get("colors", {}) as Dictionary).get("skin", "#e0b089")))
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = skin
+	mat.roughness = 0.9
+	for side: float in [-1.0, 1.0]:
+		var hand := MeshInstance3D.new()
+		var bm := BoxMesh.new()
+		bm.size = Vector3(0.09, 0.11, 0.13)
+		hand.mesh = bm
+		hand.material_override = mat
+		hand.position = Vector3(box.get_center().x + side * (box.size.x * 0.5 + 0.035), box.get_center().y - box.size.y * 0.12, box.get_center().z + box.size.z * 0.2)
+		hand.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		node.add_child(hand)
+
+
 ## Je prends en main un trésor : sa maquette flotte au-dessus de ma tête.
 func _pick_up_treasure(id: String) -> void:
 	if not Treasure.exists(id):
@@ -2284,6 +2314,7 @@ func _pick_up_treasure(id: String) -> void:
 	_carry_item = id
 	_treasure_icon = Treasure.make_icon(id)
 	_treasure_icon.scale = Vector3.ONE * GameConfig.CARRY_TREASURE_SCALE
+	_add_carry_hands(_treasure_icon, _sprite.look)
 	_treasure_icon.position = Vector3(0.0, 2.25, 0.0)
 	_sprite.add_child(_treasure_icon)
 	_say("%s : %d or. Rapporte-le dans le coffre du capitaine (cabine), puis au receleur sur le quai" % [Treasure.name_of(id), Treasure.value_of(id)], 5.0)
@@ -3049,7 +3080,7 @@ func _on_inventory_alt(kind: String, id: String) -> void:
 
 
 func _on_inventory_use(kind: String, id: String) -> void:
-	if _chest_island >= 0:   # le panneau montre le coffre d'une cabane
+	if _chest_island >= 0 or _chest_island == -2:   # le panneau montre le coffre d'une cabane, ou celui du bateau (-2)
 		_on_chest_use(kind, id)
 		return
 	match kind:
@@ -4113,11 +4144,21 @@ func _update_swim(move: Vector2, delta: float) -> void:
 	if _land.is_walkable(next) and not _land.is_over_water(next):
 		if not _land.can_exit_water(next, GameConfig.LADDER_EXIT_REACH):
 			return   # (ville v3 : le quai est trop haut, on sort par une échelle ou par la grève)
+		# 13/11 (bug 1.1) : sur un quai ou un ponton, le pirate « sautait » hors de l'eau au ras du bord et retombait souvent
+		# dedans. Il est maintenant posé debout, d'un coup, à un pas du bord (le plus loin possible dans le sens où il nageait).
+		var out := next
+		if _beach_height(next) == -INF:
+			for step: float in [GameConfig.WATER_EXIT_STEP, GameConfig.WATER_EXIT_STEP * 0.66, GameConfig.WATER_EXIT_STEP * 0.33]:
+				var q := next + _face * step
+				if _land.is_walkable(q, 0.35) and not _land.is_over_water(q) and _land.walk_height(q, 0.0) != Land.NO_SURFACE:
+					out = q
+					break
 		_loc = Loc.LAND
-		_lpos = next
-		_lh = _land.walk_height(next, 0.0) if _land.walk_height(next, 0.0) != Land.NO_SURFACE else 0.0
-		_vz = 0.0 if _beach_height(next) > -INF else 4.0   # on se hisse hors de l'eau (quai) ; sur une plage on sort en marchant
+		_lpos = out
+		_lh = _land.walk_height(out, 0.0) if _land.walk_height(out, 0.0) != Land.NO_SURFACE else 0.0
+		_vz = 0.0
 		_pz = 0.0
+		_ground_vel = Vector2.ZERO
 		_splash_burst(next)
 		return
 	var bp := _world_to_ship(next)
@@ -8462,6 +8503,7 @@ func _set_remote_carry(id: int, code: String) -> void:
 	if code.begins_with("t:") and Treasure.exists(code.substr(2)):
 		node = Treasure.make_icon(code.substr(2))
 		node.scale = Vector3.ONE * GameConfig.CARRY_TREASURE_SCALE
+		_add_carry_hands(node, ((_remotes[id]["sprite"]) as PirateSprite).look)
 	elif code == "ball":
 		node = _make_ball(0.14, Color(0.12, 0.12, 0.16))
 	elif code == "plank":

@@ -280,12 +280,14 @@ func set_weapon(weapon: String, skin: String = WeaponSkins.CLASSIC) -> void:
 	held_skin = skin
 	_palette_dirty = true
 	var sig := _sig()
+	# (13/11 : on redemande aussi les feuilles qui ne sont pas encore arrivées. Elles avaient été lancées pour l'ancienne arme :
+	# leur résultat est jeté, et sans cela « porte un coffre », « barre », « échelle » ne se chargeaient jamais.)
 	for a: String in FPS:
-		if WeaponArt.holds(a):
+		if WeaponArt.holds(a) or not _textures.has(a):
 			_request(a, sig)
 	if _actions_on:
 		for a: String in ACTION_FPS:
-			if WeaponArt.holds(a):
+			if WeaponArt.holds(a) or not _textures.has(a):
 				_request(a, sig)
 
 
