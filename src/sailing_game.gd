@@ -91,6 +91,7 @@ var _chased := false                  ## un navire ennemi nous a pris en chasse 
 var _chase_quiet := 0.0               ## s depuis la fin de la chasse (l'alerte ne resonne qu'après MUSIC_COMBAT_EXIT s de calme)
 var _music_heat := 0.0                ## 0…1 : coups reçus récemment (fait monter la musique de combat), retombe tout seul
 var _cannon_in := -1               ## le canon dans lequel je suis glissé (je serai tiré dedans), ou -1
+var _cannon_elev := 0.157           ## rad : hausse du tube (13/11 : visée libre ; voir GameConfig.GUN_ELEV_*)
 var _cannon_aim := 0.0              ## rad : orientation du tir autour de la sortie du canon
 var _pface := Vector2(1, 0)         ## direction où je regarde sur le pont (repère du bateau)
 var _target: Dictionary = {}        ## l'objet du pont que E actionnerait (devant moi, à portée), ou {}
@@ -2317,6 +2318,8 @@ func _apply_test_args() -> void:
 				_enter_swim(_enemy_deck_world(s0, Vector2(float(l0[0]), float(l0[3]))))
 				_try_board_enemy()
 				break
+	if _args.has("gun"):   # essai : --gun=0 prend le canon 0 au bout de 3 s (puis --move pour régler pivot et hausse)
+		get_tree().create_timer(3.0).timeout.connect(func() -> void: _gun_enter(int(_args["gun"])))
 	if _args.has("swim"):   # essai : --swim=x,z met le pirate à l'eau à cet endroit du monde
 		var sw := str(_args["swim"]).split(",")
 		get_tree().create_timer(0.2).timeout.connect(func() -> void: _enter_swim(Vector2(float(sw[0]), float(sw[1]))))
@@ -4411,6 +4414,8 @@ func _update_player(delta: float) -> void:
 	var move := Vector2(_axis([KEY_A, KEY_LEFT], [KEY_D, KEY_RIGHT]), _axis([KEY_W, KEY_UP], [KEY_S, KEY_DOWN]))
 	if _test_move != Vector2.ZERO:
 		move = _test_move
+	if _gun_i >= 0:   # (au canon, les touches de marche règlent le pivot et la hausse : voir _update_gun_aim)
+		move = Vector2.ZERO
 	if _chart.is_open() or _pause.is_open() or _inventory.is_open():
 		return   # penché sur la carte, dans le menu Échap ou le sac : on ne bouge pas
 	if _spy:
@@ -5462,6 +5467,7 @@ var _gun_line: MeshInstance3D
 func _gun_enter(i: int) -> void:
 	_gun_i = i
 	_cannon_aim = 0.0
+	_cannon_elev = deg_to_rad(GameConfig.GUN_ELEV_START_DEG)
 	# on se met à son poste : juste derrière la culasse, face à la mer, et on n'en bouge plus tant qu'on vise
 	var c: Array = _ship.cannons[i]
 	var side := float(c[2])
@@ -5560,21 +5566,27 @@ func _update_gun_aim(delta: float) -> void:
 		return
 	var muzzle := _ship.to_global(ShipCannons.muzzle_local(_cannon_nodes[_gun_i]))
 	var out2 := _gun_out(_gun_i)
-	var hit3 := _mouse_ground_point(muzzle.y)
-	if hit3 != Vector3.INF:
-		var to := Vector2(hit3.x - muzzle.x, hit3.z - muzzle.z)
-		if to.length() > 0.5:
-			_cannon_aim = clampf(out2.angle_to(to), -GUN_ARC, GUN_ARC)
-	(_cannon_nodes[_gun_i]["barrel"] as Node3D).rotation.y = -_cannon_aim
+	# 13/11 — visée libre : Q/D (ou les flèches) pivotent le tube, Z/S règlent la hausse ; plus de visée au pointeur
+	var turn := _axis([KEY_A, KEY_LEFT], [KEY_D, KEY_RIGHT])
+	var lift := _axis([KEY_S, KEY_DOWN], [KEY_W, KEY_UP])
+	var fine := 0.35 if Input.is_physical_key_pressed(KEY_SHIFT) else 1.0   # (Maj : réglage fin)
+	# « à droite » à l'écran : le sens dépend du bord où est le canon et de la caméra
+	var right_w := Vector2(1.0, 0.0).rotated(_cam_yaw)
+	var sense := 1.0 if out2.rotated(0.1).dot(right_w) > out2.rotated(-0.1).dot(right_w) else -1.0
+	_cannon_aim = clampf(_cannon_aim + sense * turn * deg_to_rad(GameConfig.GUN_TURN_SPEED) * fine * delta, -GUN_ARC, GUN_ARC)
+	_cannon_elev = clampf(_cannon_elev + lift * deg_to_rad(GameConfig.GUN_ELEV_SPEED) * fine * delta,
+			deg_to_rad(GameConfig.GUN_ELEV_MIN_DEG), deg_to_rad(GameConfig.GUN_ELEV_MAX_DEG))
+	(_cannon_nodes[_gun_i]["barrel"] as Node3D).rotation = Vector3(0.0, -_cannon_aim, _cannon_elev)
 	_send_gun_aim(delta)
 	# trajectoire prévue : mêmes lois que le boulet (voir fire_visual et _update_projectiles)
 	var dir := out2.rotated(_cannon_aim)
 	var fwd := _sim.forward()
-	var vel := Vector3(dir.x, 0.0, dir.y) * GameConfig.BALL_SPEED + Vector3.UP * 5.0 + Vector3(fwd.x, 0.0, fwd.y) * _sim.speed
+	var vel := Vector3(dir.x, 0.0, dir.y) * GameConfig.BALL_SPEED * cos(_cannon_elev) + Vector3.UP * GameConfig.BALL_SPEED * sin(_cannon_elev) \
+			+ Vector3(fwd.x, 0.0, fwd.y) * _sim.speed
 	var pos := muzzle
 	var pts: Array[Vector3] = [pos]
 	var hits := false
-	for k in 70:
+	for k in 110:
 		vel.y -= 16.0 * 0.04
 		pos += vel * 0.04
 		pts.append(pos)
@@ -5616,7 +5628,8 @@ func _gun_fire() -> void:
 		_gun_cd = GUN_RELOAD
 		return
 	var deg := clampi(roundi(rad_to_deg(_cannon_aim)), -180, 180)
-	_request("aim_fire", i + 100 * (deg + 180))
+	var elev := clampi(roundi(rad_to_deg(_cannon_elev)), -40, 80)
+	_request("aim_fire", i + 100 * (deg + 180) + 100000 * (elev + 50))   # (pivot et hausse, au degré près)
 	_cannon_loaded[i] = false   # affichage immédiat ; l'hôte confirme
 	_gun_cd = GUN_RELOAD
 
@@ -7551,10 +7564,15 @@ func apply_request(peer: int, kind: String, value: int) -> void:
 					_net.broadcast_fire(value)
 				else:
 					fire_visual(value)
-		"aim_fire":   # tir visé : valeur = canon + 100 x (angle en degrés + 180)
+		"aim_fire":   # tir visé : valeur = canon + 100 x (pivot en degrés + 180) + 100000 x (hausse en degrés + 50)
 			var gi := value % 100
 			var arc_deg := int(GameConfig.GUN_ARC_DEG)   # (13/11 : l'hôte borne aussi l'angle à l'arc de visée)
-			var aim := deg_to_rad(float(clampi(value / 100 - 180, -arc_deg, arc_deg)))
+			var aim := deg_to_rad(float(clampi((value / 100) % 1000 - 180, -arc_deg, arc_deg)))
+			if aim == 0.0:
+				aim = 0.0001   # (un pivot nul reste un tir visé : la hausse compte)
+			var ek := value / 100000
+			if ek > 0:   # la hausse voyage avec le pivot, dans le même nombre : pivot + 10 x (hausse en degrés + 50)
+				aim += 10.0 * float(clampi(ek, 50 + int(GameConfig.GUN_ELEV_MIN_DEG), 50 + int(GameConfig.GUN_ELEV_MAX_DEG)))
 			if gi >= 0 and gi < _cannon_loaded.size() and _cannon_loaded[gi]:
 				_cannon_loaded[gi] = false
 				if _net.active:
@@ -8199,6 +8217,11 @@ func fire_visual(i: int, human: bool = false, aim: float = 0.0) -> void:
 	var out_local := Vector3(0.0, 0.0, -side)
 	var muzzle := _ship.to_global(ShipCannons.muzzle_local(_cannon_nodes[i]))
 	var dir := (_ship.global_transform.basis * out_local).normalized()
+	var elev := INF   # hausse du tube (rad) ; INF : tir d'avant, à hausse fixe
+	if absf(aim) > 5.0:   # (13/11 : la hausse est rangée avec le pivot : pivot + 10 x (hausse en degrés + 50))
+		var ek := roundf(aim / 10.0)
+		elev = deg_to_rad(ek - 50.0)
+		aim -= ek * 10.0
 	if aim != 0.0:   # tir visé : la sortie tournée de `aim` (même sens que _cannon_launch)
 		var d2 := Vector2(dir.x, dir.z).rotated(aim)
 		dir = Vector3(d2.x, 0.0, d2.y)
@@ -8207,6 +8230,8 @@ func fire_visual(i: int, human: bool = false, aim: float = 0.0) -> void:
 	_cannon_boom(muzzle)
 	if not human:   # un pirate tiré du canon part seul : pas de boulet avec lui
 		var vel := dir * GameConfig.BALL_SPEED + Vector3.UP * 5.0 + Vector3(fwd.x, 0.0, fwd.y) * _sim.speed
+		if elev != INF:
+			vel = dir * GameConfig.BALL_SPEED * cos(elev) + Vector3.UP * GameConfig.BALL_SPEED * sin(elev) + Vector3(fwd.x, 0.0, fwd.y) * _sim.speed
 		var ball := _make_ball(0.16, Color(0.10, 0.10, 0.14))
 		_world_fixed.add_child(ball)
 		ball.global_position = muzzle
@@ -8563,9 +8588,9 @@ func _update_hud() -> void:
 		"cannon":
 			var i: int = it["index"]
 			if _gun_i == i:
-				_prompt.text = "Canon — vise à la souris, clic gauche : tirer   clic droit ou R : lâcher" if _cannon_loaded[i] else "Canon vide — clic gauche : le recharger (boulets : %d)   clic droit ou R : lâcher" % _profile.balls
+				_prompt.text = "Canon — E : tirer — Q/D : pivoter, Z/S : hausse, R : lâcher" if _cannon_loaded[i] else "Canon vide — E : recharger (boulets : %d) — R : lâcher" % _profile.balls
 			elif _cannon_loaded[i]:
-				_prompt.text = "E : viser à la souris (clic gauche : tirer)"
+				_prompt.text = "E : prendre le canon"
 			elif _carrying:
 				_prompt.text = "E : charger le canon"
 			else:

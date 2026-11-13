@@ -2,6 +2,14 @@
   "_commentaire": "Les nouveautés affichées dans la salle de jeux (bouton Nouveautés, et après chaque mise à jour). La plus récente d'abord. 'version': 'prochaine' est remplacé par le numéro de la version au moment de la publication (publish.ps1). Les images sont les fichiers de ce dossier ; publish.ps1 les envoie avec la version.",
   "versions": [
     {
+      "version": "prochaine",
+      "titre": "Canons : visée libre",
+      "points": [
+        "Au canon, tu règles toi-même le tube : Q/D pour pivoter, Z/S pour la hausse (Maj : réglage fin), E pour tirer. Le tracé montre où le boulet tombera.",
+        "Un boulet trop haut ou à côté de la coque ne touche pas."
+      ]
+    },
+    {
       "version": "2026.11.13-1855",
       "titre": "Tableau des quêtes",
       "points": [

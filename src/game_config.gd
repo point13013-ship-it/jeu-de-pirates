@@ -371,6 +371,13 @@ const SAILS_ABACK_BRAKE := 2.2        ## voiles hautes dans un calme ou une saut
 const SAILS_FURLED_GLIDE := 0.5       ## voiles carguées : freinage divisé par deux (le bateau court sur son erre)
 ## Canons et crochet.
 const GUN_ARC_DEG := 50.0             ## ° de visée de chaque côté de la perpendiculaire (avant : 180, soit 360° en tout)
+## 13/11 (Jimmy : « une visée libre, comme dans Sea of Thieves ») : au canon on règle soi-même le pivot (Q/D) et la hausse
+## (Z/S), dans ces limites ; le tracé montre où le boulet tombera.
+const GUN_ELEV_MIN_DEG := -4.0        ## ° : hausse la plus basse (le tube pique un peu)
+const GUN_ELEV_MAX_DEG := 34.0        ## ° : hausse la plus haute
+const GUN_ELEV_START_DEG := 9.0       ## ° : hausse en prenant le canon (la portée d'avant)
+const GUN_TURN_SPEED := 55.0          ## °/s : vitesse du pivot
+const GUN_ELEV_SPEED := 26.0          ## °/s : vitesse de la hausse
 const BALL_SPEED := 31.0              ## m/s à la bouche (avant : 28 ; portée d'environ 27 m -> 32 m)
 ## Combat à terre.
 const GUN_KNOCK_SCALE := 0.3          ## recul d'un ennemi touché par balle (x le recul de l'arme ; avant : 1, il reculait de 1 à 2 m
