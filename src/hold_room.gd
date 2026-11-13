@@ -54,6 +54,8 @@ func build(p_layout: HoldLayout) -> void:
 	# (12/11, refonte v2) le pont au-dessus : invisible, il porte l'ombre ; le soleil n'entre que par l'écoutille (aim_sun)
 	_deck_shadow()
 	_hammocks()
+	_room_walls()
+	_portholes()
 	# lanternes (lot 3 : une tous les ~3 m, flammes qui vacillent) ; réserves aux deux bouts, cloisons, poutres
 	var n_lamps := maxi(3, int(hold_len / GameConfig.HOLD_LANTERN_EVERY))
 	for i in n_lamps:
@@ -149,6 +151,7 @@ func aim_sun(light_dir: Vector3) -> void:
 
 
 var _ceil: Node3D
+var _hammock_xs: Array[float] = []   ## où sont les hamacs (les hublots les évitent)
 var _shaft: MeshInstance3D
 var _dust: CPUParticles3D
 
@@ -202,6 +205,100 @@ func _deck_shadow() -> void:
 	add_child(_dust)
 
 
+## 13/11 : la cale en trois pièces. Chaque cloison intérieure : deux pans de bordé de part et d'autre de la porte, un linteau,
+## deux montants ; une lanterne au-dessus de la porte.
+func _room_walls() -> void:
+	var top := HoldLayout.RISE + HoldLayout.WALL_H
+	var half_w := HoldLayout.FLOOR_HALF + HoldLayout.RUN
+	var door := GameConfig.HOLD_DOOR_HALF
+	for wx: float in layout.walls:
+		for side in [-1.0, 1.0]:
+			var z0: float = side * door
+			var z1: float = side * half_w
+			_box(Vector3(0.12, top, absf(z1 - z0)), Vector3(wx, top * 0.5, (z0 + z1) * 0.5), _wood(WOOD_WALL, Vector2(0.8, 0.7)))
+			_box(Vector3(0.2, top, 0.16), Vector3(wx, top * 0.5, side * (door + 0.02)), _flat(WOOD_RIB))
+		_box(Vector3(0.2, 0.24, door * 2.0 + 0.3), Vector3(wx, top - 0.12, 0.0), _flat(WOOD_RIB))
+		_box(Vector3(0.16, top - 2.05, door * 2.0), Vector3(wx, 2.05 + (top - 2.05) * 0.5 - 0.12, 0.0), _wood(WOOD_WALL, Vector2(0.5, 0.3)))
+
+
+## 13/11 : des hublots dans le mur du fond, pour ne plus se sentir enfermé : un cercle de laiton, la mer et le ciel derrière,
+## avec la ligne d'eau qui monte et descend. Ils évitent l'échelle, l'étagère et les hamacs.
+const _PORTHOLE_SHADER := """
+shader_type spatial;
+render_mode unshaded, cull_disabled;
+uniform vec3 sky : source_color = vec3(0.62, 0.80, 0.92);
+uniform vec3 sea_top : source_color = vec3(0.31, 0.72, 0.66);
+uniform vec3 sea_deep : source_color = vec3(0.08, 0.19, 0.29);
+uniform float phase = 0.0;
+void fragment() {
+	vec2 p = UV * 2.0 - 1.0;
+	if (dot(p, p) > 1.0) { discard; }
+	float line = 0.12 * sin(TIME * 0.9 + phase) + 0.05 * sin(p.x * 6.0 + TIME * 2.3 + phase);
+	float under = smoothstep(line - 0.02, line + 0.02, p.y);
+	vec3 water = mix(sea_top, sea_deep, clamp((p.y - line) * 1.4, 0.0, 1.0));
+	water += 0.10 * smoothstep(0.05, 0.0, abs(p.y - line));
+	ALBEDO = mix(sky, water, under);
+}
+"""
+static var _porthole_shader: Shader
+
+
+func _portholes() -> void:
+	if _porthole_shader == null:
+		_porthole_shader = Shader.new()
+		_porthole_shader.code = _PORTHOLE_SHADER
+	var wall_z := -(HoldLayout.FLOOR_HALF + HoldLayout.RUN) + 0.02
+	var y := HoldLayout.RISE + 1.0
+	var avoid: Array[float] = [layout.hatch_x, layout.rack_pos().x]
+	avoid.append_array(_hammock_xs)
+	var x := -layout.half_len + 1.6
+	var k := 0
+	while x < layout.half_len - 1.4:
+		var ok := true
+		for a: float in avoid:
+			if absf(x - a) < 1.35:
+				ok = false
+		for wx: float in layout.walls:
+			if absf(x - wx) < 0.6:
+				ok = false
+		if ok:
+			var glass := MeshInstance3D.new()
+			var qm := QuadMesh.new()
+			qm.size = Vector2(0.62, 0.62)
+			glass.mesh = qm
+			var m := ShaderMaterial.new()
+			m.shader = _porthole_shader
+			m.set_shader_parameter("phase", float(k) * 1.7)
+			glass.material_override = m
+			glass.position = Vector3(x, y, wall_z)
+			glass.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			add_child(glass)
+			var ring := MeshInstance3D.new()
+			var tor := TorusMesh.new()
+			tor.inner_radius = 0.29
+			tor.outer_radius = 0.37
+			tor.rings = 20
+			tor.ring_segments = 6
+			ring.mesh = tor
+			ring.material_override = _flat(Color("DCAE5C"))
+			ring.position = Vector3(x, y, wall_z + 0.03)
+			ring.rotation = Vector3(PI * 0.5, 0.0, 0.0)
+			add_child(ring)
+			for bolt in 4:
+				var ang := TAU * (float(bolt) + 0.5) / 4.0
+				_box(Vector3(0.05, 0.05, 0.05), Vector3(x + cos(ang) * 0.33, y + sin(ang) * 0.33, wall_z + 0.06), _flat(IRON))
+			# la lumière du jour qui entre par le hublot
+			var light := OmniLight3D.new()
+			light.light_color = Color(0.72, 0.86, 1.0)
+			light.light_energy = 0.55
+			light.omni_range = 2.6
+			light.shadow_enabled = false
+			light.position = Vector3(x, y, wall_z + 0.5)
+			add_child(light)
+			k += 1
+		x += GameConfig.HOLD_PORTHOLE_EVERY
+
+
 ## Deux hamacs tendus devant le mur du fond, entre les côtes, loin de l'échelle et de l'étagère.
 func _hammocks() -> void:
 	var wall_z := -(HoldLayout.FLOOR_HALF + HoldLayout.RUN) + 0.05
@@ -211,6 +308,7 @@ func _hammocks() -> void:
 		if placed >= 2 or absf(x - layout.hatch_x) < 1.8 or absf(x - rack_x) < 1.9:
 			continue
 		placed += 1
+		_hammock_xs.append(x)
 		var st := SurfaceTool.new()
 		st.begin(Mesh.PRIMITIVE_TRIANGLES)
 		var n := 10

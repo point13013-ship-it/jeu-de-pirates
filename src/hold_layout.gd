@@ -21,6 +21,7 @@ var hatch_x := 0.0
 var slot_xs: Array[float] = []
 var circles: Array = []     ## [x, z, rayon] : tonneaux, caisse
 var hull: HullDamage
+var walls: Array[float] = []   ## abscisses des cloisons intérieures (13/11 : la cale est en trois pièces) ; on passe par la porte, au milieu
 
 
 ## Construit le plan de la cale d'un bateau de longueur `ship_length` (unités du modèle) dont l'écoutille est
@@ -37,6 +38,19 @@ func setup(ship_length: float, hatch_model_x: float, p_hull: HullDamage) -> void
 	slot_xs.clear()
 	for s in hull.slots_per_side:
 		slot_xs.append((hull.slot_bx(s) - mid) * scale * k)
+	# 13/11 : deux cloisons coupent la cale en trois pièces (réserve avant, pièce de l'échelle, cambuse arrière). Elles
+	# s'écartent de l'échelle et des voies d'eau pour ne gêner ni l'une ni les autres.
+	walls.clear()
+	for base: float in [-half_len * 0.36, half_len * 0.36]:
+		var wx := base
+		for tries in 8:
+			var clash := absf(wx - hatch_x) < 1.1
+			for sx: float in slot_xs:
+				clash = clash or absf(wx - sx) < 0.7
+			if not clash:
+				break
+			wx += 0.35 * signf(base)
+		walls.append(wx)
 	var e := half_len - MARGIN   # bout du passage
 	circles = [
 		[e - 0.4, 0.9, 0.42],
@@ -59,6 +73,9 @@ func is_walkable(p: Vector2) -> bool:
 		return false
 	for c: Array in circles:
 		if p.distance_to(Vector2(float(c[0]), float(c[1]))) < float(c[2]) + 0.2:
+			return false
+	for wx: float in walls:   # une cloison : on ne la franchit que par sa porte
+		if absf(p.x - wx) < 0.28 and absf(p.y) > GameConfig.HOLD_DOOR_HALF - 0.2:
 			return false
 	return true
 

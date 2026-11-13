@@ -239,7 +239,9 @@ const DOWNED_SQUASH := 0.45           ## un pirate à terre est tassé de 45 % (
 ## 3.3 Cale : plus grande et plus vivante.
 const HOLD_FLOOR_HALF := 1.8          ## m : demi-largeur du fond plat (avant : 1,2)
 const HOLD_WALL_H := 1.8              ## m : mur du fond (avant : 1,4)
-const HOLD_LENGTH_MULT := 1.3         ## la cale est 30 % plus longue
+const HOLD_LENGTH_MULT := 1.8         ## la cale est 80 % plus longue que la coque utile (13/11 : 1,3 ; +40 %, en trois pièces)
+const HOLD_DOOR_HALF := 0.75          ## m : demi-largeur de la porte d'une cloison intérieure de la cale
+const HOLD_PORTHOLE_EVERY := 2.6      ## m entre deux hublots, sur le mur du fond
 const HOLD_END_STORAGE := 1.3         ## m : à chaque bout, une réserve (tonneaux, caisses, sacs) où l'on ne marche pas
 const HOLD_LANTERN_EVERY := 3.2       ## m entre deux lanternes
 const HOLD_FLICKER := 0.18            ## vacillement des flammes (part de l'intensité)
