@@ -2,6 +2,15 @@
   "_commentaire": "Les nouveautés affichées dans la salle de jeux (bouton Nouveautés, et après chaque mise à jour). La plus récente d'abord. 'version': 'prochaine' est remplacé par le numéro de la version au moment de la publication (publish.ps1). Les images sont les fichiers de ce dossier ; publish.ps1 les envoie avec la version.",
   "versions": [
     {
+      "version": "2026.11.13-1626",
+      "titre": "On devine l'intérieur derrière les vitres",
+      "points": [
+        "Derrière les vitres des boutiques et de la taverne, on voit des étagères garnies de bouteilles et de marchandises, et parfois une silhouette.",
+        "Les fenêtres des maisons ont des rideaux.",
+        "Le jour, l'intérieur se devine ; la nuit, il rayonne d'une lumière chaude."
+      ]
+    },
+    {
       "version": "2026.11.13-1619",
       "titre": "La mer ne monte plus sur la ville",
       "points": [
