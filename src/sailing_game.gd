@@ -12,7 +12,7 @@ const PIXELS_PER_METER := 36.0
 const VIEW_SIZE := Vector2i(960, 540)
 const ELEVATION_DEG := 40.0
 const SHOULDER_ELEV_DEG := 22.0       ## vue « épaule » (touche V) : la caméra descend, on regarde presque à l'horizontale
-const SHOULDER_ZOOM := 1.6            ## … et se rapproche (multiplie le grossissement)
+const SHOULDER_ZOOM := 1.15            ## … et se rapproche (multiplie le grossissement)
 const SEA_Y := -1.45
 const WALK_SPEED := 3.6
 const SPRINT_MULT := 1.7               ## facteur de vitesse de marche en maintenant Maj
@@ -801,6 +801,43 @@ var _spy_holder := 0
 
 
 ## Chez tout le monde : le détenteur a changé. Mon instrument suit (longue-vue si c'est moi, boussole sinon).
+## 13/11 (Jimmy) : E à l'armoire aux instruments de la cale : on échange la boussole contre la longue-vue, ou l'inverse (une
+## seule longue-vue à bord). Un mot au-dessus du pirate le confirme, puis s'efface.
+func _swap_tool() -> void:
+	if _spy_holder == _my_id():
+		_request("spy_put", 0)
+		_popup_here("Boussole en poche", Color(1.0, 0.9, 0.6))
+	elif _spy_holder == 0:
+		_request("spy_take", 0)
+		_popup_here("Longue-vue en poche (touche B)", Color(1.0, 0.9, 0.6))
+	else:
+		_popup_here("%s a la longue-vue" % _remote_label(_spy_holder), Color(1.0, 0.6, 0.5))
+		return
+	_sfx.play_at(Synth.thump(), _my_scene_pos(), 0.6)
+
+
+## Un mot qui s'élève au-dessus de mon pirate et s'efface en une seconde, là où il se trouve (cale comprise).
+func _popup_here(text: String, color: Color) -> void:
+	var l := Label3D.new()
+	l.text = text
+	l.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	l.font_size = 40
+	l.pixel_size = 0.0065
+	l.modulate = color
+	l.outline_size = 10
+	l.outline_modulate = Color(0.1, 0.05, 0.02)
+	l.no_depth_test = true
+	l.render_priority = 8
+	l.layers = _sprite.layers   # (même calque de rendu que le pirate : la cale a le sien)
+	_sprite.get_parent().add_child(l)
+	l.global_position = _sprite.global_position + Vector3.UP * 2.4
+	var tw := l.create_tween()
+	tw.set_parallel(true)
+	tw.tween_property(l, "global_position", l.global_position + Vector3.UP * 0.9, 1.3)
+	tw.tween_property(l, "modulate:a", 0.0, 1.3).set_delay(0.5)
+	tw.chain().tween_callback(l.queue_free)
+
+
 func _spy_holder_changed() -> void:
 	var mine := _spy_holder == _my_id()
 	if not mine and _spy:
@@ -6592,6 +6629,11 @@ func _update_camera(delta: float) -> void:
 	# 2 ou 3 pixels d'écran.
 	_cam_offset = _cam_offset.lerp(_camera_target(), 1.0 - exp(-delta * 6.0))
 	_elev_deg = lerpf(_elev_deg, SHOULDER_ELEV_DEG if _shoulder_active() else _elev_user, 1.0 - exp(-delta * 4.0))
+	# 13/11 (Jimmy : voir ce qui est devant soi) : en vue basse (V), à la barre, la caméra se place derrière le bateau et
+	# regarde vers l'avant ; à pied, on la tourne à la main (molette enfoncée)
+	if _shoulder_active() and _loc == Loc.SHIP and _mode == Mode.HELM:
+		var fwd := _sim.forward()
+		_cam_yaw = lerp_angle(_cam_yaw, atan2(-fwd.x, -fwd.y), 1.0 - exp(-delta * 1.6))
 	_cam.rotation = Vector3(-deg_to_rad(_elev_deg), _cam_yaw, 0.0)   # (_cam_yaw : cap de la caméra, tourné avec la molette)
 	PirateSprite.view_yaw = _cam_yaw
 	var el := deg_to_rad(_elev_deg)
@@ -6962,6 +7004,8 @@ func _interact_hold(secondary: bool) -> void:
 			_leave_hold()
 		"rack":
 			_interact_rack(secondary)
+		"tools":
+			_swap_tool()
 		"bucket":
 			if _hull.water > 0.0:
 				_start_action("bail", "Écoper")   # lot 2 (4.3) : remplir le seau, puis le vider ; l'eau baisse à la fin
@@ -8362,6 +8406,10 @@ func _hold_prompt() -> String:
 			return "Tu as les mains prises" if _carrying else "E : prendre une planche (%d)   R : prendre un boulet (%d)" % [_profile.planks, _profile.balls]
 		"bucket":
 			return "E : écoper (%d %% d'eau)" % int(_hull.fill() * 100.0) if _hull.water > 0.0 else "La cale est sèche"
+		"tools":
+			if _spy_holder == _my_id():
+				return "E : reprendre la boussole"
+			return "E : prendre la longue-vue" if _spy_holder == 0 else "La longue-vue est prise"
 		"hole":
 			return "E : boucher la voie d'eau" if (_carry_kind == "plank" or _profile.planks > 0) else "Il te faut une planche dans ton sac (coffre du bateau : étagère au fond)"
 	return ""
@@ -9110,8 +9158,8 @@ func _build_signposts() -> void:
 		_land.circles.append([at.x, -at.y, 0.25])
 		var l := Label3D.new()
 		l.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-		l.font_size = 40
-		l.pixel_size = 0.0085
+		l.font_size = 32
+		l.pixel_size = 0.0075
 		l.modulate = Color(1.0, 0.93, 0.78)
 		l.outline_size = 8
 		l.outline_modulate = Color(0.12, 0.06, 0.02)

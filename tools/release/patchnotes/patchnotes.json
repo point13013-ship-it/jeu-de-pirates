@@ -2,6 +2,14 @@
   "_commentaire": "Les nouveautés affichées dans la salle de jeux (bouton Nouveautés, et après chaque mise à jour). La plus récente d'abord. 'version': 'prochaine' est remplacé par le numéro de la version au moment de la publication (publish.ps1). Les images sont les fichiers de ce dossier ; publish.ps1 les envoie avec la version.",
   "versions": [
     {
+      "version": "prochaine",
+      "titre": "Armoire aux instruments, vue basse",
+      "points": [
+        "Dans la cale, une armoire surmontée d'une boussole : E pour échanger la boussole et la longue-vue.",
+        "Touche V : une vue basse qui montre ce qu'il y a devant toi. À la barre, la caméra passe derrière le bateau. À pied, tourne-la avec la molette enfoncée."
+      ]
+    },
+    {
       "version": "2026.11.13-2003",
       "titre": "Le port ne sauve plus d'un combat",
       "points": [

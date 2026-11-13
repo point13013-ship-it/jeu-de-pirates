@@ -50,6 +50,7 @@ func build(p_layout: HoldLayout) -> void:
 	_decor()
 	_ladder()
 	_rack()
+	_tools_cabinet()
 	_bucket()
 	# (12/11, refonte v2) le pont au-dessus : invisible, il porte l'ombre ; le soleil n'entre que par l'écoutille (aim_sun)
 	_deck_shadow()
@@ -251,6 +252,7 @@ func _portholes() -> void:
 	var y := HoldLayout.RISE + 1.0
 	var avoid: Array[float] = [layout.hatch_x, layout.rack_pos().x]
 	avoid.append_array(_hammock_xs)
+	avoid.append(layout.tools_pos().x)   # (l'armoire aux instruments)
 	var x := -layout.half_len + 1.6
 	var k := 0
 	while x < layout.half_len - 1.4:
@@ -412,6 +414,30 @@ func _rack() -> void:
 		var col := k % 3
 		_box(Vector3(1.35, 0.07, 0.2), Vector3(p.x, y + 0.17 + row * 0.5 + col * 0.08, wall_z + 0.1 + (col - 1) * 0.0),
 				_flat(WOOD_LIGHT.lightened(0.08 * col)), Vector3(0, 0, 0))
+
+
+## 13/11 (Jimmy) : l'armoire aux instruments. Une petite armoire de bois sombre contre le mur du fond, porte ouverte, avec
+## dessus une grande boussole de laiton (le cadran, la rose et l'aiguille rouge) : on comprend ce qu'on y prend.
+func _tools_cabinet() -> void:
+	var p := layout.tools_pos()
+	var wall_z := -(HoldLayout.FLOOR_HALF + HoldLayout.RUN) + 0.22
+	var y := HoldLayout.RISE + 0.3
+	var brass := _flat(Color("d9a441"))
+	_box(Vector3(1.1, 1.5, 0.4), Vector3(p.x, y + 0.75, wall_z), _flat(WOOD_RIB))
+	_box(Vector3(0.96, 1.36, 0.06), Vector3(p.x, y + 0.75, wall_z + 0.2), _flat(WOOD_WALL))
+	for k in 2:
+		_box(Vector3(0.96, 0.05, 0.3), Vector3(p.x, y + 0.45 + k * 0.5, wall_z + 0.05), _flat(WOOD_LIGHT))
+	_box(Vector3(0.06, 1.36, 0.5), Vector3(p.x + 0.56, y + 0.75, wall_z + 0.42), _flat(WOOD_RIB))   # la porte, ouverte
+	# la boussole en enseigne, au-dessus
+	var dial := _cylinder(0.42, 0.08, Vector3(p.x, y + 1.95, wall_z + 0.18), brass)
+	dial.rotation.x = PI * 0.5
+	var face := _cylinder(0.34, 0.09, Vector3(p.x, y + 1.95, wall_z + 0.19), _flat(Color("efe4cc")))
+	face.rotation.x = PI * 0.5
+	_box(Vector3(0.07, 0.5, 0.04), Vector3(p.x, y + 1.95, wall_z + 0.25), _flat(Color("b23a30")), Vector3(0, 0, 0.6))
+	_box(Vector3(0.05, 0.3, 0.04), Vector3(p.x, y + 1.95, wall_z + 0.25), _flat(IRON), Vector3(0, 0, 0.6 + PI * 0.5))
+	# la longue-vue posée sur la tablette
+	var tube := _cylinder(0.07, 0.6, Vector3(p.x - 0.1, y + 1.03, wall_z + 0.1), brass)
+	tube.rotation.z = PI * 0.5
 
 
 func _bucket() -> void:
