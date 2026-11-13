@@ -2301,7 +2301,18 @@ func _enemy_would_hit_player(model: ShipModel, pos: Vector2, yaw: float) -> bool
 
 
 ## Hôte : la cale est pleine, le bateau coule. Remorqué au port, remis à neuf.
+const SINK_LOOT_TTL := 300.0   ## s : les trésors du bord flottent sur le lieu du naufrage ce temps-là, puis disparaissent
+var _last_sink_pos := Vector2.ZERO
+
+
 func _sink_ship() -> void:
+	# 13/11 : le naufrage coûte aussi les trésors du bord. Ceux du coffre du capitaine partent à la dérive sur place
+	# (SINK_LOOT_TTL s pour revenir les chercher, les ennemis peuvent passer avant) ; ceux que l'on porte suivent (« spill »).
+	_last_sink_pos = _sim.position
+	for k in _stash.size():
+		var a := TAU * float(k) / maxf(float(_stash.size()), 1.0)
+		_loot.spawn("t:" + str(_stash[k]), _last_sink_pos + Vector2.from_angle(a) * (3.0 + 0.8 * float(k % 3)), SINK_LOOT_TTL)
+	_stash.clear()
 	_grap_state = 0
 	_hull.reset()
 	_sim.position = _spawn_pos
@@ -2346,7 +2357,11 @@ func show_notice(text: String) -> void:
 
 ## Chez tout le monde : le bateau a coulé.
 func sunk_visual() -> void:
-	_say("Le bateau a coulé ! Remorqué au port, la coque est remise à neuf", 6.0)
+	_say("Le bateau a coulé ! Remorqué au port. Les trésors du bord flottent là-bas pendant 5 minutes", 7.0)
+	var aboard: bool = _loc == Loc.SHIP or _loc == Loc.HOLD or _loc == Loc.NEST or (_loc == Loc.CLIMB and _climb.get("kind") == "mast")
+	if aboard and _carry_kind == "treasure":   # ce que je porte à bord part à l'eau avec le reste
+		_request("spill", Treasure.index_of(_carry_item))
+		_drop_carried()
 	_shake_t = 0.6
 	if _loc == Loc.HOLD:
 		_leave_hold(true)
@@ -5780,6 +5795,9 @@ func apply_request(peer: int, kind: String, value: int) -> void:
 					fire_visual(value, true)
 		"anchor":
 			_sim.anchored = not _sim.anchored
+		"spill":   # naufrage : le trésor que `peer` portait à bord flotte sur le lieu du naufrage
+			if value >= 0 and Treasure.id_at(value) != "":
+				_loot.spawn("t:" + Treasure.id_at(value), _last_sink_pos + Vector2(randf_range(-4.0, 4.0), randf_range(-4.0, 4.0)), SINK_LOOT_TTL)
 		"drop":   # lot 2 (2.4) : poser au sol ce qu'on porte (valeur : indice du trésor, -1 boulet, -2 planche)
 			var dkind := "ball" if value == -1 else ("plank" if value == -2 else "t:" + Treasure.id_at(value))
 			var dpos := Vector2.INF
