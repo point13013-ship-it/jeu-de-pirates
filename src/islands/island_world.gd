@@ -405,7 +405,7 @@ func _terrain_h(i: int, p: Vector2) -> float:
 		h += float(hl["h"]) * u * u * (3.0 - 2.0 * u) * (shore if bool(hl["coast"]) else inland)
 	var seed: float = t["seed"]
 	var amp: float = t["noise"]
-	h += ((_vnoise(p * 0.085 + Vector2(seed, seed * 1.7)) - 0.5) * 2.0 * amp + (_vnoise(p * 0.24 + Vector2(seed * 3.1, 5.0)) - 0.5) * amp * 0.7) * inland
+	h += ((_vnoise(p * 0.085 + Vector2(seed, seed * 1.7)) - 0.5) * 2.0 * amp + (_vnoise(p * 0.24 + Vector2(seed * 3.1, 5.0)) - 0.5) * amp * 0.28) * inland   # (le bruit fin reste doux : pas de plaque de roche parasite)
 	return maxf(h, 0.0)
 
 

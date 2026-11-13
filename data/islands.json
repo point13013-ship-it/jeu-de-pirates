@@ -902,17 +902,19 @@
       ]
     },
     {"id": "croc", "name": "Le Croc", "blurb": "Un piton dressé comme une dent. On dit qu'un coffre dort tout en haut.", "danger": 2,
-     "center": [-40, 250], "lobes": [[0, 0, 24], [16, 5, 14], [-16, -3, 13], [3, -13, 13], [-6, 14, 11]],
-     "terrain": {"seed": 7, "noise": 0.9, "beach": 5,
-       "hills": [{"at": [3, -5], "r": 19, "h": 22, "steep": 0.8, "steep_dir": -60, "flat": 1.6},
-                 {"at": [-13, 6], "r": 9, "h": 5, "steep": 0.3, "steep_dir": 160, "flat": 1.5},
-                 {"at": [15, 7], "r": 7, "h": 3.5, "flat": 1.2}]},
-     "palms": 9, "cliffs": 0.3,
-     "enemies": [{"kind": "crab", "at": [-10, 16]}, {"kind": "crab", "at": [-17, 10]}, {"kind": "crab", "at": [18, 9]},
-                 {"kind": "skeleton", "at": [-5, 2]}, {"kind": "skeleton", "at": [2, -3]}],
-     "chests": [{"at": [3, -5], "gold": 140}, {"at": [15, 7], "gold": 40}],
-     "props": [{"kind": "bones", "at": [0, 4]}, {"kind": "rowboat", "at": [-18, 14], "rot": 40}, {"kind": "barrel", "at": [-13, 6]},
-               {"kind": "crate", "at": [-12, 7]}],
-     "scatter": {"bush": 14, "fern": 12, "rock": 6, "rock_spire": 3, "driftwood": 3}, "berries": []}
+     "center": [330, 60], "lobes": [[0, 0, 40], [28, 8, 24], [-28, -6, 22], [4, -26, 22], [-10, 26, 21], [22, -16, 18]],
+     "terrain": {"seed": 7, "noise": 1.1, "beach": 7,
+       "hills": [{"at": [6, -8], "r": 30, "h": 30, "steep": 0.75, "steep_dir": -50, "flat": 2.5},
+                 {"at": [-15, 8], "r": 22, "h": 9, "steep": 0.35, "steep_dir": 150, "flat": 9},
+                 {"at": [27, 10], "r": 13, "h": 6, "flat": 4},
+                 {"at": [-8, 27], "r": 11, "h": 4, "flat": 3}]},
+     "palms": 16, "cliffs": 0.3,
+     "enemies": [{"kind": "crab", "at": [-12, 34]}, {"kind": "crab", "at": [-30, 4]}, {"kind": "crab", "at": [30, 20]}, {"kind": "crab", "at": [8, 34]},
+                 {"kind": "skeleton", "at": [-15, 8]}, {"kind": "skeleton", "at": [-11, 12]}, {"kind": "skeleton", "at": [-3, 2]},
+                 {"kind": "skeleton", "at": [27, 10]}],
+     "chests": [{"at": [6, -8], "gold": 160}, {"at": [-17, 6], "gold": 60}, {"at": [27, 12], "gold": 40}],
+     "props": [{"kind": "bones", "at": [-4, 16]}, {"kind": "rowboat", "at": [-22, 30], "rot": 40}, {"kind": "barrel", "at": [-13, 10]},
+               {"kind": "crate", "at": [-12, 11]}, {"kind": "barrel", "at": [25, 8]}, {"kind": "bones", "at": [2, -2]}],
+     "scatter": {"bush": 22, "fern": 18, "rock": 9, "rock_spire": 4, "driftwood": 4}, "berries": []}
   ]
 }

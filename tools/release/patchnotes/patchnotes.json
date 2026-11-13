@@ -2,6 +2,13 @@
   "_commentaire": "Les nouveautés affichées dans la salle de jeux (bouton Nouveautés, et après chaque mise à jour). La plus récente d'abord. 'version': 'prochaine' est remplacé par le numéro de la version au moment de la publication (publish.ps1). Les images sont les fichiers de ce dossier ; publish.ps1 les envoie avec la version.",
   "versions": [
     {
+      "version": "prochaine",
+      "titre": "Le Croc, en grand",
+      "points": [
+        "Le Croc est maintenant presque deux fois plus grande (220 m), avec un grand palier à mi-hauteur, trois coffres et plus d'ennemis. Elle est à l'est du port : sors du bassin et mets le cap à l'est."
+      ]
+    },
+    {
       "version": "2026.11.13-2021",
       "titre": "Première île en relief : Le Croc",
       "points": [
