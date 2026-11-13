@@ -272,7 +272,7 @@ func _apply(_delta: float) -> void:
 	_env.fog_mode = Environment.FOG_MODE_DEPTH
 	_env.fog_light_color = Color(0.22, 0.26, 0.38).lerp(Color(0.70, 0.77, 0.82), daylight)
 	_env.fog_light_energy = 1.0
-	_env.fog_density = clampf(0.25 + 0.7 * fog_amount, 0.0, 0.95)   # opacité maximale au loin
+	_env.fog_density = clampf(GameConfig.FOG_DENSITY_BASE + GameConfig.FOG_DENSITY_GAIN * fog_amount, 0.0, 0.95)   # opacité maximale au loin
 	_env.fog_depth_begin = FOG_CAM_DIST - lerpf(2.0, 8.0, fog_amount)
 	_env.fog_depth_end = FOG_CAM_DIST + lerpf(70.0, 18.0, fog_amount)
 	_env.fog_depth_curve = 1.6
@@ -315,5 +315,5 @@ func _compute_grade(day: float, dusk: float, fog_amount: float) -> void:
 	haze_c = haze_c.lerp(Vector3(0.30, 0.33, 0.40) * lerpf(0.4, 1.0, day), dark * 0.7)
 	grade = {
 		"tint": tint, "shadow": shadow, "high": high, "sat": sat, "contrast": con, "vignette": vig,
-		"haze_color": haze_c, "haze": fog_amount * 0.35,   # (12/11 : 0,62 ; le filtre ne fait plus que des bancs qui dérivent)
+		"haze_color": haze_c, "haze": fog_amount * GameConfig.FOG_SCREEN_BANKS,   # (13/11 : coupés, ils s'amassaient d'un côté en traînées opaques)
 	}

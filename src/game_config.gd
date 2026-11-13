@@ -326,3 +326,9 @@ const CABIN_STUB_WALL := 0.32
 const HULL_SWELL_VOL := 0.25
 const HULL_SPLASH_MIN := 1.2          ## s (à pleine vitesse, ces écarts sont raccourcis)
 const HULL_SPLASH_MAX := 3.5
+
+## Brume (13/11) : la brume est dans la 3D (profondeur et ras de l'eau, SkyCycle). Les « bancs » ajoutés par le filtre d'image
+## s'amassaient d'un côté de l'écran en traînées opaques : coupés. Densité au loin : base + gain x force de la brume.
+const FOG_SCREEN_BANKS := 0.0         ## part des bancs du filtre d'image (12/11 : 0,35)
+const FOG_DENSITY_BASE := 0.21        ## (12/11 : 0,25 ; -15 %)
+const FOG_DENSITY_GAIN := 0.6         ## (12/11 : 0,7 ; -15 %)
