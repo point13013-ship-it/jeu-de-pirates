@@ -5,10 +5,11 @@ shader_type spatial;
 // Couleur de sommet : r = herbe (0 sable, 1 herbe), g = sable mouillé, b = sentier, a = roche (falaise).
 // Éclairé normalement : il reçoit les ombres des palmiers, des ennemis et des personnages.
 
-uniform vec3 grass_dark = vec3(0.19, 0.38, 0.16);
-uniform vec3 grass_base = vec3(0.29, 0.50, 0.20);
-uniform vec3 grass_light = vec3(0.36, 0.59, 0.24);
-uniform vec3 grass_high = vec3(0.43, 0.63, 0.27);
+// (13/11 : palette v1, design/bible-v2.md : végétation #2D6444, #5A9440, #A3C650)
+uniform vec3 grass_dark = vec3(0.176, 0.392, 0.267);
+uniform vec3 grass_base = vec3(0.290, 0.520, 0.240);
+uniform vec3 grass_light = vec3(0.353, 0.580, 0.251);
+uniform vec3 grass_high = vec3(0.560, 0.700, 0.300);
 uniform vec3 flower_a = vec3(0.98, 0.82, 0.33);
 uniform vec3 flower_b = vec3(0.84, 0.33, 0.36);
 uniform float flowers = 1.0;
@@ -26,8 +27,11 @@ float vn(vec2 p) {
 	return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x), f.y);
 }
 
+// (13/11 : chaque octave est tournée : le bruit n'est plus aligné sur une grille, les taches d'herbe ne sont plus carrées)
 float fbm(vec2 p) {
-	return vn(p) * 0.55 + vn(p * 2.1 + 7.3) * 0.30 + vn(p * 4.3 + 1.7) * 0.15;
+	vec2 p2 = mat2(vec2(0.8, 0.6), vec2(-0.6, 0.8)) * p * 2.1 + 7.3;
+	vec2 p3 = mat2(vec2(0.28, 0.96), vec2(-0.96, 0.28)) * p * 4.3 + 1.7;
+	return vn(p) * 0.55 + vn(p2) * 0.30 + vn(p3) * 0.15;
 }
 
 vec3 srgb(vec3 c) {
@@ -39,7 +43,9 @@ void vertex() {
 }
 
 vec3 grass(vec2 p) {
-	float n = fbm(p * 0.32);
+	// (13/11 : le dessin des taches est déformé par un second bruit : des contours souples au lieu de pavés)
+	vec2 warp = vec2(vn(p * 0.21 + 3.1), vn(p * 0.21 + 9.7)) - 0.5;
+	float n = fbm(p * 0.32 + warp * 1.6);
 	vec3 col = grass_base;
 	if (n < 0.34) {
 		col = grass_dark;
