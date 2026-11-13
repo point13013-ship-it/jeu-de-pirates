@@ -87,6 +87,8 @@ var _interactables: Array = []
 var _cannon_loaded: Array = []
 var _cannon_icons: Array = []
 var _cannon_nodes: Array = []       ## les canons 3D (ShipCannons) : {root, barrel}
+var _chased := false                  ## un navire ennemi nous a pris en chasse (l'alerte a sonné)
+var _chase_quiet := 0.0               ## s depuis la fin de la chasse (l'alerte ne resonne qu'après MUSIC_COMBAT_EXIT s de calme)
 var _music_heat := 0.0                ## 0…1 : coups reçus récemment (fait monter la musique de combat), retombe tout seul
 var _cannon_in := -1               ## le canon dans lequel je suis glissé (je serai tiré dedans), ou -1
 var _cannon_aim := 0.0              ## rad : orientation du tir autour de la sortie du canon
@@ -1739,6 +1741,19 @@ func _apply_test_args() -> void:
 				ev.physical_keycode = code
 				ev.keycode = code
 				ev.pressed = true
+				_unhandled_input(ev))
+	if _args.has("click"):
+		# test : --click=0.7,0.45@8,R:0.3,0.5@9 clique (gauche, ou droit avec « R: ») à cet endroit de la fenêtre (parts de sa
+		# largeur et de sa hauteur) aux secondes indiquées
+		for item in str(_args["click"]).split(";"):
+			var at := item.split("@")
+			var right := at[0].begins_with("R:")
+			var xy := at[0].trim_prefix("R:").split(",")
+			get_tree().create_timer(float(at[1])).timeout.connect(func() -> void:
+				var ev := InputEventMouseButton.new()
+				ev.button_index = MOUSE_BUTTON_RIGHT if right else MOUSE_BUTTON_LEFT
+				ev.pressed = true
+				ev.position = Vector2(get_viewport().get_visible_rect().size) * Vector2(float(xy[0]), float(xy[1]))
 				_unhandled_input(ev))
 	if _args.has("send"):
 		# test réseau : --send=sail:1,anchor:0 envoyé 2 s après l'arrivée à bord
@@ -5408,6 +5423,19 @@ func _update_atmosphere(delta: float) -> void:
 			if en.state != IslandEnemy.State.IDLE and en.state != IslandEnemy.State.DEAD and en.pos.distance_to(_lpos) < 12.0:
 				battle = true
 				heat += 0.15
+	# 13/11 (2.3, « on n'a même pas remarqué la musique ») : à l'instant où un navire nous prend en chasse, la cloche du bord
+	# sonne l'alerte, un message le dit, et la musique de combat arrive fort avant de se poser.
+	var chased := false
+	for es2: Dictionary in _fleet.ships:
+		if es2["state"] == "chase" and (es2["sim"] as ShipSim).position.distance_to(_sim.position) < 120.0:
+			chased = true
+	_chase_quiet = 0.0 if chased else _chase_quiet + delta
+	if chased and not _chased:
+		_chased = true
+		_atmo.audio.play(Synth.aggro_sting(), GameConfig.AGGRO_STING_VOL, 1.0, AudioSettings.BUS_SFX)
+		_say("Navire ennemi en chasse : aux postes !", 4.0)
+	elif _chased and _chase_quiet > GameConfig.MUSIC_COMBAT_EXIT:
+		_chased = false
 	_music_heat = maxf(_music_heat - delta / GameConfig.MUSIC_HEAT_DECAY, 0.0)   # les coups reçus réchauffent, puis ça retombe
 	_atmo.update(delta, {"pos": pos, "where": where, "speed": _sim.speed / maxf(_sim.max_speed, 0.1) * 8.0, "moved": moved,
 			"face": _face, "focus": _cam_focus, "paused": _pause.is_open(), "battle": battle,
@@ -5783,6 +5811,23 @@ func _unhandled_input(event: InputEvent) -> void:
 		# à terre, le clic droit frappe ou tire avec l'arme secondaire (vers le pointeur aussi)
 		elif mb.pressed and (mb.button_index == MOUSE_BUTTON_LEFT or mb.button_index == MOUSE_BUTTON_RIGHT) and _loc == Loc.LAND:
 			_aim_at_click(mb.position)   # le coup ou le tir part vers l'endroit cliqué
+			_try_attack(mb.button_index == MOUSE_BUTTON_RIGHT)
+		# 13/11 (retour de Jimmy : « sur notre bateau, quand on clique, il ne se passe rien ») : à bord, seule la touche F frappait ;
+		# le clic n'était branché qu'à terre. Sur le pont (et sur le pont d'un ennemi abordé, qui compte comme la terre), le clic
+		# gauche frappe ou tire avec l'arme principale, le droit avec la secondaire, vers le pointeur.
+		elif mb.pressed and (mb.button_index == MOUSE_BUTTON_LEFT or mb.button_index == MOUSE_BUTTON_RIGHT) and _loc == Loc.SHIP 				and _mode == Mode.WALK:
+			var keep_face := _face
+			var keep_pos := _lpos
+			var keep_h := _lh
+			_lpos = _ship_to_world(_ppos)   # (la visée part de l'endroit du pont où se tient le pirate)
+			_lh = _ship.position.y + _ship.deck_height(_ppos.x)
+			_aim_at_click(mb.position)
+			var aim := Basis(Vector3.UP, -_sim.yaw) * Vector3(_face.x, 0.0, _face.y)   # du monde au repère du bateau
+			if aim.length() > 0.01:
+				_pface = Vector2(aim.x, -aim.z).normalized()
+			_face = keep_face
+			_lpos = keep_pos
+			_lh = keep_h
 			_try_attack(mb.button_index == MOUSE_BUTTON_RIGHT)
 		elif mb.pressed and mb.button_index == MOUSE_BUTTON_WHEEL_UP:
 			_zoom_user = clampf(_zoom_user * 1.12, 0.55, 1.9)   # molette : on se rapproche

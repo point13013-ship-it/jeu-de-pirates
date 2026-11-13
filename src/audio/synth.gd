@@ -523,6 +523,32 @@ static func rope() -> AudioStream:
 		return _to_stream(_normalize(out, 0.5), false))
 
 
+## 13/11 (2.3) — l'alerte au combat : la cloche du bord sonnée trois fois, de plus en plus fort, sur trois coups de tambour
+## graves. Elle se joue à l'instant où un navire ennemi nous prend en chasse (personne ne remarquait la musique seule).
+static func aggro_sting() -> AudioStream:
+	return _cached("aggro_sting", func() -> AudioStreamWAV:
+		var len := int(2.6 * RATE)
+		var rumble := _lowpass(_noise(len, 4107), 140.0)
+		var out := PackedFloat32Array()
+		out.resize(len)
+		for i in len:
+			var t := float(i) / RATE
+			var v := 0.0
+			for k in 3:
+				var t0 := 0.02 + 0.42 * k
+				if t < t0:
+					continue
+				var u := t - t0
+				var gain := 0.55 + 0.22 * k
+				# la cloche : partiels inharmoniques, attaque franche, longue queue
+				v += gain * exp(-u * 2.6) * (sin(TAU * 587.0 * u) * 0.55 + sin(TAU * 587.0 * 2.76 * u) * 0.28 * exp(-u * 3.0)
+						+ sin(TAU * 587.0 * 5.4 * u) * 0.16 * exp(-u * 7.0) + sin(TAU * 587.0 * 0.5 * u) * 0.22)
+				# le tambour : un coup grave qui descend, et son souffle
+				v += gain * exp(-u * 9.0) * (sin(TAU * (88.0 - 30.0 * minf(u * 6.0, 1.0)) * u) * 1.1 + rumble[i] * 2.0)
+			out[i] = v
+		return _to_stream(_normalize(out, 0.85), false))
+
+
 ## PROVISOIRE (lot 4) — l'alerte des requins : deux notes graves qui reviennent, et un frisson d'eau.
 static func shark_alert() -> AudioStream:
 	var rec := recorded("shark_alert")

@@ -32,6 +32,7 @@ var _fade_in := 3.0
 var _fading_out: AudioStreamPlayer
 var _fade_out_level := 0.0
 var _fade_out_secs := 3.0
+var _combat_boost := 0.0         ## 1 à l'entrée en combat, retombe à 0 : la musique arrive fort puis se pose
 var _track_gain := 1.0           ## volume du morceau en cours (tiré à son départ)
 var _gap := 0.0                  ## s de silence restant avant le prochain morceau
 var _state := ""                 ## état voulu (après hystérésis du combat)
@@ -114,6 +115,10 @@ func update(delta: float, mood: String, duck: float = 1.0, intensity: float = 0.
 	else:
 		_combat_hold = maxf(_combat_hold - delta, 0.0)
 	var want := "combat" if _combat_hold > 0.0 else mood
+	# 13/11 (2.3) : la musique de combat arrive plus fort que le reste, puis redescend à son niveau en MUSIC_COMBAT_BOOST_TIME s
+	_combat_boost = move_toward(_combat_boost, 0.0, delta / GameConfig.MUSIC_COMBAT_BOOST_TIME)
+	if want == "combat" and _state != "combat":
+		_combat_boost = 1.0
 	if want != _state:
 		var leaving_combat := _state == "combat"
 		_state = want
@@ -131,8 +136,9 @@ func update(delta: float, mood: String, duck: float = 1.0, intensity: float = 0.
 			_switch_to(_state, GameConfig.MUSIC_FADE, GameConfig.MUSIC_FADE)
 	if _playing_id != "":
 		_level = move_toward(_level, 1.0, delta / maxf(_fade_in, 0.05))
-		_active.volume_db = linear_to_db(maxf(_level * BASE * duck * _track_gain, 0.0001))
-		(_tops[_active] as AudioStreamPlayer).volume_db = linear_to_db(maxf(_level * BASE * duck * _top_gain * _track_gain, 0.0001))
+		var push := (GameConfig.MUSIC_COMBAT_GAIN + GameConfig.MUSIC_COMBAT_BOOST * _combat_boost) if _state == "combat" else 1.0
+		_active.volume_db = linear_to_db(maxf(_level * BASE * duck * _track_gain * push, 0.0001))
+		(_tops[_active] as AudioStreamPlayer).volume_db = linear_to_db(maxf(_level * BASE * duck * _top_gain * _track_gain * push, 0.0001))
 	if _fading_out != null:
 		_fade_out_level = move_toward(_fade_out_level, 0.0, delta / maxf(_fade_out_secs, 0.05))
 		_fading_out.volume_db = linear_to_db(maxf(_fade_out_level * BASE * duck, 0.0001))
