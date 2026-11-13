@@ -2,6 +2,14 @@
   "_commentaire": "Les nouveautés affichées dans la salle de jeux (bouton Nouveautés, et après chaque mise à jour). La plus récente d'abord. 'version': 'prochaine' est remplacé par le numéro de la version au moment de la publication (publish.ps1). Les images sont les fichiers de ce dossier ; publish.ps1 les envoie avec la version.",
   "versions": [
     {
+      "version": "2026.11.13-1702",
+      "titre": "Une pluie plus douce",
+      "points": [
+        "Le bruit de la pluie est refait : grave et feutré, avec des gouttes isolées, au lieu du chuintement aigu d'avant.",
+        "Il est aussi nettement moins fort. Le curseur « Pluie » des réglages permet toujours de le baisser encore."
+      ]
+    },
+    {
       "version": "2026.11.13-1655",
       "titre": "Nouvelle ville : lumière, ombres et pavés mouillés",
       "points": [
