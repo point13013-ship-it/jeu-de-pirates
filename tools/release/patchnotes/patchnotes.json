@@ -2,6 +2,14 @@
   "_commentaire": "Les nouveautés affichées dans la salle de jeux (bouton Nouveautés, et après chaque mise à jour). La plus récente d'abord. 'version': 'prochaine' est remplacé par le numéro de la version au moment de la publication (publish.ps1). Les images sont les fichiers de ce dossier ; publish.ps1 les envoie avec la version.",
   "versions": [
     {
+      "version": "2026.11.13-1655",
+      "titre": "Nouvelle ville : lumière, ombres et pavés mouillés",
+      "points": [
+        "Aperçu de la nouvelle ville : quand il pleut, les pavés se mouillent et renvoient la lumière des lanternes.",
+        "Une lanterne à la porte de chaque boutique, des ombres au pied des maisons et sous les arbres, des ombres de nuages qui passent."
+      ]
+    },
+    {
       "version": "2026.11.13-1647",
       "titre": "Nouvelle ville : arbres, tonneaux et bancs",
       "points": [
