@@ -2,6 +2,18 @@
   "_commentaire": "Les nouveautés affichées dans la salle de jeux (bouton Nouveautés, et après chaque mise à jour). La plus récente d'abord. 'version': 'prochaine' est remplacé par le numéro de la version au moment de la publication (publish.ps1). Les images sont les fichiers de ce dossier ; publish.ps1 les envoie avec la version.",
   "versions": [
     {
+      "version": "2026.11.13-1311",
+      "titre": "Aperçu de la nouvelle ville",
+      "points": [
+        "Nouveau bouton au menu : « Aperçu : la nouvelle ville (seul) ». La future ville du jeu, en chantier, à visiter en solo.",
+        "Trois fois plus grande : une baie en croissant, un cap avec son fort et son phare, une haute ville, quatre quartiers.",
+        "De vraies maisons colorées, des lanternes qui éclairent les rues la nuit, des fenêtres allumées, des reflets sur l'eau.",
+        "Receleur, tableau des quêtes et magasin sont à quelques pas du bateau. On sort de l'eau par les échelles rouges ou par la grève.",
+        "Encore en chantier : pas d'intérieurs (on parle aux marchands à leur porte), église, phare, moulin et tentes en volumes simples, pas encore de passants ni de sons.",
+        "Les parties à plusieurs gardent l'ancienne ville pour l'instant."
+      ]
+    },
+    {
       "version": "2026.11.13-1242",
       "titre": "À la nage : plus de messages au milieu de l'écran",
       "points": [
