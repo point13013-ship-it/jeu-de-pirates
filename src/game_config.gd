@@ -486,6 +486,10 @@ const FLINT_CHEST_CHANCE := 0.35        ## chance de trouver un silex dans un co
 const TOWN_WALKERS_MAIN := 6            ## sur le quai et la grande rue (chacun)
 const TOWN_WALKERS_STREET := 2          ## sur chaque autre rue
 const TOWN_KIDS_PER_PLAZA := 2          ## des enfants qui courent autour de chaque grande place
+## Tableau des quêtes (13/11, demande de Jimmy) : des contrats qui se renouvellent ; on revient au tableau toucher la récompense.
+const BOARD_REACH := 2.6                ## m : distance à laquelle on consulte le tableau (E)
+const BOARD_CONTRACTS := 3              ## contrats affichés en même temps
+const SIGN_RANGE := 16.0                ## m : un panneau indicateur se lit à moins de cette distance
 const TOWN_SPOT_NEAR := 6.0
 const TOWN_SPOT_FAR := 40.0
 const TOWN_SPOT_VOL := 0.8              ## volume général des sons de lieu (taverne, forge, marché, chantier, lavoir, quai, poules)

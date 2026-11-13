@@ -2619,6 +2619,7 @@ func _build_town() -> void:
 	if not _town_plan.is_empty():
 		_build_town_life_v3()
 		_build_old_town_life()
+		_build_signposts()
 		return
 	var town_cfg := _read_json("res://data/town.json")
 	# la haute ville (12/11) : son plateau est décrit par la méta du port (fabriquée avec le modèle), au même format
@@ -3889,6 +3890,9 @@ func _on_inventory_use(kind: String, id: String) -> void:
 			_set_playing(_profile.instrument)
 		_inventory.open(_inventory_rows())
 		return
+	if _chest_island == -3:   # le tableau des quêtes
+		_board_use(kind, id)
+		return
 	if _chest_island >= 0 or _chest_island == -2:   # le panneau montre le coffre d'une cabane, ou celui du bateau (-2)
 		_on_chest_use(kind, id)
 		return
@@ -4119,6 +4123,7 @@ func _give_rep(peer: int, n: int, why: String) -> void:
 ## Je gagne `n` points de réputation (`why` : d'où ils viennent) : la barre se remplit en s'animant ; un nouveau rang ouvre une
 ## bannière qui liste les skins de bateau débloqués (à la voilerie).
 func apply_rep(n: int, why: String) -> void:
+	_contract_event(why)
 	var info := _profile.add_reputation(n)
 	if info.is_empty():
 		return
@@ -4333,6 +4338,7 @@ func _process(delta_raw: float) -> void:
 		var here := _lpos if (_loc == Loc.LAND or _loc == Loc.SWIM) else _sim.position
 		_town_lights.update(1.0 - _atmo.sky.daylight, Vector3(here.x, 0.0, here.y), Vector3(here.x, _lh, here.y), delta)
 		_update_town_sounds(delta, here)
+		_update_signposts(delta)
 	_update_interior()
 	_update_npcs(delta)
 	_ship.update_cutaway(_loc == Loc.SHIP and _ship.inside_cabin(_ppos))
@@ -6988,6 +6994,9 @@ func _interact(secondary: bool) -> void:
 		return   # ligoté : on ne touche à rien, sauf au silex caché
 	if not secondary and _loc == Loc.SWIM and _try_siren():
 		return   # lot 4 (5.6) : la sirène me ramène à bord
+	if not secondary and _loc == Loc.LAND and _near_quest_board() and _nearest_npc() == null:
+		_open_quest_board()
+		return
 	if not secondary and (_loc == Loc.LAND or (_loc == Loc.SHIP and _mode == Mode.WALK)):
 		var downed := _revive_candidate()
 		if downed != 0:   # lot 4 (5.2) : relever un camarade à terre
@@ -8481,6 +8490,8 @@ func _update_hud() -> void:
 		var near := _nearest_npc()
 		if near != null:
 			_prompt.text = "E : parler à %s" % near.display_name
+		elif _near_quest_board():
+			_prompt.text = "E : lire le tableau des quêtes"
 		elif _islands.nearest_chest(_lpos) >= 0:
 			_prompt.text = "E : ouvrir le coffre   F / clic : frapper"
 		elif _atmo != null and not _atmo.life.nearest_lore(_lpos).is_empty():
@@ -8931,6 +8942,182 @@ func _open_cabin_chest(island: int) -> void:
 	_chest_island = island
 	_inventory.set_texts("Coffre de la cabane — à tout l'équipage", "Haut/Bas : choisir     E : ranger / reprendre     R / Échap : fermer")
 	_inventory.open(_chest_rows())
+
+
+# ------------------------------------------------------------------ tableau des quêtes et panneaux indicateurs (13/11)
+# Le tableau propose GameConfig.BOARD_CONTRACTS contrats. Chacun compte tout seul (les mêmes événements que la réputation :
+# navire coulé, coffre ouvert, trésors vendus, île capturée ; et les îles découvertes). Quand il est rempli, on revient au
+# tableau toucher l'or ; un nouveau contrat le remplace aussitôt. Ils sont gardés dans le profil.
+const CONTRACT_KINDS := {
+	"ships": {"why": "bateau ennemi coulé", "label": "Coule %d navire%s ennemi%s", "min": 1, "max": 3, "gold": 90},
+	"chests": {"why": "coffre ouvert", "label": "Ouvre %d coffre%s sur les îles", "min": 2, "max": 5, "gold": 30},
+	"sales": {"why": "trésors vendus", "label": "Vends des trésors au receleur, %d fois", "min": 1, "max": 3, "gold": 55},
+	"capture": {"why": "île capturée", "label": "Capture %d île%s", "min": 1, "max": 1, "gold": 160},
+	"discover": {"why": "", "label": "Découvre %d île%s que tu ne connais pas", "min": 1, "max": 2, "gold": 70},
+}
+var _signposts: Array = []          ## {pos (monde), label, lines: [[nom, position monde]]}
+var _sign_t := 0.0
+
+
+func _quest_board_pos() -> Vector2:
+	for b: Dictionary in _town_plan.get("buildings", []):
+		if str(b.get("id", "")) == "b2":
+			return Vector2(float(b["x"]), -float(b["y"]))
+	return Vector2.INF
+
+
+func _near_quest_board() -> bool:
+	var p := _quest_board_pos()
+	return p != Vector2.INF and _lpos.distance_to(p) <= GameConfig.BOARD_REACH + 1.2
+
+
+## Complète la liste des contrats (jamais deux fois le même genre en même temps).
+func _fill_contracts() -> void:
+	var kinds: Array = CONTRACT_KINDS.keys()
+	while _profile.contracts.size() < GameConfig.BOARD_CONTRACTS:
+		var free: Array = kinds.filter(func(k: String) -> bool:
+			for c: Dictionary in _profile.contracts:
+				if str(c["kind"]) == k:
+					return false
+			return true)
+		var kind: String = free[randi() % free.size()]
+		var def: Dictionary = CONTRACT_KINDS[kind]
+		var need := randi_range(int(def["min"]), int(def["max"]))
+		_profile.contracts.append({"kind": kind, "need": need, "have": 0, "reward": int(def["gold"]) * need,
+				"base": _profile.discovered.size()})
+	_profile.save()
+
+
+func _contract_label(c: Dictionary) -> String:
+	var def: Dictionary = CONTRACT_KINDS.get(str(c["kind"]), {})
+	var n := int(c["need"])
+	var s := "s" if n > 1 else ""
+	var text := str(def.get("label", "%d"))
+	return text % ([n, s, s] if text.count("%s") == 2 else ([n, s] if text.count("%s") == 1 else [n]))
+
+
+func _contract_have(c: Dictionary) -> int:
+	if str(c["kind"]) == "discover":
+		return clampi(_profile.discovered.size() - int(c.get("base", 0)), 0, int(c["need"]))
+	return mini(int(c["have"]), int(c["need"]))
+
+
+## Un fait d'armes vient d'arriver (`why` : le motif de réputation) : les contrats de ce genre avancent.
+func _contract_event(why: String) -> void:
+	var changed := false
+	for c: Dictionary in _profile.contracts:
+		var def: Dictionary = CONTRACT_KINDS.get(str(c["kind"]), {})
+		if str(def.get("why", "")) == why and why != "" and int(c["have"]) < int(c["need"]):
+			c["have"] = int(c["have"]) + 1
+			changed = true
+			if int(c["have"]) >= int(c["need"]):
+				_popup("Contrat rempli : va au tableau", _my_world_pos(), Color(1.0, 0.85, 0.35))
+	if changed:
+		_profile.save()
+
+
+func _open_quest_board() -> void:
+	if _inventory.is_open() or _dialog.is_open() or _shop_menu.is_open() or _chart.is_open() or _pause.is_open():
+		return
+	_fill_contracts()
+	_chest_island = -3
+	_inventory.set_texts("Tableau des quêtes", "Clic ou E sur un contrat rempli : toucher la récompense     R / Échap : fermer")
+	_inventory.open(_board_rows())
+
+
+func _board_rows() -> Array:
+	var rows: Array = [{"head": true, "label": "Contrats en cours — ils avancent tout seuls ; reviens ici quand c'est fait"}]
+	for i in _profile.contracts.size():
+		var c: Dictionary = _profile.contracts[i]
+		var have := _contract_have(c)
+		var done := have >= int(c["need"])
+		rows.append({"kind": "contract", "id": str(i), "label": _contract_label(c), "count": have,
+				"right": ("toucher %d or" % int(c["reward"])) if done else "%d / %d" % [have, int(c["need"])], "enabled": done,
+				"desc": "%s. Avancement : %d sur %d. Récompense : %d or.%s" % [_contract_label(c), have, int(c["need"]), int(c["reward"]),
+						" Clique pour toucher ta récompense." if done else ""]})
+	return rows
+
+
+func _board_use(kind: String, id: String) -> void:
+	if kind != "contract":
+		return
+	var i := int(id)
+	if i < 0 or i >= _profile.contracts.size():
+		return
+	var c: Dictionary = _profile.contracts[i]
+	if _contract_have(c) < int(c["need"]):
+		return
+	_profile.gold += int(c["reward"])
+	_profile.contracts.remove_at(i)
+	_fill_contracts()
+	_atmo.audio.play_chime()
+	_popup("+%d or" % int(c["reward"]), _my_world_pos(), Color(1.0, 0.85, 0.35))
+	_inventory.set_rows(_board_rows())
+
+
+## Les panneaux indicateurs : un poteau et une étiquette sur chaque place et au débarcadère, qui donne la direction des boutiques.
+func _build_signposts() -> void:
+	var shops: Array = []
+	for b: Dictionary in _town_plan.get("buildings", []):
+		if str(b.get("kind", "")) == "service" and b.get("name") != null:
+			shops.append([str(b["name"]).get_slice(" (", 0), Vector2(float(b["x"]), -float(b["y"]))])
+	var spots: Array = []
+	for pl: Dictionary in _town_plan.get("plazas", []):
+		spots.append(Vector2(float(pl["x"]) - float(pl["rx"]) * 0.55, -(float(pl["y"]) - float(pl["ry"]) * 0.55)))
+	for at: Vector2 in spots:
+		var h := _land.surface_below(at, 50.0)
+		if h == Land.NO_SURFACE or _land.blocker_at(at) != "":
+			continue
+		var near: Array = shops.filter(func(s: Array) -> bool: return (s[1] as Vector2).distance_to(at) > 7.0)
+		near.sort_custom(func(a: Array, b2: Array) -> bool: return (a[1] as Vector2).distance_to(at) < (b2[1] as Vector2).distance_to(at))
+		near = near.slice(0, 5)
+		var root := Node3D.new()
+		root.position = Vector3(at.x, h, at.y)
+		_world_fixed.add_child(root)
+		var wood := ProcKit.flat(Color("6A4532"))
+		ProcKit.box(root, Vector3(0.14, 2.4, 0.14), Vector3(0, 1.2, 0), wood)
+		for k in 3:
+			ProcKit.box(root, Vector3(0.95, 0.2, 0.06), Vector3(0.18 * (1.0 if k % 2 == 0 else -1.0), 2.15 - 0.3 * k, 0.0), ProcKit.flat(Color("CF9C62")),
+					Vector3(0, 0.5 * k, 0))
+		_land.circles.append([at.x, -at.y, 0.25])
+		var l := Label3D.new()
+		l.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		l.font_size = 40
+		l.pixel_size = 0.0085
+		l.modulate = Color(1.0, 0.93, 0.78)
+		l.outline_size = 8
+		l.outline_modulate = Color(0.12, 0.06, 0.02)
+		l.position = Vector3(0.0, 4.2, 0.0)
+		l.no_depth_test = true
+		l.render_priority = 6
+		l.visible = false
+		root.add_child(l)
+		_signposts.append({"pos": at, "label": l, "lines": near})
+
+
+## Deux fois par seconde : le panneau le plus proche montre où sont les boutiques (flèche selon l'écran, distance en mètres).
+func _update_signposts(delta: float) -> void:
+	if _signposts.is_empty():
+		return
+	_sign_t -= delta
+	if _sign_t > 0.0:
+		return
+	_sign_t = 0.4
+	var here := _lpos if _loc == Loc.LAND else _my_world_pos()
+	var arrows := ["→", "↘", "↓", "↙", "←", "↖", "↑", "↗"]
+	for sp: Dictionary in _signposts:
+		var l := sp["label"] as Label3D
+		var at: Vector2 = sp["pos"]
+		l.visible = _loc == Loc.LAND and here.distance_to(at) < GameConfig.SIGN_RANGE and _interior_active < 0
+		if not l.visible:
+			continue
+		var text := ""
+		for line: Array in sp["lines"]:
+			var to: Vector2 = (line[1] as Vector2) - at
+			var scr := _screen_of_face(to.rotated(-_cam_yaw))
+			var idx := int(round(scr.angle() / (TAU / 8.0))) % 8
+			text += "%s %s  %d m\n" % [arrows[(idx + 8) % 8], str(line[0]), int(to.length())]
+		l.text = text.strip_edges()
 
 
 func _on_inventory_closed() -> void:
