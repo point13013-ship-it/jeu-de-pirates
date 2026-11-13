@@ -2,6 +2,16 @@
   "_commentaire": "Les nouveautés affichées dans la salle de jeux (bouton Nouveautés, et après chaque mise à jour). La plus récente d'abord. 'version': 'prochaine' est remplacé par le numéro de la version au moment de la publication (publish.ps1). Les images sont les fichiers de ce dossier ; publish.ps1 les envoie avec la version.",
   "versions": [
     {
+      "version": "prochaine",
+      "titre": "Le bord de l'eau",
+      "points": [
+        "On tombe du quai en courant dessus : plus de mur invisible.",
+        "À la nage, on ne passe plus sous la pierre du quai.",
+        "Pour remonter : E au pied d'une échelle.",
+        "La cale n'a plus qu'une cloison, à droite, et elle est plus large."
+      ]
+    },
+    {
       "version": "2026.11.13-1842",
       "titre": "Port sûr, ville vivante, écueils",
       "points": [

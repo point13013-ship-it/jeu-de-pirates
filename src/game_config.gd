@@ -253,7 +253,7 @@ const DROWN_WARNING := 15.0           ## s : l'alerte s'affiche dans les derniè
 const DOWNED_SQUASH := 0.45           ## un pirate à terre est tassé de 45 % (provisoire, faute d'image « au sol »)
 
 ## 3.3 Cale : plus grande et plus vivante.
-const HOLD_FLOOR_HALF := 1.8          ## m : demi-largeur du fond plat (avant : 1,2)
+const HOLD_FLOOR_HALF := 2.5          ## m : demi-largeur du fond plat (avant : 1,2)
 const HOLD_WALL_H := 1.8              ## m : mur du fond (avant : 1,4)
 const HOLD_LENGTH_MULT := 1.8         ## la cale est 80 % plus longue que la coque utile (13/11 : 1,3 ; +40 %, en trois pièces)
 const HOLD_DOOR_HALF := 0.75          ## m : demi-largeur de la porte d'une cloison intérieure de la cale
@@ -446,6 +446,12 @@ const WINDOW_GLOW := 1.5               ## force des fenêtres allumées, la nuit
 const TOWN_SHELTER := Vector3(5.0, -45.0, 85.0)   ## (x, z, rayon) : la houle tombe à SHORE_SWELL dans ce cercle autour de la ville v3 (bassin compris)
 const TOWN_LABELS := false             ## les noms numérotés au-dessus des bâtiments de la ville v3 (repères de chantier)
 ## Bugs de la liste du 13/11.
+## 13/11 (Jimmy) — le bord de l'eau de la ville : on tombe du quai en marchant dessus (tout de suite en courant, après
+## QUAY_FALL_PUSH s à pousser contre le bord en marchant) ; à la nage le mur du quai arrête QUAY_SWIM_GAP m avant le sol (on ne
+## passe plus sous la pierre) ; on remonte par une échelle, avec E, à moins de QUAY_LADDER_REACH m.
+const QUAY_FALL_PUSH := 0.22
+const QUAY_SWIM_GAP := 0.75
+const QUAY_LADDER_REACH := 1.7
 const WATER_EXIT_STEP := 0.9          ## m : en sortant de l'eau sur un quai ou un ponton, le pirate est posé à cette distance du bord
 const WARM_GLOW := Color(1.0, 0.80, 0.46)   ## teinte des fenêtres, vitrines et lanternes allumées (avant : blanc)
 const WEAPON_SHIP_DAMAGE := 1.5        ## 1.7 : points de coque qu'un point de dégât d'arme enlève à un bateau ennemi (un boulet : 18)

@@ -41,7 +41,7 @@ func setup(ship_length: float, hatch_model_x: float, p_hull: HullDamage) -> void
 	# 13/11 : deux cloisons coupent la cale en trois pièces (réserve avant, pièce de l'échelle, cambuse arrière). Elles
 	# s'écartent de l'échelle et des voies d'eau pour ne gêner ni l'une ni les autres.
 	walls.clear()
-	for base: float in [-half_len * 0.36, half_len * 0.36]:
+	for base: float in [half_len * 0.36]:   # (13/11, Jimmy : une seule cloison, à droite ; celle de gauche est retirée)
 		var wx := base
 		for tries in 8:
 			var clash := absf(wx - hatch_x) < 1.1

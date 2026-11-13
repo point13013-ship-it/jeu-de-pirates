@@ -49,7 +49,26 @@ func load_plan(plan: Dictionary) -> void:
 		obbs.append([float(b["x"]), float(b["y"]), float(b["w"]) * 0.5, float(b["d"]) * 0.5, float(b["ang"])])
 	ladders = []
 	for l: Array in plan.get("ladders", []):
-		ladders.append(Vector2(float(l[0]), float(l[1])))
+		# 13/11 : le point du plan est un peu en retrait ; l'échelle est au vrai bord du sol, côté eau (comme la maquette la dessine)
+		var at := Vector2(float(l[0]), float(l[1]))
+		var out := Vector2.ZERO
+		for k in 16:
+			var dir := Vector2.from_angle(TAU * k / 16.0)
+			if not _in_walk_polys(at + dir * 1.1):
+				out += dir
+		out = out.normalized() if out.length() > 0.01 else Vector2(0, -1)
+		for step in 40:
+			if not _in_walk_polys(at + out * 0.1):
+				break
+			at += out * 0.1
+		ladders.append(at)
+
+
+func _in_walk_polys(m: Vector2) -> bool:
+	for poly: PackedVector2Array in walk_polys:
+		if Geometry2D.is_point_in_polygon(m, poly):
+			return true
+	return false
 
 
 static func _poly(pts: Array) -> PackedVector2Array:

@@ -4498,6 +4498,18 @@ func _update_player(delta: float) -> void:
 				_bpos = bm.move_with_slide(_bpos, Vector2(ld.x, -ld.z) / ShipModel.SCALE)
 				return
 			var r := _land.step(_lpos, step_l, _lh)
+			# 13/11 (Jimmy : « un mur invisible m'empêche de tomber dans l'eau ») : au bord d'un quai ou d'un ponton, on tombe à
+			# l'eau en avançant (tout de suite en courant, après un instant à pousser en marchant)
+			var ahead := _lpos + step_l
+			if Vector2(r.x, r.y).distance_to(ahead) > 0.001 and _land.is_over_water(ahead + _face * 0.3) and _land.air_clear(ahead, 1.0) \
+					and _land.interior_at(_lpos) < 0 and _islands.island_at(_lpos, IslandWorld.SLOPE) < 0:
+				_edge_push_t += delta * (4.0 if Input.is_physical_key_pressed(KEY_SHIFT) else 1.0)
+				if _edge_push_t >= GameConfig.QUAY_FALL_PUSH:
+					_edge_push_t = 0.0
+					_enter_swim(ahead + _face * (GameConfig.QUAY_SWIM_GAP + 0.25))
+					return
+			else:
+				_edge_push_t = 0.0
 			_lpos = Vector2(r.x, r.y)
 			_lh = r.z
 		return
@@ -4843,6 +4855,7 @@ func _world_to_ship(w: Vector2) -> Vector2:
 var _board_id := -1                 ## l'ennemi sur le pont duquel je suis (-1 : aucun)
 var _bpos := Vector2.ZERO           ## ma position sur son pont (repère de son modèle)
 var _board_strike_t := 0.0          ## délai avant le prochain coup d'un squelette
+var _edge_push_t := 0.0             ## s passées à pousser contre le bord d'un quai (voir QUAY_FALL_PUSH)
 var _prev_bpos := Vector2.ZERO      ## ma position sur son pont à l'image d'avant
 var _board_walk := Vector2.ZERO     ## mon pas sur son pont pendant la dernière image (monde) : le bateau qui m'emporte ne compte pas
 var _swim_shot_t := 3.0             ## délai avant le prochain tir de l'équipage ennemi sur moi, à la nage
@@ -5126,9 +5139,20 @@ func _update_swim(move: Vector2, delta: float) -> void:
 		return
 	_face = move.normalized()
 	var next := _lpos + move * SWIM_SPEED * delta   # (move : déjà corrigé pour la vitesse à l'écran, voir _screen_move)
+	if _quay_wall(next + _face * GameConfig.QUAY_SWIM_GAP):
+		# 13/11 (Jimmy : « je passe sous la pierre ») : le mur du quai arrête avant le sol ; on glisse le long
+		var slid := false
+		for alt: Vector2 in [Vector2(next.x, _lpos.y), Vector2(_lpos.x, next.y)]:
+			var d2 := alt - _lpos
+			if d2.length() > 0.0001 and not _quay_wall(alt + d2.normalized() * GameConfig.QUAY_SWIM_GAP) and not _quay_wall(alt):
+				next = alt
+				slid = true
+				break
+		if not slid:
+			return
 	if _land.is_walkable(next) and not _land.is_over_water(next):
-		if not _land.can_exit_water(next, GameConfig.LADDER_EXIT_REACH):
-			return   # (ville v3 : le quai est trop haut, on sort par une échelle ou par la grève)
+		if not _land.can_exit_water(next, 0.0):
+			return   # (ville v3 : le quai est trop haut ; on sort par la grève, ou par une échelle avec E)
 		# 13/11 (bug 1.1) : sur un quai ou un ponton, le pirate « sautait » hors de l'eau au ras du bord et retombait souvent
 		# dedans. Il est maintenant posé debout, d'un coup, à un pas du bord (le plus loin possible dans le sens où il nageait).
 		var out := next
@@ -5156,11 +5180,57 @@ func _update_swim(move: Vector2, delta: float) -> void:
 	_lpos = next
 
 
+## Vrai si `p` (monde x/z) est sous un quai ou un ponton de la ville v3 d'où l'on ne sort pas de l'eau à pied.
+func _quay_wall(p: Vector2) -> bool:
+	return not _land.walk_polys.is_empty() and _land.on_town(p) and not _land.can_exit_water(p, 0.0)
+
+
+## L'échelle de quai de la ville v3 la plus proche du nageur (monde x/z), ou Vector2.INF à plus de QUAY_LADDER_REACH m.
+func _near_quay_ladder() -> Vector2:
+	var best := Vector2.INF
+	var best_d := GameConfig.QUAY_LADDER_REACH
+	for l: Vector2 in _land.ladders:
+		var w := Vector2(l.x, -l.y)
+		if w.distance_to(_lpos) < best_d:
+			best_d = w.distance_to(_lpos)
+			best = w
+	return best
+
+
+## 13/11 (Jimmy) : on ne sort plus de l'eau tout seul au pied d'une échelle de quai ; E : on y grimpe. Vrai si c'est fait.
+func _try_quay_ladder() -> bool:
+	if _loc != Loc.SWIM:
+		return false
+	var l := _near_quay_ladder()
+	if l == Vector2.INF:
+		return false
+	var top := _land.nearest_standable(l, 0.0, 2.6)
+	for h: float in [0.6, 1.2, 2.0, 3.0]:   # (un ponton ou un quai plus haut que le sol de base)
+		if top != Vector2.INF:
+			break
+		top = _land.nearest_standable(l, h, 2.6)
+	if top == Vector2.INF:
+		return false
+	var quay_h := _land.surface_below(top, 50.0)
+	if quay_h == Land.NO_SURFACE:
+		quay_h = 0.0
+	_loc = Loc.CLIMB
+	_mode = Mode.WALK
+	_lh = quay_h
+	_climb = {"kind": "hull", "t": 0.0, "dur": 1.3, "from": _lpos, "to": top, "board": false,
+			"y0": SEA_Y - SWIM_DEPTH - quay_h, "y1": 0.0}
+	_splash_burst(_lpos)
+	_sfx.play_at(Synth.rope(), _my_scene_pos(), 0.7)
+	return true
+
+
 ## E (ou Espace) à la nage : on ne remonte à bord QUE par une échelle de coque (demande 4.6, avancée au lot 1). Avant, n'importe
 ## quel point de la coque suffisait, et le pirate était posé au point libre du pont le plus proche… parfois dans la cabine, à travers
 ## son mur (le passage « du ponton à la cabine » signalé après le lot 1).
 func _try_board_from_water() -> void:
 	if _try_board_enemy():
+		return
+	if _try_quay_ladder():
 		return
 	var i := _nearest_ladder_from_water()
 	if i < 0:
@@ -8387,6 +8457,8 @@ func _update_hud() -> void:
 		var at_ladder := _nearest_ladder_from_water() >= 0
 		if _near_enemy_ladder():
 			_prompt.text = "À la nage — E : monter à l'abordage"
+		elif _near_quay_ladder() != Vector2.INF:
+			_prompt.text = "À la nage — E : monter à l'échelle"
 		elif near_raft:
 			_prompt.text = "À la nage — E : monter sur ton radeau"
 		elif at_ladder:
