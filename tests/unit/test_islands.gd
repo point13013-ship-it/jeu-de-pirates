@@ -133,7 +133,7 @@ func _test_combat() -> void:
 		if crab2.state == IslandEnemy.State.RECOVER:
 			break
 	_check(not hit2, "reculer pendant l'armement évite le coup")
-	# le sabre : un crabe a 2 points de vie
+	# le sabre : un crabe a 3 points de vie
 	var victim := w.enemies[0]
 	victim.revive()
 	var dir := Vector2(1, 0)
@@ -142,8 +142,13 @@ func _test_combat() -> void:
 	_check(hits1.size() == 1 and not bool(hits1[0]["killed"]), "un premier coup blesse le crabe sans le tuer")
 	victim.knock = Vector2.ZERO
 	victim.pos = origin + dir * 1.2
+	# (13/11 : le crabe a 3 points de vie : il faut trois coups de sabre)
+	var hits_mid := w.swing(origin, dir)
+	_check(hits_mid.size() == 1 and not bool(hits_mid[0]["killed"]), "un deuxième coup le blesse encore")
+	victim.knock = Vector2.ZERO
+	victim.pos = origin + dir * 1.2
 	var hits2 := w.swing(origin, dir)
-	_check(hits2.size() == 1 and bool(hits2[0]["killed"]), "le deuxième coup le tue")
+	_check(hits2.size() == 1 and bool(hits2[0]["killed"]), "le troisième coup le tue")
 	_check(int(hits2[0]["gold"]) >= 2 and int(hits2[0]["gold"]) <= 5, "il lâche entre 2 et 5 or")
 	_check(victim.is_dead(), "l'ennemi est mort")
 	_check(w.swing(origin, dir).is_empty(), "on ne frappe pas un mort")

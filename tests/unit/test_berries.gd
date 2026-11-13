@@ -114,8 +114,13 @@ func _test_spells() -> void:
 	var nova := {"kind": "nova", "radius": 3.0, "damage": 2, "knock": 2.0}
 	en.pos = Vector2(2.0, 0.0)
 	_check(w.cast(nova, Vector2(10, 0), Vector2.RIGHT).is_empty(), "onde : hors de portée, rien")
+	# (13/11 : le crabe a 3 vies ; l'onde en enlève 2 : il en faut deux)
+	var first := w.cast(nova, Vector2(0, 0), Vector2.RIGHT)
+	_check(first.size() == 1 and not bool(first[0]["killed"]), "onde : blesse un crabe (3 vies)")
+	en.knock = Vector2.ZERO
+	en.pos = Vector2(2.0, 0.0)
 	var hits := w.cast(nova, Vector2(0, 0), Vector2.RIGHT)
-	_check(hits.size() == 1 and bool(hits[0]["killed"]) and int(hits[0]["gold"]) > 0, "onde : tue un crabe (2 vies) et laisse de l'or")
+	_check(hits.size() == 1 and bool(hits[0]["killed"]) and int(hits[0]["gold"]) > 0, "la deuxième onde le tue et laisse de l'or")
 
 	en = _fresh(w, "crab")
 	en.pos = Vector2(5.0, 0.0)
