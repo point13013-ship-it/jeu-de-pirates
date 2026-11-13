@@ -2,6 +2,13 @@
   "_commentaire": "Les nouveautés affichées dans la salle de jeux (bouton Nouveautés, et après chaque mise à jour). La plus récente d'abord. 'version': 'prochaine' est remplacé par le numéro de la version au moment de la publication (publish.ps1). Les images sont les fichiers de ce dossier ; publish.ps1 les envoie avec la version.",
   "versions": [
     {
+      "version": "prochaine",
+      "titre": "Le port ne sauve plus d'un combat",
+      "points": [
+        "Au port, personne ne t'attaque si tu n'étais pas déjà en combat. Mais un navire qui te chassait ne lâche plus quand tu rentres au port."
+      ]
+    },
+    {
       "version": "2026.11.13-1911",
       "titre": "La cale",
       "points": [

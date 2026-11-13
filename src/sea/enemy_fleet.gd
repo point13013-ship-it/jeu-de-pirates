@@ -15,7 +15,7 @@ const FIRE_RANGE := 64.0       ## m : portée de ses canons
 const FIRE_ARC := 0.5          ## rad : le flanc doit viser à ce point près
 const MIN_DIST := 26.0         ## m : il ne s'approche pas plus près
 const SINK_TIME := 7.0         ## s : durée du naufrage
-const PORT_PEACE := 170.0      ## m : 13/11 (Jimmy) : un bateau des joueurs au port (à moins de ça) n'est ni pris en chasse ni canonné
+const PORT_PEACE := 170.0      ## m : 13/11 (Jimmy) : un bateau des joueurs au port (à moins de ça) n'est pas pris en chasse ; une chasse déjà lancée continue
 const PORT_SAFE := 300.0       ## m : pas d'ennemi qui apparaît si près du port
 const VOLLEY_COOLDOWN := 5.0
 const KINDS: Array = ["sloop", "brigantin", "galion"]
@@ -282,11 +282,9 @@ func _ai(s: Dictionary, dt: float, target: Dictionary) -> void:
 	var bearing := atan2(-to.y, to.x)   # cap qui mène droit au bateau des joueurs (même convention que ShipSim.yaw)
 	var desired := sim.yaw
 	var alive := bool(target.get("alive", true))
-	if port_peace > 0.0 and tpos.distance_to(spawn_origin) < port_peace:
-		alive = false   # au port, les joueurs sont à l'abri : l'ennemi les ignore et repart en patrouille
-		if s["state"] == "chase":
-			s["wp"] = sim.position + (sim.position - spawn_origin).normalized() * 200.0
-			s["wp_t"] = 40.0
+	# 13/11 (Jimmy) : au port, un navire en patrouille n'engage pas les joueurs ; mais un navire qui les chassait déjà ne
+	# lâche pas : se réfugier au port ne fait pas tomber un combat en cours
+	var at_port := port_peace > 0.0 and tpos.distance_to(spawn_origin) < port_peace
 	if s["state"] == "patrol":
 		s["wp_t"] = float(s["wp_t"]) - dt
 		if float(s["wp_t"]) <= 0.0 or sim.position.distance_to(s["wp"]) < 25.0:
@@ -295,7 +293,7 @@ func _ai(s: Dictionary, dt: float, target: Dictionary) -> void:
 		var wv: Vector2 = (s["wp"] as Vector2) - sim.position
 		desired = atan2(-wv.y, wv.x)
 		sim.sail_level = 2
-		if alive and d < AGGRO:
+		if alive and d < AGGRO and not at_port:
 			s["state"] = "chase"
 	else:   # chase
 		if not alive or d > AGGRO * 1.7:
