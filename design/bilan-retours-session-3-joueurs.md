@@ -30,7 +30,7 @@ Presque tous les réglages sont dans `src/game_config.gd`, section « Retours de
 | Rivage | La houle s'apaise près des îles et ne traverse plus l'eau claire ; bord de l'eau claire irrégulier, sans trait | Longer une île en bateau : le bateau tangue moins près du bord |
 | Menu principal | Coucher de soleil en gros pixels, pirate sur un ponton | Lancer le jeu |
 
-Réglages : houle au bord d'une île 100 % → 20 % (), reprise sur 30 m ().
+Réglages : houle au bord d'une île 100 % → 20 % (`SHORE_SWELL`), reprise sur 30 m (`SHELTER_WIDTH`).
 Reste de la refonte : silhouettes d'îles (falaises, épaves, ruines), menus de pause, de boutique et de création du pirate,
 sillage persistant, reflets des lanternes.
 
