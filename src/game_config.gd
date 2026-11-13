@@ -409,3 +409,4 @@ const LAMP_SHADOWS := 2                ## nombre de lanternes qui portent des om
 const LAMP_REFLECTION_LENGTH := 6.5    ## m : longueur du reflet d'une lanterne sur l'eau
 const WINDOW_GLOW := 3.0               ## force des fenêtres allumées, la nuit
 const TOWN_SHELTER := Vector3(5.0, -45.0, 85.0)   ## (x, z, rayon) : la houle tombe à SHORE_SWELL dans ce cercle autour de la ville v3 (bassin compris)
+const TOWN_LABELS := false             ## les noms numérotés au-dessus des bâtiments de la ville v3 (repères de chantier)

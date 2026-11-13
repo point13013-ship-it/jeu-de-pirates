@@ -1026,7 +1026,7 @@ func _build_town_v3() -> void:
 		_buildings.append(record)
 	ToonLook.apply_tree(_port)
 	_world_fixed.add_child(_town_lights)
-	_town_lights.setup(made["lamps"], made["spills"], _land, SEA_Y)
+	_town_lights.setup(made["lamps"], made["spills"], _land, SEA_Y, made["extras"])
 	_moor_at_dock()
 
 

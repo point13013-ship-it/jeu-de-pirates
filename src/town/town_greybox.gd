@@ -33,6 +33,7 @@ static func build(parent: Node3D, plan: Dictionary) -> Dictionary:
 	var circles: Array = []
 	var buildings: Array = []
 	var spills: Array = []      # façades éclairées la nuit : [pied du mur sud, largeur, angle, hauteur du sol]
+	var extras := {"lamps": []}  # lumières en plus (lanternes des tentes, forge : points monde) et « beacon » : le feu du phare
 	var ramps: Array = plan.get("ramps", [])
 	var levels: Array = plan.get("levels", [])
 
@@ -121,9 +122,16 @@ static func build(parent: Node3D, plan: Dictionary) -> Dictionary:
 		k2 += 1
 		match mode:
 			"tente":
-				_tent(acc, circles, c2, size, ang, base)
+				buildings.append(TownLandmarks.tent(root, b3, base, circles, extras))
 			"comptoir":
-				_counter(acc, circles, c2, size, ang, base)
+				if int(b3.get("num", 0)) == 2:
+					buildings.append(TownLandmarks.quest_board(root, b3, base, circles))
+				elif int(b3.get("num", 0)) == 9:
+					buildings.append(TownLandmarks.forge(root, b3, base, circles, extras))
+				else:
+					_counter(acc, circles, c2, size, ang, base)
+			"cabanes":
+				buildings.append(TownLandmarks.huts(root, b3, base))
 			"jardin":
 				_box(acc, Color("93c4a6"), c2, size, ang, base, base + 0.08)
 				for j in 6:
@@ -131,7 +139,7 @@ static func build(parent: Node3D, plan: Dictionary) -> Dictionary:
 					_box(acc, STONE, c2 + off, Vector2(0.6, 0.3), ang, base, base + 0.9)
 					circles.append([c2.x + off.x, c2.y + off.y, 0.4])
 			"halle":
-				buildings.append(_hall(root, circles, c2, size, ang, base, str(b3.get("name", ""))))
+				buildings.append(TownLandmarks.hall(root, b3, base, circles))
 			"maison", "interieur":
 				# 13/11 (étape 5) : de vraies maisons à la place des cubes ; on entre dans celles des services « intérieur »
 				var house := TownHouse.build(root, b3, base, k2)
@@ -139,10 +147,14 @@ static func build(parent: Node3D, plan: Dictionary) -> Dictionary:
 				if bool(house.get_meta("lit", false)):
 					spills.append([c2 + Vector2(0.0, -size.y * 0.5 - 0.1).rotated(ang), size.x * 0.8, ang, base])
 			_:
-				var service := str(b3.get("kind", "")) == "service"
-				var wall: Color = SERVICE if service else (LANDMARK if mode == "repere" else WALLS[k2 % WALLS.size()])
-				buildings.append(_house(root, c2, size, ang, base, storeys, wall, ROOFS[k2 % ROOFS.size()], b3))
-		if b3.has("name"):
+				var lm := TownLandmarks.build(root, b3, base, circles, extras)
+				if lm != null:
+					buildings.append(lm)
+				else:
+					var service := str(b3.get("kind", "")) == "service"
+					var wall: Color = SERVICE if service else (LANDMARK if mode == "repere" else WALLS[k2 % WALLS.size()])
+					buildings.append(_house(root, c2, size, ang, base, storeys, wall, ROOFS[k2 % ROOFS.size()], b3))
+		if b3.has("name") and GameConfig.TOWN_LABELS:
 			var top := base + (STOREY * storeys + 2.6 if mode in ["maison", "interieur", "repere", "cabanes"] else 4.2)
 			_label(root, "%d. %s" % [int(b3.get("num", 0)), str(b3["name"])], _w(c2, top + 0.8))
 
@@ -159,7 +171,7 @@ static func build(parent: Node3D, plan: Dictionary) -> Dictionary:
 			continue
 		lamps.append([lp, _level_h(levels, lp)])
 		circles.append([lp.x, lp.y, 0.2])
-	return {"root": root, "buildings": buildings, "circles": circles, "lamps": lamps, "spills": spills}
+	return {"root": root, "buildings": buildings, "circles": circles, "lamps": lamps, "spills": spills, "extras": extras}
 
 
 # ------------------------------------------------------------------ bâtiments

@@ -18,6 +18,8 @@ var _lights: Array[OmniLight3D] = []
 var _lantern_mat: StandardMaterial3D
 var _spill_mat: StandardMaterial3D
 var _streak_mat: ShaderMaterial
+var _beacon: OmniLight3D
+var _beam_mat: StandardMaterial3D
 var _glass: Array = []          # [matière, matière fantôme, allumée ?]
 var _night := -1.0
 var _cull_t := 0.0
@@ -62,7 +64,53 @@ static func lamp_points(plan: Dictionary) -> Array[Vector2]:
 
 ## Pose les lanternes (`lamps` : [Vector2 fichier, hauteur du sol]), les taches des fenêtres (`spills` : [centre, largeur, angle,
 ## hauteur du sol] des façades sud des maisons allumées) et les reflets sur l'eau.
-func setup(lamps: Array, spills: Array, land: Land, sea_y: float) -> void:
+func setup(lamps: Array, spills: Array, land: Land, sea_y: float, extras: Dictionary = {}) -> void:
+	# lumières sans poteau : lanternes pendues à l'entrée des tentes, braises de la forge
+	for at: Vector3 in extras.get("lamps", []):
+		var hang := OmniLight3D.new()
+		hang.light_color = WARM
+		hang.light_energy = 0.0
+		hang.omni_range = GameConfig.LAMP_RANGE * 0.8
+		hang.omni_attenuation = 1.3
+		hang.shadow_enabled = false
+		hang.position = at
+		add_child(hang)
+		_lights.append(hang)
+	# le feu du phare : une forte lumière et deux faisceaux qui tournent
+	if extras.has("beacon"):
+		var top: Vector3 = extras["beacon"]
+		_beacon = OmniLight3D.new()
+		_beacon.light_color = Color(1.0, 0.86, 0.5)
+		_beacon.light_energy = 0.0
+		_beacon.omni_range = 22.0
+		_beacon.shadow_enabled = false
+		_beacon.position = top
+		add_child(_beacon)
+		_beam_mat = StandardMaterial3D.new()
+		_beam_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		_beam_mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+		_beam_mat.vertex_color_use_as_albedo = true
+		_beam_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+		_beam_mat.albedo_color = Color(0, 0, 0)
+		_beam_mat.render_priority = 9
+		var spin := TownLandmarks.Spinner.new()
+		spin.speed = 0.5
+		spin.position = top
+		var bt := SurfaceTool.new()
+		bt.begin(Mesh.PRIMITIVE_TRIANGLES)
+		for dir: float in [-1.0, 1.0]:
+			var pts: Array = [[Vector3(0, 0.25, 0), 0.5], [Vector3(0, -0.25, 0), 0.5], [Vector3(dir * 34.0, -3.5, 3.0), 0.0], [Vector3(dir * 34.0, 0.5, -3.0), 0.0]]
+			for i: int in [0, 1, 2, 0, 2, 3]:
+				var k := float(pts[i][1])
+				bt.set_color(Color(k, k * 0.86, k * 0.5))
+				bt.set_normal(Vector3.UP)
+				bt.add_vertex(pts[i][0] as Vector3)
+		var bm := MeshInstance3D.new()
+		bm.mesh = bt.commit()
+		bm.material_override = _beam_mat
+		bm.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		spin.add_child(bm)
+		add_child(spin)
 	_lantern_mat = StandardMaterial3D.new()
 	_lantern_mat.albedo_color = WARM_LIGHT
 	_lantern_mat.emission_enabled = true
@@ -200,6 +248,9 @@ func update(night: float, focus: Vector3, player: Vector3, delta: float) -> void
 		_lantern_mat.emission_energy_multiplier = 0.15 + 3.2 * on
 		_spill_mat.albedo_color = Color(on, on, on)
 		_streak_mat.set_shader_parameter("night", on)
+		if _beacon != null:
+			_beacon.light_energy = 5.0 * on
+			_beam_mat.albedo_color = Color(on, on, on)
 		for g: Array in _glass:
 			var lit: bool = g[2]
 			var base := Color("2e2a44").lerp(Color("ffb24a"), on) if lit else Color("2e2a44")
