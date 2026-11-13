@@ -146,8 +146,9 @@ func step(delta: float, active: bool) -> void:
 		_hold[i] = maxf(float(_hold[i]) - delta, 0.0)
 		_icons[i].visible = loaded[i]
 	if active:
-		for g: Dictionary in gunners:
-			_step_gunner(g, delta)
+		for k in gunners.size():
+			if not is_down(k + 1):   # (13/11 : un canonnier abattu par un joueur ne recharge plus)
+				_step_gunner(gunners[k], delta)
 	_update_visuals(delta)
 
 
@@ -258,3 +259,98 @@ func _update_visuals(delta: float) -> void:
 		else:
 			e.state = IslandEnemy.State.IDLE
 		e.update_visual(delta, _time, true)
+
+
+# ------------------------------------------------------------------ abordage (13/11/2026)
+# Les joueurs montés à bord peuvent abattre l'équipage. Membre 0 : le timonier ; 1 et suivants : les canonniers. Un squelette
+# abattu disparaît et revient après GameConfig.CREW_RESPAWN s. L'hôte décide (hit) ; les clients reçoivent le masque des abattus.
+var down_t: Array = []                   ## par membre : s avant son retour (0 : debout)
+var hp_left: Array = []                  ## par membre : points de vie
+
+
+func member_count() -> int:
+	return 1 + gunners.size()
+
+
+func _ensure_members() -> void:
+	while down_t.size() < member_count():
+		down_t.append(0.0)
+		hp_left.append(GameConfig.CREW_HP)
+
+
+func is_down(i: int) -> bool:
+	_ensure_members()
+	return i >= 0 and i < down_t.size() and float(down_t[i]) > 0.0
+
+
+## Où se tient le membre `i` (repère du modèle).
+func member_bp(i: int) -> Vector2:
+	if i <= 0:
+		return _helm_bp
+	return (gunners[i - 1] as Dictionary)["bp"] if i - 1 < gunners.size() else _helm_bp
+
+
+## Hôte : le membre `i` encaisse `dmg`. Renvoie vrai s'il tombe.
+func hit(i: int, dmg: int) -> bool:
+	_ensure_members()
+	if i < 0 or i >= down_t.size() or float(down_t[i]) > 0.0:
+		return false
+	hp_left[i] = int(hp_left[i]) - dmg
+	var e := _member_enemy(i)
+	if e != null:
+		e.hurt_t = GameConfig.HIT_FLASH_TIME
+	if int(hp_left[i]) > 0:
+		return false
+	_set_down(i, GameConfig.CREW_RESPAWN)
+	return true
+
+
+func _member_enemy(i: int) -> IslandEnemy:
+	if i <= 0:
+		return helmsman
+	return (gunners[i - 1] as Dictionary)["enemy"] as IslandEnemy if i - 1 < gunners.size() else null
+
+
+func _set_down(i: int, t: float) -> void:
+	_ensure_members()
+	var was := float(down_t[i]) > 0.0
+	down_t[i] = t
+	var now := t > 0.0
+	if was == now:
+		return
+	var e := _member_enemy(i)
+	if e != null and e.node != null:
+		e.node.visible = not now
+	if now and i >= 1:   # le canonnier lâche ce qu'il faisait : son canon redevient libre
+		var g: Dictionary = gunners[i - 1]
+		g["state"] = "idle"
+		g["cannon"] = -1
+		g["wait"] = 0.5
+		(g["carry"] as MeshInstance3D).visible = false
+	if not now:
+		hp_left[i] = GameConfig.CREW_HP
+
+
+func dead_mask() -> int:
+	_ensure_members()
+	var m := 0
+	for i in down_t.size():
+		if float(down_t[i]) > 0.0:
+			m |= 1 << i
+	return m
+
+
+## Client : reprend le masque des abattus de l'hôte.
+func apply_dead_mask(m: int) -> void:
+	_ensure_members()
+	for i in down_t.size():
+		_set_down(i, 1.0 if ((m >> i) & 1) == 1 else 0.0)
+
+
+## Hôte, chaque image : les abattus reviennent.
+func step_respawn(delta: float) -> void:
+	_ensure_members()
+	for i in down_t.size():
+		if float(down_t[i]) > 0.0:
+			var left := float(down_t[i]) - delta
+			_set_down(i, maxf(left, 0.0))

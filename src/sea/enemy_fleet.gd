@@ -218,6 +218,16 @@ func _host_step(delta: float, target: Dictionary) -> void:
 		sim.wind_dir = target.get("wind", sim.wind_dir)
 		sim.wind_angle = (sim.wind_dir as Vector2).angle()
 		_ai(s, delta, target)
+		# 13/11, abordage : sans timonier le bateau est désemparé (barre au centre, voiles carguées) ; son ancre jetée par un
+		# joueur le retient ; les squelettes abattus reviennent
+		var crew_b := s.get("crew") as EnemyCrew
+		if crew_b != null:
+			crew_b.step_respawn(delta)
+			if crew_b.is_down(0):
+				sim.rudder_target = 0.0
+				sim.sail_level = 0
+		s["anchor_t"] = maxf(float(s.get("anchor_t", 0.0)) - delta, 0.0)
+		sim.anchored = float(s["anchor_t"]) > 0.0
 		_survive(s, delta)
 		s["reveal_t"] = maxf(float(s.get("reveal_t", 0.0)) - delta, 0.0)
 		sim.sail_trim_target = sim.optimal_trim()
@@ -413,6 +423,24 @@ func hurt(id: int, dmg: float) -> bool:
 		return false
 	_start_sink(s)
 	return true
+
+
+## Hôte : un joueur monté à bord frappe le membre `idx` de l'équipage de l'ennemi `id` (0 : le timonier).
+func crew_hit(id: int, idx: int, dmg: int) -> bool:
+	var i := find(id)
+	if i < 0 or (ships[i] as Dictionary).get("crew") == null:
+		return false
+	var s: Dictionary = ships[i]
+	if s["state"] == "patrol":
+		s["state"] = "chase"
+	return (s["crew"] as EnemyCrew).hit(idx, dmg)
+
+
+## Hôte : un joueur jette l'ancre de l'ennemi `id` : il reste sur place GameConfig.ENEMY_ANCHOR_TIME s.
+func drop_anchor(id: int) -> void:
+	var i := find(id)
+	if i >= 0:
+		(ships[i] as Dictionary)["anchor_t"] = GameConfig.ENEMY_ANCHOR_TIME
 
 
 func _start_sink(s: Dictionary) -> void:
@@ -639,7 +667,8 @@ func net_state() -> Array:
 		out.append([int(s["id"]), KINDS.find(str(s["kind"])), sim.position.x, sim.position.y, sim.yaw, float(s["hp"]),
 				{"patrol": 0, "chase": 1, "sinking": 2}[str(s["state"])], sim.speed, sim.sail_open, sim.sail_trim, sim.rudder,
 				(s["crew"] as EnemyCrew).mask() if s.get("crew") != null else 0, int(s.get("rank", 1)),
-				1 if float(s.get("reveal_t", 0.0)) > 0.0 else 0])
+				1 if float(s.get("reveal_t", 0.0)) > 0.0 else 0,
+				(s["crew"] as EnemyCrew).dead_mask() if s.get("crew") != null else 0, 1 if float(s.get("anchor_t", 0.0)) > 0.0 else 0])
 	return out
 
 
@@ -673,6 +702,9 @@ func apply_net(state: Array) -> void:
 		sim.rudder = float(e[10])
 		if e.size() > 11 and s.get("crew") != null:
 			(s["crew"] as EnemyCrew).apply_mask(int(e[11]))   # les canons chargés, comme l'hôte les voit
+		if e.size() > 15 and s.get("crew") != null:
+			(s["crew"] as EnemyCrew).apply_dead_mask(int(e[14]))
+			sim.anchored = int(e[15]) == 1
 	for i in range(ships.size() - 1, -1, -1):
 		var s2: Dictionary = ships[i]
 		if not seen.has(int(s2["id"])) and s2["state"] != "sinking":

@@ -2550,6 +2550,24 @@ func _try_attack(secondary: bool = false) -> void:
 	if _carrying and secondary and (_loc == Loc.SHIP or _loc == Loc.HOLD) and _mode == Mode.WALK:   # sur le pont aussi
 		_drop_to_ground()
 		return
+	# 13/11 : les armes servent aussi sur notre pont (demande : « pouvoir se battre à bord »). Le coup part de l'endroit du pont
+	# où l'on se tient ; il ne blesse pas les coéquipiers.
+	if _loc == Loc.SHIP and _mode == Mode.WALK and _gun_i < 0 and not _hook_aim and _atk_cd <= 0.0 and _hp > 0 and _jump_wind <= 0.0 \
+			and not _carrying and not (_dialog.is_open() or _shop_menu.is_open() or _chart.is_open() or _inventory.is_open()):
+		var keep_pos := _lpos
+		var keep_h := _lh
+		var keep_face := _face
+		var wd := Basis(Vector3.UP, _sim.yaw) * Vector3(_pface.x, 0.0, -_pface.y)
+		_lpos = _ship_to_world(_ppos)
+		_lh = _ship.position.y + _ship.deck_height(_ppos.x)
+		_face = Vector2(wd.x, wd.z).normalized() if wd.length() > 0.01 else Vector2(1.0, 0.0)
+		_loc = Loc.LAND
+		_try_attack(secondary)
+		_loc = Loc.SHIP
+		_lpos = keep_pos
+		_lh = keep_h
+		_face = keep_face
+		return
 	if _loc != Loc.LAND or _atk_cd > 0.0 or _hp <= 0 or _dialog.is_open() or _shop_menu.is_open() or _chart.is_open() or _jump_wind > 0.0:
 		return
 	if _carrying:   # lot 2 (2.4) : les deux mains sont prises ; (12/11) clic droit : on lâche ce qu'on porte
@@ -2571,6 +2589,8 @@ func _try_attack(secondary: bool = false) -> void:
 	# (12/11 : le sifflement de la lame, une prise au hasard parmi onze, sans répéter la précédente ; un coup lourd de temps en temps)
 	_sfx.play_at(Synth.recorded("sword_swing"), _my_scene_pos() + Vector3.UP * 0.9, 0.85)
 	_islands.spawn_slash(_lpos, _face)
+	if _board_id >= 0:
+		_board_strike(_face, float(_islands.player_cfg.get("swing_range", 1.9)), int(_islands.player_cfg.get("swing_damage", 1)), false)
 	var sk := WeaponSkins.def_of("sabre", _profile.skin_of("sabre"))
 	WeaponFx.slash(_world_fixed, _lpos, _face, sk, _lh + 0.95)
 	_send_action("slash", _held_code(), _lpos, _face)
@@ -2608,6 +2628,8 @@ func _try_shoot(wid: String) -> void:
 	_shot_fx(_lpos, dir, def, INF, WeaponSkins.def_of(wid, _profile.skin_of(wid)))
 	_send_action("shot", "%s|%s" % [wid, _profile.skin_of(wid)], _lpos, dir)
 	_shake_t = maxf(_shake_t, 0.1)
+	if _board_id >= 0:
+		_board_strike(dir, float(def.get("range", 10.0)), int(def.get("damage", 1)), true, bool(def.get("pierce", false)))
 	if _is_authority():
 		_resolve_shot(_my_id(), wid, _lpos, dir)
 	else:
@@ -3037,7 +3059,7 @@ func apply_hurt(damage: int, from: Vector2) -> void:
 	_island_hud.flash = 1.0
 	_shake_t = 0.3
 	var away := _lpos - from
-	if away.length() > 0.01:
+	if away.length() > 0.01 and _board_id < 0:
 		var r := _land.step(_lpos, away.normalized() * 0.9, _lh)
 		_lpos = Vector2(r.x, r.y)
 		_lh = r.z
@@ -3241,6 +3263,7 @@ func _axis(neg: Array, pos: Array) -> float:
 
 
 func _update_player(delta: float) -> void:
+	_update_boarding(delta)
 	_update_jump(delta)
 	if _is_down() or _is_dead():
 		return   # lot 4 : à terre on ne bouge plus ; mort, on attend de réapparaître
@@ -3325,6 +3348,12 @@ func _update_player(delta: float) -> void:
 			_face = move.normalized()
 			_ground_vel = move * WALK_SPEED * walk_mul * _sprint_factor()
 			var step_l := _ground_vel * delta
+			var bs := _boarded_ship()
+			if not bs.is_empty():   # sur le pont ennemi : on marche dans son repère, avec ses obstacles
+				var bm := bs["model"] as ShipModel
+				var ld := Basis(Vector3.UP, -(bs["sim"] as ShipSim).yaw) * Vector3(step_l.x, 0.0, step_l.y)
+				_bpos = bm.move_with_slide(_bpos, Vector2(ld.x, -ld.z) / ShipModel.SCALE)
+				return
 			var r := _land.step(_lpos, step_l, _lh)
 			_lpos = Vector2(r.x, r.y)
 			_lh = r.z
@@ -3428,6 +3457,8 @@ func _update_jump(delta: float) -> void:
 ## Hauteur (relative au pont ou au sol où je me tiens) du plancher sous mes pieds : 0 au-dessus du pont ou de la terre,
 ## plus bas au-dessus de l'eau (on tombe jusqu'à la mer), ou jusqu'au quai si le saut le survole.
 func _fall_floor() -> float:
+	if _board_id >= 0:
+		return 0.0   # sur le pont d'un bateau ennemi : il me porte
 	if _loc == Loc.SHIP:
 		if _ship.over_hull(_ppos):
 			return 0.0
@@ -3616,6 +3647,9 @@ func _splash_burst(w: Vector2) -> void:
 func _try_jump() -> void:
 	if _is_down() or _is_dead():
 		return
+	if _board_id >= 0:
+		_leave_board()   # du pont ennemi, Espace : on plonge
+		return
 	if _loc == Loc.SWIM:
 		if not _try_board_raft_from_water():
 			_try_board_from_water()
@@ -3643,6 +3677,159 @@ func _world_to_ship(w: Vector2) -> Vector2:
 	var rel := w - _sim.position
 	var local := Basis(Vector3.UP, -_sim.yaw) * Vector3(rel.x, 0.0, rel.y)
 	return Vector2(local.x / ShipModel.SCALE - _ship.shift, -local.z / ShipModel.SCALE)
+
+
+# ------------------------------------------------------------------ abordage (13/11/2026)
+# « Pouvoir se battre à bord, sur notre bateau et sur celui des ennemis » (retours de la session à 3). Le pont ennemi est un sol
+# qui bouge : le pirate reste en mode « à terre » (toutes les règles du combat à pied valent), mais sa position est tenue dans le
+# repère du bateau ennemi (_bpos) et recalculée dans le monde à chaque image. Les autres joueurs le voient à terre, à cette
+# position et à cette hauteur : rien de plus à envoyer. Les coups portés à l'équipage sont des demandes à l'hôte (« crew_hit »).
+var _board_id := -1                 ## l'ennemi sur le pont duquel je suis (-1 : aucun)
+var _bpos := Vector2.ZERO           ## ma position sur son pont (repère de son modèle)
+var _board_strike_t := 0.0          ## délai avant le prochain coup d'un squelette
+
+
+func _boarded_ship() -> Dictionary:
+	if _board_id < 0:
+		return {}
+	var i := _fleet.find(_board_id)
+	if i < 0:
+		return {}
+	var s: Dictionary = _fleet.ships[i]
+	return {} if (s["state"] == "sinking" or s.get("model") == null) else s
+
+
+## Point du monde (x/z) d'un point du pont du bateau ennemi `s`.
+func _enemy_deck_world(s: Dictionary, bp: Vector2) -> Vector2:
+	var model := s["model"] as ShipModel
+	var esim: ShipSim = s["sim"]
+	var w := Basis(Vector3.UP, esim.yaw) * Vector3((bp.x + model.shift) * ShipModel.SCALE, 0.0, -bp.y * ShipModel.SCALE)
+	return esim.position + Vector2(w.x, w.z)
+
+
+## Chaque image : je suis emporté par le bateau ennemi ; son équipage me frappe si je reste à sa portée.
+func _update_boarding(delta: float) -> void:
+	if _board_id < 0:
+		return
+	var s := _boarded_ship()
+	if s.is_empty() or _loc != Loc.LAND:
+		var was_land := _loc == Loc.LAND
+		_board_id = -1
+		if was_land:   # le bateau coule ou disparaît sous mes pieds : à l'eau
+			_enter_swim(_lpos)
+		return
+	var model := s["model"] as ShipModel
+	_lpos = _enemy_deck_world(s, _bpos)
+	_lh = model.position.y + model.deck_height(_bpos.x)
+	_board_strike_t = maxf(_board_strike_t - delta, 0.0)
+	var crew := s.get("crew") as EnemyCrew
+	if crew == null or _board_strike_t > 0.0 or _is_down() or _is_dead():
+		return
+	for i in crew.member_count():
+		if crew.is_down(i):
+			continue
+		var cw := _enemy_deck_world(s, crew.member_bp(i))
+		if cw.distance_to(_lpos) <= GameConfig.CREW_STRIKE_REACH:
+			_board_strike_t = GameConfig.CREW_STRIKE_EVERY
+			_inv_t = 0.0
+			apply_hurt(GameConfig.CREW_STRIKE_DAMAGE, cw)
+			_sfx.play_at(Synth.recorded("sword_hit"), _my_scene_pos() + Vector3.UP * 0.9, 0.8)
+			return
+
+
+## À la nage, E ou Espace près de l'échelle de coque d'un ennemi : on monte à l'abordage. Vrai si c'est fait.
+func _try_board_enemy() -> bool:
+	for s: Dictionary in _fleet.ships:
+		var model := s.get("model") as ShipModel
+		if model == null or s["state"] == "sinking":
+			continue
+		for l: Array in model.ladders:
+			var foot := _enemy_deck_world(s, Vector2(float(l[0]), float(l[3])))
+			if foot.distance_to(_lpos) > GameConfig.BOARD_LADDER_REACH:
+				continue
+			_board_id = int(s["id"])
+			_bpos = model.nearest_walkable(Vector2(float(l[0]), float(l[1])))
+			_splash_burst(_lpos)
+			_loc = Loc.LAND
+			_mode = Mode.WALK
+			_pz = 0.0
+			_vz = 0.0
+			_board_strike_t = 1.2
+			_dbg("abordage du bateau %d en %s" % [_board_id, _bpos])
+			_update_boarding(0.0)
+			_prev_lpos = _lpos
+			_sfx.play_at(Synth.rope(), _my_scene_pos(), 0.8)
+			_say("À l'abordage ! Abats l'équipage (le timonier : le bateau est désemparé), E au cabestan : jette leur ancre. Espace : plonger", 7.0)
+			return true
+	return false
+
+
+## Vrai si un nageur est à portée de l'échelle d'un bateau ennemi.
+func _near_enemy_ladder() -> bool:
+	for s: Dictionary in _fleet.ships:
+		var model := s.get("model") as ShipModel
+		if model == null or s["state"] == "sinking":
+			continue
+		for l: Array in model.ladders:
+			if _enemy_deck_world(s, Vector2(float(l[0]), float(l[3]))).distance_to(_lpos) <= GameConfig.BOARD_LADDER_REACH:
+				return true
+	return false
+
+
+## Je quitte le pont ennemi en plongeant par-dessus bord, du côté le plus proche.
+func _leave_board() -> void:
+	var s := _boarded_ship()
+	_board_id = -1
+	if s.is_empty():
+		_enter_swim(_lpos)
+		return
+	var model := s["model"] as ShipModel
+	var side := 1.0 if _bpos.y >= 0.0 else -1.0
+	_enter_swim(_enemy_deck_world(s, Vector2(_bpos.x, side * (model.half_width(_bpos.x) + 0.7))))
+
+
+## Mon coup (sabre : `reach` m et un arc ; arme à feu : une ligne de `reach` m) touche-t-il l'équipage du bateau où je suis ?
+## Chaque touche est demandée à l'hôte, qui fait autorité sur la vie des squelettes.
+func _board_strike(dir: Vector2, reach: float, dmg: int, gun: bool, pierce: bool = false) -> void:
+	var s := _boarded_ship()
+	if s.is_empty() or s.get("crew") == null:
+		return
+	var crew := s["crew"] as EnemyCrew
+	var d := dir.normalized()
+	var hits: Array = []
+	for i in crew.member_count():
+		if crew.is_down(i):
+			continue
+		var to := _enemy_deck_world(s, crew.member_bp(i)) - _lpos
+		if gun:
+			var along := to.dot(d)
+			if along < 0.0 or along > reach or absf(to.cross(d)) > 0.55:
+				continue
+			hits.append([along, i])
+		elif to.length() <= reach + 0.4 and (to.length() < 0.3 or absf(d.angle_to(to)) <= deg_to_rad(70.0)):
+			hits.append([to.length(), i])
+	hits.sort_custom(func(a: Array, b: Array) -> bool: return float(a[0]) < float(b[0]))
+	for k in hits.size():
+		if gun and not pierce and k > 0:
+			break
+		_request("crew_hit", _board_id * 1000 + int(hits[k][1]) * 10 + clampi(dmg, 1, 9))
+	if not hits.is_empty():
+		_sword_hit_sound(false, _my_scene_pos() + Vector3.UP * 0.9)
+
+
+## E sur le pont ennemi : au cabestan, on jette leur ancre.
+func _board_interact() -> void:
+	var s := _boarded_ship()
+	if s.is_empty():
+		return
+	var model := s["model"] as ShipModel
+	var a: Array = model.meta.get("anchor", [0.0, 0.0])
+	if _bpos.distance_to(Vector2(float(a[0]), float(a[1]))) * ShipModel.SCALE <= GameConfig.BOARD_ANCHOR_REACH:
+		_request("enemy_anchor", _board_id)
+		_sfx.play_at(Synth.recorded("dive"), _my_scene_pos(), 0.6)
+		_say("Leur ancre est jetée : ils ne bougeront plus pendant %d s" % int(GameConfig.ENEMY_ANCHOR_TIME), 4.0)
+	else:
+		_say("Leur cabestan est à l'avant : E pour jeter leur ancre", 2.5)
 
 
 ## Les coques ennemies sont solides pour un nageur aussi (13/11 : on les traversait à la nage). Si `p` (monde x/z) tombe dans
@@ -3708,6 +3895,8 @@ func _update_swim(move: Vector2, delta: float) -> void:
 ## quel point de la coque suffisait, et le pirate était posé au point libre du pont le plus proche… parfois dans la cabine, à travers
 ## son mur (le passage « du ponton à la cabine » signalé après le lot 1).
 func _try_board_from_water() -> void:
+	if _try_board_enemy():
+		return
 	var i := _nearest_ladder_from_water()
 	if i < 0:
 		var bp := _world_to_ship(_lpos)
@@ -4878,6 +5067,8 @@ func _ground_kind() -> int:
 		return 2
 	if _loc != Loc.LAND:
 		return -1
+	if _board_id >= 0:
+		return 2   # le pont d'un bateau ennemi
 	var ii := _islands.island_at(_lpos)
 	if ii >= 0:
 		var s: float = _islands.sdf(ii, _lpos)
@@ -5413,6 +5604,10 @@ func _interact(secondary: bool) -> void:
 		if not secondary:
 			_start_mast_climb(false)
 		return
+	if _loc == Loc.LAND and _board_id >= 0:
+		if not secondary:
+			_board_interact()
+		return
 	if _loc == Loc.LAND:
 		var npc := _nearest_npc()
 		if npc != null:
@@ -5833,6 +6028,12 @@ func apply_request(peer: int, kind: String, value: int) -> void:
 					fire_visual(value, true)
 		"anchor":
 			_sim.anchored = not _sim.anchored
+		"crew_hit":   # abordage : `peer` frappe un squelette (valeur = ennemi x 1000 + membre x 10 + dégâts)
+			_dbg("coup sur l'équipage : ennemi %d membre %d dégâts %d" % [value / 1000, (value % 1000) / 10, value % 10])
+			if _fleet.crew_hit(value / 1000, (value % 1000) / 10, value % 10):
+				_notify_all("Un squelette de l'équipage ennemi est abattu !" if (value % 1000) / 10 > 0 else "Leur timonier est abattu : le bateau est désemparé !")
+		"enemy_anchor":   # abordage : `peer` jette l'ancre de l'ennemi `value`
+			_fleet.drop_anchor(value)
 		"spill":   # naufrage : le trésor que `peer` portait à bord flotte sur le lieu du naufrage
 			if value >= 0 and Treasure.id_at(value) != "":
 				_loot.spawn("t:" + Treasure.id_at(value), _last_sink_pos + Vector2(randf_range(-4.0, 4.0), randf_range(-4.0, 4.0)), SINK_LOOT_TTL)
@@ -6743,7 +6944,9 @@ func _update_hud() -> void:
 		var near_hull := (absf(bp.y) - hw) * ShipModel.SCALE <= BOARD_REACH and bp.x > -_ship.length * 0.5 - 1.0 and bp.x < _ship.length * 0.5 + 1.0
 		var near_raft := _raft != null and Raft.covers(_raft.sim.position, _raft.sim.yaw, _lpos, 1.6)
 		var at_ladder := _nearest_ladder_from_water() >= 0
-		if near_raft:
+		if _near_enemy_ladder():
+			_prompt.text = "À la nage — E : monter à l'abordage"
+		elif near_raft:
 			_prompt.text = "À la nage — E : monter sur ton radeau"
 		elif at_ladder:
 			_prompt.text = "À la nage — E : monter à l'échelle"
@@ -6757,6 +6960,9 @@ func _update_hud() -> void:
 		return
 	if _loc == Loc.SHIP and _mode == Mode.CANNON:
 		_prompt.text = "Dans le canon — Q/D : viser   E : partir !   R : ressortir"
+		return
+	if _loc == Loc.LAND and _board_id >= 0:
+		_prompt.text = "À l'abordage — clic : frapper   E au cabestan : jeter leur ancre   Espace : plonger"
 		return
 	if _loc == Loc.LAND:
 		var near := _nearest_npc()

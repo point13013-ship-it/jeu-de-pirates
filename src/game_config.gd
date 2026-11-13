@@ -363,3 +363,12 @@ const ENEMY_LOAD_TIME := [0.9, 0.8, 0.7, 0.6]   ## s pour charger un canon, par 
 const ENEMY_AIM_PER_RANK := 0.1       ## dispersion des tirs en moins par rang au-dessus du premier
 const ENEMY_DAMAGE_SINK := 0.7        ## m : un bateau à bout de coque s'enfonce d'autant
 const ENEMY_DAMAGE_LIST := 0.14       ## rad : et gîte d'autant
+## Abordage (13/11) : on monte sur un bateau ennemi par son échelle de coque, depuis l'eau, et on se bat sur son pont.
+const BOARD_LADDER_REACH := 2.8       ## m : distance à l'échelle ennemie pour s'y accrocher à la nage
+const CREW_HP := 3                    ## points de vie d'un squelette de l'équipage (un coup de sabre : 1 ; pistolet : 2)
+const CREW_RESPAWN := 30.0            ## s avant qu'un squelette abattu revienne (timonier compris)
+const CREW_STRIKE_REACH := 1.5        ## m : à cette distance d'un joueur monté à bord, un squelette frappe
+const CREW_STRIKE_EVERY := 1.6        ## s entre deux coups reçus à bord
+const CREW_STRIKE_DAMAGE := 1         ## cœurs
+const ENEMY_ANCHOR_TIME := 40.0       ## s pendant lesquelles un ennemi dont on a jeté l'ancre reste sur place
+const BOARD_ANCHOR_REACH := 1.9       ## m : distance au cabestan ennemi pour jeter son ancre
