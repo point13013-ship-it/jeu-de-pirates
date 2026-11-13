@@ -3962,8 +3962,7 @@ func _try_board_from_water() -> void:
 		var bp := _world_to_ship(_lpos)
 		var hw := _ship.half_width(clampf(bp.x, -_ship.length * 0.5 + 0.2, _ship.length * 0.5 - 0.2))
 		var near_hull := (absf(bp.y) - hw) * ShipModel.SCALE <= BOARD_REACH and bp.x > -_ship.length * 0.5 - 1.0 and bp.x < _ship.length * 0.5 + 1.0
-		_say("On ne remonte à bord que par l'échelle : nage jusqu'à elle" if near_hull else "Trop loin du bateau : nage jusqu'à l'échelle", 2.5)
-		return
+		return   # (13/11 : plus de message ; l'indication « [E] » n'apparaît qu'au pied d'une échelle)
 	if absf(_sim.speed) > 3.2:
 		_say("Le bateau va trop vite pour s'y accrocher", 2.5)
 		return
@@ -8502,16 +8501,13 @@ func _update_water(delta: float) -> void:
 	if stage != _water_stage:
 		_water_stage = stage
 		_send_action("water", str(stage), _lpos, _face)
-		if stage == 1:
-			_say("Une sirène s'approche : nage jusqu'à elle et appuie sur E, elle te ramènera à ton bateau", 5.0)
-		elif stage == 2:
-			_say("Des ailerons tournent autour de toi… remonte vite à bord !", 4.0)
+		# (13/11 : plus de message au milieu de l'écran pour la sirène ni pour les requins : sa colonne de lumière et le son suffisent)
+		if stage == 2:
 			_sfx.play_at(Synth.shark_alert(), _my_scene_pos(), 1.0)
-	if stage >= 1 and _siren == null:
+	if stage >= 1 and _siren == null and _siren_spot_ok():
 		_siren = _make_siren()
 		# (12/11 : elle apparaissait collée au nageur) loin, du côté du bateau si possible : on nage vers elle en suivant sa lumière
-		var toward := (_sim.position - _lpos).normalized() if _sim.position.distance_to(_lpos) > 1.0 else Vector2.from_angle(randf() * TAU)
-		_siren_pos = _open_water_spot(_lpos, toward, GameConfig.SIREN_DISTANCE)
+		_siren_pos = _siren_spot
 	if _siren != null:
 		_sfx.loop_at("siren", Synth.recorded("siren_hum", true), _world_fixed.to_global(Vector3(_siren_pos.x, SEA_Y + 0.8, _siren_pos.y)), 0.9)
 	if stage >= 2 and _sharks.is_empty():
@@ -8665,14 +8661,28 @@ func _open_water_spot(center: Vector2, toward: Vector2, dist: float) -> Vector2:
 			var p := center + Vector2.from_angle(a) * d
 			if _is_open_water(p):
 				return p
-	return center + toward * dist
+	return Vector2.INF   # (13/11 : aucune eau libre autour : pas de sirène, plutôt qu'une sirène posée à terre)
+
+
+## 13/11 : y a-t-il de l'eau libre où faire venir la sirène ? Elle est cherchée une fois par seconde, pas à chaque image.
+var _siren_try_t := 0.0
+var _siren_spot := Vector2.INF
+
+
+func _siren_spot_ok() -> bool:
+	if Time.get_ticks_msec() * 0.001 < _siren_try_t:
+		return false
+	_siren_try_t = Time.get_ticks_msec() * 0.001 + 1.0
+	var toward := (_sim.position - _lpos).normalized() if _sim.position.distance_to(_lpos) > 1.0 else Vector2.from_angle(randf() * TAU)
+	_siren_spot = _open_water_spot(_lpos, toward, GameConfig.SIREN_DISTANCE)
+	return _siren_spot.is_finite()
 
 
 ## Vrai si `p` (monde) est de l'eau libre : ni quai, ni ponton, ni ville (avec une marge de 3 m), ni île, ni récif, ni sous la
 ## coque du bateau.
 func _is_open_water(p: Vector2) -> bool:
 	for off: Vector2 in [Vector2.ZERO, Vector2(3, 0), Vector2(-3, 0), Vector2(0, 3), Vector2(0, -3)]:
-		if not _land.is_over_water(p + off):
+		if not _land.is_over_water(p + off) or _ground_at(p + off) != Land.NO_SURFACE:   # (13/11 : ni terre où l'on marche)
 			return false
 	if _islands != null and _islands.island_at(p, 4.0) >= 0:
 		return false
