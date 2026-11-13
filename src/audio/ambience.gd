@@ -38,7 +38,7 @@ func setup(p_islands: IslandWorld) -> void:
 		add_child(p)
 		_loops[spec[0]] = {"player": p, "vol": 0.0, "cur": 0.0}
 	# 12/11 : la ville qui vit au loin (enregistrements Epidemic Sound), très bas : on la devine plus qu'on ne l'écoute
-	for spec: Array in [["crowd", "town_crowd"], ["kids", "town_kids"]]:
+	for spec: Array in [["crowd", "town_crowd"], ["kids", "town_kids"], ["hold", "amb_cale"]]:   # (13/11 : la coque qui craque, l'eau contre le bordé, dans la cale)
 		var st := Synth.recorded(str(spec[1]), true)
 		if st == null:
 			continue
@@ -145,6 +145,7 @@ func update(delta: float, ctx: Dictionary) -> void:
 	_vol("crowd", 0.0 if muted else town * GameConfig.TOWN_CROWD_VOL * (0.35 if night else 1.0) * (1.0 - 0.6 * rain))
 	_vol("kids", 0.0 if (muted or night) else town * GameConfig.TOWN_KIDS_VOL * (1.0 - rain))
 	_vol("fire", 0.0 if muted else fire)
+	_vol("hold", 0.0 if (muted or not in_hold) else GameConfig.HOLD_AMBIENCE_VOL)
 	# 13/11 : la pluie est deux fois moins forte (GameConfig.RAIN_VOL), elle a son curseur de volume, et son intensité varie :
 	# averses et accalmies se succèdent (deux ondes lentes, d'environ une et trois minutes)
 	_rain_t += delta

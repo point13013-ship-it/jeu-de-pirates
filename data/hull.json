@@ -3,7 +3,7 @@
   "span_start": -0.30,
   "span_end": 0.24,
   "inflow_per_leak": 0.008,
-  "bail_amount": 0.05,
+  "bail_amount": 0.09,
   "bail_cooldown": 0.35,
   "min_impact_speed": 1.6,
   "impact_cooldown": 2.0,

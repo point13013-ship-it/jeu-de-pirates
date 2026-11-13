@@ -4866,6 +4866,7 @@ func _world_to_ship(w: Vector2) -> Vector2:
 var _board_id := -1                 ## l'ennemi sur le pont duquel je suis (-1 : aucun)
 var _bpos := Vector2.ZERO           ## ma position sur son pont (repère de son modèle)
 var _board_strike_t := 0.0          ## délai avant le prochain coup d'un squelette
+var _muffle := 0.0                  ## 0…1 : étouffement du son (1 dans la cale)
 var _edge_push_t := 0.0             ## s passées à pousser contre le bord d'un quai (voir QUAY_FALL_PUSH)
 var _prev_bpos := Vector2.ZERO      ## ma position sur son pont à l'image d'avant
 var _board_walk := Vector2.ZERO     ## mon pas sur son pont pendant la dernière image (monde) : le bateau qui m'emporte ne compte pas
@@ -6454,6 +6455,8 @@ func _update_atmosphere(delta: float) -> void:
 			"sharks": not _sharks.is_empty(),
 			"town": 1.0 - smoothstep(GameConfig.TOWN_SOUND_NEAR, GameConfig.TOWN_SOUND_FAR, minf(pos.distance_to(GameConfig.TOWN_CENTER),
 					pos.distance_to(GameConfig.TOWN_CENTER + GameConfig.OLD_TOWN_POS) if _old_port != null else INF))})
+	_muffle = move_toward(_muffle, 1.0 if _loc == Loc.HOLD else 0.0, delta * 2.5)   # (13/11 : dans la cale, le dehors est étouffé)
+	AudioSettings.set_muffle(_muffle)
 	_apply_grade()
 	_spawn_castaways()
 

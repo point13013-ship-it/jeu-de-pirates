@@ -135,8 +135,8 @@ const MUSIC_STORM_AT := 0.5          ## force de la tempête (0…1) à partir d
 ## Actions longues (règle commune) : durées en secondes.
 const ACTION_TIMES := {
 	"anchor": 2.8,    # lever / jeter l'ancre (12/11 : 3,5 s, -20 %)
-	"repair": 2.5,    # boucher une voie d'eau avec une planche (2 à 3 s par trou)
-	"bail": 1.5,      # un seau : remplir puis vider
+	"repair": 2.0,    # boucher une voie d'eau avec une planche (2 à 3 s par trou)
+	"bail": 1.2,      # un seau : remplir puis vider
 	"hoist": 1.6,     # hisser un camarade hors de l'eau
 	"revive": 4.0,    # relever un camarade à terre (lot 4)
 	"flint": 12.0,    # couper ses liens avec le silex caché (13/11)
@@ -253,6 +253,7 @@ const DROWN_WARNING := 15.0           ## s : l'alerte s'affiche dans les derniè
 const DOWNED_SQUASH := 0.45           ## un pirate à terre est tassé de 45 % (provisoire, faute d'image « au sol »)
 
 ## 3.3 Cale : plus grande et plus vivante.
+const HOLD_AMBIENCE_VOL := 0.7         ## volume de l'ambiance de cale (coque qui craque, eau contre le bordé ; enregistrement)
 const HOLD_FLOOR_HALF := 2.5          ## m : demi-largeur du fond plat (avant : 1,2)
 const HOLD_WALL_H := 1.8              ## m : mur du fond (avant : 1,4)
 const HOLD_LENGTH_MULT := 1.8         ## la cale est 80 % plus longue que la coque utile (13/11 : 1,3 ; +40 %, en trois pièces)

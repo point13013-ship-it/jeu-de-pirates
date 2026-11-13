@@ -38,6 +38,25 @@ static func setup() -> void:
 	apply()
 
 
+## 13/11 (Jimmy : « dans la cale, la mer et les boulets plus étouffés ») : `k` de 0 (dehors) à 1 (dans la cale). Un filtre
+## passe-bas sur l'ambiance (la mer, le vent, la pluie) et sur les bruitages (canons, chocs) : les aigus s'éteignent.
+static var _muffle_fx: Dictionary = {}
+
+
+static func set_muffle(k: float) -> void:
+	for spec: Array in [[BUS_AMBIENT, 1500.0], [BUS_SFX, 3800.0]]:
+		var idx := AudioServer.get_bus_index(str(spec[0]))
+		if idx < 0:
+			continue
+		if not _muffle_fx.has(spec[0]):
+			var fx := AudioEffectLowPassFilter.new()
+			fx.cutoff_hz = 20000.0
+			AudioServer.add_bus_effect(idx, fx)
+			_muffle_fx[spec[0]] = fx
+		var f := _muffle_fx[spec[0]] as AudioEffectLowPassFilter
+		f.cutoff_hz = 20000.0 * pow(float(spec[1]) / 20000.0, clampf(k, 0.0, 1.0))
+
+
 static func bus_of(key: String) -> String:
 	match key:
 		"music":

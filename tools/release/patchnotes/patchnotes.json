@@ -2,6 +2,14 @@
   "_commentaire": "Les nouveautés affichées dans la salle de jeux (bouton Nouveautés, et après chaque mise à jour). La plus récente d'abord. 'version': 'prochaine' est remplacé par le numéro de la version au moment de la publication (publish.ps1). Les images sont les fichiers de ce dossier ; publish.ps1 les envoie avec la version.",
   "versions": [
     {
+      "version": "prochaine",
+      "titre": "La cale",
+      "points": [
+        "Dans la cale, la mer et les coups de canon s'entendent étouffés, et la coque craque autour de toi.",
+        "Écoper sert vraiment : un seau vide presque deux fois plus d'eau, plus vite. Clouer une planche est plus rapide aussi."
+      ]
+    },
+    {
       "version": "2026.11.13-1907",
       "titre": "La ville, suite",
       "points": [
