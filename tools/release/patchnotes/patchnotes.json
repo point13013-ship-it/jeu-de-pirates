@@ -2,6 +2,14 @@
   "_commentaire": "Les nouveautés affichées dans la salle de jeux (bouton Nouveautés, et après chaque mise à jour). La plus récente d'abord. 'version': 'prochaine' est remplacé par le numéro de la version au moment de la publication (publish.ps1). Les images sont les fichiers de ce dossier ; publish.ps1 les envoie avec la version.",
   "versions": [
     {
+      "version": "2026.11.13-1642",
+      "titre": "Nouvelle ville : le bord de l'eau",
+      "points": [
+        "Aperçu de la nouvelle ville : de vraies échelles de bois pour sortir de l'eau (le haut des montants est peint en rouge).",
+        "Pontons en planches, murs de quai en pierre de taille, quai pavé jusqu'au bord."
+      ]
+    },
+    {
       "version": "2026.11.13-1638",
       "titre": "Nouvelle ville : de vraies rues pavées",
       "points": [
