@@ -2599,6 +2599,9 @@ func _send_action(kind: String, arg: String, pos: Vector2, dir: Vector2) -> void
 ## Une action d'un autre joueur (reçue par le réseau) : son pirate joue l'animation et l'effet apparaît chez moi.
 ## Les dégâts, eux, sont décidés par l'hôte (apply_swing, apply_shot, apply_cast).
 func apply_action(peer: int, kind: String, arg: String, pos: Vector2, dir: Vector2) -> void:
+	if kind == "gun_aim" and peer != _my_id():
+		_on_remote_gun_aim(arg)
+		return
 	if peer == _my_id() or not _remotes.has(peer) or _islands == null:
 		return
 	var r: Dictionary = _remotes[peer]
@@ -3888,8 +3891,52 @@ func _gun_enter(i: int) -> void:
 	_pface = Vector2(0.0, side)
 
 
+# --- les canons des alliés bougent (13/11) : avant, l'angle n'était envoyé qu'au tir ; on ne voyait pas un coéquipier viser ---
+const GUN_AIM_SEND_EVERY := 0.12   ## s entre deux envois de mon angle de visée (seulement s'il a changé)
+const GUN_AIM_FOLLOW := 12.0       ## vitesse à laquelle le tube d'un allié rejoint l'angle reçu (1/s)
+var _gun_remote: Dictionary = {}   ## canon -> {deg : angle reçu (999 : lâché), t : âge}
+var _gun_send_t := 0.0
+var _gun_sent_deg := 9999
+
+
+## Un allié vise au canon `i` : « i|degrés » (999 : il a lâché le canon, le tube revient droit).
+func _on_remote_gun_aim(arg: String) -> void:
+	var parts := arg.split("|")
+	if parts.size() == 2:
+		_gun_remote[int(parts[0])] = {"deg": int(parts[1])}
+
+
+## Chaque image : les tubes visés par les alliés rejoignent en douceur l'angle reçu.
+func _update_remote_guns(delta: float) -> void:
+	for i: int in _gun_remote.keys():
+		if i < 0 or i >= _cannon_nodes.size() or i == _gun_i:
+			_gun_remote.erase(i)
+			continue
+		var deg := int((_gun_remote[i] as Dictionary)["deg"])
+		var barrel := _cannon_nodes[i]["barrel"] as Node3D
+		var want := 0.0 if deg == 999 else -deg_to_rad(float(deg))
+		barrel.rotation.y = lerp_angle(barrel.rotation.y, want, 1.0 - exp(-delta * GUN_AIM_FOLLOW))
+		if deg == 999 and absf(barrel.rotation.y) < 0.01:
+			barrel.rotation.y = 0.0
+			_gun_remote.erase(i)
+
+
+## J'envoie mon angle de visée aux autres, quelques fois par seconde et seulement s'il a bougé.
+func _send_gun_aim(delta: float) -> void:
+	_gun_send_t -= delta
+	var deg := clampi(roundi(rad_to_deg(_cannon_aim)), -180, 180)
+	if _gun_send_t > 0.0 or deg == _gun_sent_deg:
+		return
+	_gun_send_t = GUN_AIM_SEND_EVERY
+	_gun_sent_deg = deg
+	_send_action("gun_aim", "%d|%d" % [_gun_i, deg], _my_world_pos(), _face)
+
+
 ## On lâche le canon : le tube reprend sa place.
 func _gun_leave() -> void:
+	if _gun_i >= 0:
+		_send_action("gun_aim", "%d|999" % _gun_i, _my_world_pos(), _face)
+		_gun_sent_deg = 9999
 	if _gun_i >= 0 and _gun_i < _cannon_nodes.size():
 		(_cannon_nodes[_gun_i]["barrel"] as Node3D).rotation.y = 0.0
 	_gun_i = -1
@@ -3905,6 +3952,7 @@ func _gun_out(i: int) -> Vector2:
 
 ## Chaque image : le tube suit le pointeur (dans l'arc permis) et le tracé du boulet montre où il tombera (vert : il toucherait un ennemi).
 func _update_gun_aim(delta: float) -> void:
+	_update_remote_guns(delta)
 	_gun_cd = maxf(_gun_cd - delta, 0.0)
 	if _gun_line == null:
 		_gun_line = MeshInstance3D.new()
@@ -3936,6 +3984,7 @@ func _update_gun_aim(delta: float) -> void:
 		if to.length() > 0.5:
 			_cannon_aim = clampf(out2.angle_to(to), -GUN_ARC, GUN_ARC)
 	(_cannon_nodes[_gun_i]["barrel"] as Node3D).rotation.y = -_cannon_aim
+	_send_gun_aim(delta)
 	# trajectoire prévue : mêmes lois que le boulet (voir fire_visual et _update_projectiles)
 	var dir := out2.rotated(_cannon_aim)
 	var fwd := _sim.forward()
@@ -5354,6 +5403,10 @@ func _interact(secondary: bool) -> void:
 	var swimmer := _hoist_candidate()
 	if swimmer != 0 and not secondary:   # lot 2 (4.5) : un camarade à l'eau, à portée de bras : on le hisse
 		_start_action("hoist", "Hisser %s" % _remote_label(swimmer), swimmer)
+		return
+	var to_hoist := _hoist_candidate()   # (13/11 : rien n'indiquait qu'on pouvait hisser un camarade à l'eau)
+	if to_hoist != 0:
+		_prompt.text = "E : hisser %s à bord" % _remote_label(to_hoist)
 		return
 	var it := _nearest_interactable()
 	if it.is_empty():

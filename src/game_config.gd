@@ -128,7 +128,7 @@ const ACTION_TIMES := {
 const ACTION_MOVE_TOLERANCE := 0.12   ## de combien (unités du lieu) on peut glisser sans couper l'action (le pont tangue)
 const BAIL_FILL_SHARE := 0.5          ## part de l'écopage passée à remplir le seau (le reste : le vider)
 const HAMMER_EVERY := 0.42            ## s entre deux coups de marteau
-const HOIST_REACH := 2.6              ## m : on peut attraper un camarade qui nage à cette distance du bord ou de l'échelle
+const HOIST_REACH := 4.5              ## m : on peut attraper un camarade qui nage à cette distance (13/11 : 2,6 ; trop juste, le bateau bouge)
 const LADDER_STEP_EVERY := 0.28       ## s entre deux pas sur l'échelle
 
 # ------------------------------------------------------------------ Lot 3 : bateau du joueur
