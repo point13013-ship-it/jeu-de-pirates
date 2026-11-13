@@ -1655,6 +1655,7 @@ func _apply_test_args() -> void:
 		_cam_yaw = deg_to_rad(float(_args["cam-yaw"]))
 	if _args.has("elev"):
 		_elev_deg = float(_args["elev"])
+		_elev_user = _elev_deg
 		_sim.sail_open = float(_sim.sail_level) / ShipSim.SAIL_LEVELS
 		_sim.auto_trim_pending = false
 		_sim.sail_trim_target = _sim.optimal_trim()

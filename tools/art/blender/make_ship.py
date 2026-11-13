@@ -258,6 +258,9 @@ for i in range(N - 1):
         b = (i + 1) * RING + j
         hull_faces.append((a, a + 1, b + 1, b))
 hull_faces.append(tuple(range(RING)))
+# 13/11 (bug 1.2, « on voit l'eau à travers le milieu de la coque ») : la coque était fermée à la poupe mais pas à l'étrave. Les
+# deux bords ne se rejoignent pas tout à fait (8 cm) : par cette fente, vue de face, on voyait la mer. Une face ferme l'étrave.
+hull_faces.append(tuple(reversed(range((N - 1) * RING, N * RING))))
 
 
 def hull_mat(p):
