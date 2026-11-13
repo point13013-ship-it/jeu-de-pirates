@@ -2,7 +2,7 @@
   "_commentaire": "Les nouveautés affichées dans la salle de jeux (bouton Nouveautés, et après chaque mise à jour). La plus récente d'abord. 'version': 'prochaine' est remplacé par le numéro de la version au moment de la publication (publish.ps1). Les images sont les fichiers de ce dossier ; publish.ps1 les envoie avec la version.",
   "versions": [
     {
-      "version": "prochaine",
+      "version": "2026.11.13-2126",
       "titre": "Tableau des quêtes, en grand",
       "points": [
         "7 missions au tableau, de quatre raretés : commune, rare, épique, légendaire. Les plus rares sont plus dures et paient bien plus.",
