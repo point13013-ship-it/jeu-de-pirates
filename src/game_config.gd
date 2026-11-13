@@ -420,3 +420,6 @@ const MUSIC_COMBAT_GAIN := 1.25         ## 2.3 : la musique de combat joue plus 
 const MUSIC_COMBAT_BOOST := 0.75        ## … et arrive encore plus fort (jusqu'à x 2 au total), puis redescend…
 const MUSIC_COMBAT_BOOST_TIME := 14.0   ## … en ce temps (s)
 const AGGRO_STING_VOL := 1.0            ## volume de l'alerte (cloche et tambour) quand un navire ennemi nous prend en chasse
+const HUD_NOTICES := false              ## les messages au milieu de l'écran (« Boulet ! Voie d'eau… ») : éteints, à la demande de Jimmy
+const HUD_KEY_HINT := true              ## la touche du poste visé, « [E] … » : petite, en bas de l'écran (false : rien du tout)
+const HUD_PROMPT_FROM_BOTTOM := 46.0    ## pixels au-dessus du bas de l'écran

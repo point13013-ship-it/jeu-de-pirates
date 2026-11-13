@@ -1478,14 +1478,16 @@ func _build_hud() -> void:
 	_hud.add_theme_font_size_override("font_size", 16)
 	_hud_root.add_child(_hud)
 	_prompt = Label.new()
-	_prompt.set_anchors_preset(Control.PRESET_CENTER if GameConfig.HUD_MINIMAL else Control.PRESET_CENTER_BOTTOM)
+	# (13/11, second retour : plus rien au centre de l'écran. La touche du poste visé, « [E] … », est en bas, petite.)
+	_prompt.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
 	_prompt.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	_prompt.position = Vector2(0, GameConfig.HUD_PROMPT_BELOW_CENTER) if GameConfig.HUD_MINIMAL else Vector2(0, -44)   # (13/11 : près du centre)
+	_prompt.position = Vector2(0, -GameConfig.HUD_PROMPT_FROM_BOTTOM)
+	_prompt.visible = GameConfig.HUD_KEY_HINT
 	_prompt.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_prompt.add_theme_color_override("font_color", Color(1, 0.95, 0.85))
 	_prompt.add_theme_color_override("font_outline_color", Color(0.05, 0.03, 0.1))
 	_prompt.add_theme_constant_override("outline_size", 6)
-	_prompt.add_theme_font_size_override("font_size", 18)
+	_prompt.add_theme_font_size_override("font_size", 15)
 	_hud_root.add_child(_prompt)
 	# Coin haut droit : l'or (plusieurs lignes : or, boulets, coffre, trésor porté) puis l'état du réseau, empilés dans une colonne
 	# qui suit la hauteur réelle de chaque bloc. Avant, l'état du réseau était posé à une hauteur fixe et chevauchait les lignes de
@@ -2906,7 +2908,7 @@ func _enemy_repair_fx(at: Vector2) -> void:
 		get_tree().create_timer(0.28 * k).timeout.connect(func() -> void:
 			_sfx.play_at(Synth.hammer(k % 3), where, 1.0, randf_range(0.9, 1.08)))
 	if at.distance_to(_my_world_pos()) < GameConfig.ENEMY_REPAIR_NOTICE:
-		_popup("Ils réparent !", at, Color(1.0, 0.82, 0.42))
+		pass   # (13/11 : pas de texte ; les coups de marteau suffisent)
 
 
 ## Hôte : le tir de `peer` touche-t-il quelqu'un ? Mêmes règles que le sabre pour l'or et les tonneaux.
@@ -4704,6 +4706,10 @@ func _leave_sails() -> void:
 
 
 func _say(text: String, seconds: float = 2.5) -> void:
+	# 13/11 (retour de Jimmy : « pas de texte au centre de l'écran, c'est moche ») : les messages ne s'affichent plus
+	# (GameConfig.HUD_NOTICES pour les rallumer). Ce qui compte se dit par le son, le monde ou le sac.
+	if not GameConfig.HUD_NOTICES:
+		return
 	_notice = text
 	_notice_t = seconds
 
@@ -5432,8 +5438,7 @@ func _update_atmosphere(delta: float) -> void:
 	_chase_quiet = 0.0 if chased else _chase_quiet + delta
 	if chased and not _chased:
 		_chased = true
-		_atmo.audio.play(Synth.aggro_sting(), GameConfig.AGGRO_STING_VOL, 1.0, AudioSettings.BUS_SFX)
-		_say("Navire ennemi en chasse : aux postes !", 4.0)
+		_atmo.audio.play(Synth.aggro_sting(), GameConfig.AGGRO_STING_VOL, 1.0, AudioSettings.BUS_SFX)   # (pas de message à l'écran)
 	elif _chased and _chase_quiet > GameConfig.MUSIC_COMBAT_EXIT:
 		_chased = false
 	_music_heat = maxf(_music_heat - delta / GameConfig.MUSIC_HEAT_DECAY, 0.0)   # les coups reçus réchauffent, puis ça retombe
