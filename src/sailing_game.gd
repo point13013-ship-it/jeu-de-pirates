@@ -1191,6 +1191,10 @@ func _update_shelters(around: Vector2) -> void:
 			near.append([d, Vector3(c.x, c.y, float(isl["radius"]))])
 	if not _town_plan.is_empty():   # la baie de la ville v3 est un abri elle aussi : le bassin est calme
 		near.append([-1.0, Vector3(GameConfig.TOWN_SHELTER.x, GameConfig.TOWN_SHELTER.y, GameConfig.TOWN_SHELTER.z)])
+	elif _has_port():
+		# 13/11 (retour de Jimmy : « la houle monte au-dessus du sol, sur la ville ») : par gros temps les vagues dépassaient le
+		# quai et la mer apparaissait dans les rues. Le port abrite de la houle, comme une île.
+		near.append([-1.0, Vector3(GameConfig.PORT_SHELTER.x, GameConfig.PORT_SHELTER.y, GameConfig.PORT_SHELTER.z)])
 	near.sort_custom(func(a: Array, b: Array) -> bool: return float(a[0]) < float(b[0]))
 	_shelters.clear()
 	var sent: Array[Vector3] = []
@@ -1364,6 +1368,14 @@ func _build_port() -> void:
 					ghost.set_shader_parameter(param, mat.get_shader_parameter(param))
 				(record["normal"] as Dictionary)[s] = mat
 				(record["ghost"] as Dictionary)[s] = ghost
+				# 13/11 (2.2) : les vitres des bâtiments où l'on entre laissent deviner l'intérieur
+				if GameConfig.WINDOWS_SHOW_INSIDE and src.resource_name in ["glow", "glass"] 						and String(n.name) in ["bldg_taverne", "bldg_tailleur", "bldg_magasin", "bldg_voilerie"]:
+					var pane := ghost.duplicate() as ShaderMaterial
+					pane.set_shader_parameter("ghost_alpha", GameConfig.WINDOW_ALPHA)
+					pane.set_shader_parameter("base", GameConfig.WINDOW_GLASS)   # (un verre clair, sans lueur : c'est l'intérieur qu'on voit)
+					pane.set_shader_parameter("emit", 0.0)
+					mi.set_surface_override_material(s, pane)
+					(record["normal"] as Dictionary)[s] = pane
 		if is_building and not (record["normal"] as Dictionary).is_empty():
 			_buildings.append(record)
 	ToonLook.apply_tree(_port)   # prototype de refonte : lumière en paliers
@@ -1422,10 +1434,14 @@ func _build_town_v3() -> void:
 				m2.set_shader_parameter("kind", int(kinds[s]) if s < kinds.size() else 4)
 				m2.set_shader_parameter("base", cols[s] as Color)
 				m2.set_shader_parameter("emit", 0.0)
+			if s == glass and GameConfig.WINDOWS_SHOW_INSIDE and bool(mi.get_meta("see_through", false)):
+				mat.shader = _ghost_shader(surface_shader)   # (2.2 : vitres qui laissent voir l'intérieur)
+				mat.set_shader_parameter("ghost_alpha", GameConfig.WINDOW_ALPHA)
+				mat.set_shader_parameter("base", GameConfig.WINDOW_GLASS)
 			mi.set_surface_override_material(s, mat)
 			(record["normal"] as Dictionary)[s] = mat
 			(record["ghost"] as Dictionary)[s] = ghost
-			if s == glass:
+			if s == glass and not (GameConfig.WINDOWS_SHOW_INSIDE and bool(mi.get_meta("see_through", false))):
 				_town_lights.add_glass(mat, ghost, bool(mi.get_meta("lit", false)))
 		_buildings.append(record)
 	ToonLook.apply_tree(_port)
@@ -1487,7 +1503,7 @@ func _build_town_life_v3() -> void:
 					deck.levels.append(l2)
 			TownBuilder.build_levels(shift, deck)
 		var room := ShopBuilder.build(it2) if it2.has("kind") else TownBuilder.build_tavern(it2)
-		room.visible = false
+		room.visible = GameConfig.WINDOWS_SHOW_INSIDE
 		shift.add_child(room)
 		ToonLook.apply_tree(pivot)
 		var building: Node = _port.find_child(str(it2["building_node"]), true, false) if _port != null else null
@@ -2376,7 +2392,7 @@ func _build_town() -> void:
 	TownBuilder.build_levels(_world_fixed, _land)
 	for it: Dictionary in _land.interiors:
 		var root := ShopBuilder.build(it) if it.has("kind") else TownBuilder.build_tavern(it)
-		root.visible = false
+		root.visible = GameConfig.WINDOWS_SHOW_INSIDE
 		_world_fixed.add_child(root)
 		var building: Node = _port.find_child(str(it.get("building_node", "")), true, false) if _port != null else null
 		_interior_nodes.append({"root": root, "building": building})
@@ -2470,7 +2486,7 @@ func _update_interior() -> void:
 	_interior_active = idx
 	for i in _interior_nodes.size():
 		var e: Dictionary = _interior_nodes[i]
-		(e["root"] as Node3D).visible = i == idx
+		(e["root"] as Node3D).visible = i == idx or GameConfig.WINDOWS_SHOW_INSIDE   # (visible du dehors, à travers les vitres)
 		if e["building"] != null:
 			(e["building"] as Node3D).visible = i != idx
 

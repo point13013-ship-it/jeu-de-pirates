@@ -413,7 +413,7 @@ const TOWN_SHELTER := Vector3(5.0, -45.0, 85.0)   ## (x, z, rayon) : la houle to
 const TOWN_LABELS := false             ## les noms numérotés au-dessus des bâtiments de la ville v3 (repères de chantier)
 ## Bugs de la liste du 13/11.
 const WATER_EXIT_STEP := 0.9          ## m : en sortant de l'eau sur un quai ou un ponton, le pirate est posé à cette distance du bord
-const WARM_GLOW := Color(1.0, 0.66, 0.26)   ## teinte des fenêtres, vitrines et lanternes allumées (avant : blanc)
+const WARM_GLOW := Color(1.0, 0.80, 0.46)   ## teinte des fenêtres, vitrines et lanternes allumées (avant : blanc)
 const WEAPON_SHIP_DAMAGE := 1.5        ## 1.7 : points de coque qu'un point de dégât d'arme enlève à un bateau ennemi (un boulet : 18)
 const WEAPON_OWN_SHIP_WEAR := 0.12     ## 1.7 : usure de notre coque par point de dégât reçu du dehors ; une voie d'eau par unité d'usure
 const ENEMY_REPAIR_NOTICE := 60.0      ## m : en deçà, « Ils réparent ! » s'affiche au-dessus du bateau ennemi
@@ -446,3 +446,8 @@ const NOTE_EVERY := 0.4                 ## s entre deux notes qui s'envolent
 const NOTE_LIFE := 1.5                  ## s : durée de vie d'une note
 const INSTRUMENT_SCALE := 1.5           ## taille de l'instrument tenu
 const NOTE_SCALE := 1.6                 ## taille des notes qui s'envolent
+## Vitres (13/11, 2.2).
+const WINDOWS_SHOW_INSIDE := false      ## vitres transparentes des bâtiments où l'on entre. ÉTEINT : essayé le 13/11, le résultat est moins bon (la caméra regarde d'en haut : on ne voit pas l'intérieur, et la nuit les fenêtres perdent leur lumière chaude)
+const WINDOW_ALPHA := 0.30              ## opacité de ces vitres (1 : opaques)
+const PORT_SHELTER := Vector3(0.0, -46.0, 64.0)   ## (x, z, rayon) : la houle tombe à SHORE_SWELL autour de l'ancienne ville
+const WINDOW_GLASS := Color(0.72, 0.84, 0.90)   ## teinte du verre de ces vitres

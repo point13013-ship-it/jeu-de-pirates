@@ -107,6 +107,7 @@ static func build(root: Node3D, b: Dictionary, base: float, seed: int) -> MeshIn
 	mi.set_meta("colors", [facade, roof, shutter, STONE, TRIM, GLASS])
 	mi.set_meta("kinds", KINDS)
 	mi.set_meta("glass", S_GLASS)
+	mi.set_meta("see_through", b.has("interior"))   # (on entre dans ce bâtiment : ses vitres laissent voir l'intérieur)
 	mi.set_meta("lit", rng.randf() < 0.7)   # (la nuit, sept maisons sur dix ont de la lumière)
 	root.add_child(mi)
 	return mi
