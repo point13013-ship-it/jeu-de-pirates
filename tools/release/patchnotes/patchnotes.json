@@ -2,6 +2,15 @@
   "_commentaire": "Les nouveautés affichées dans la salle de jeux (bouton Nouveautés, et après chaque mise à jour). La plus récente d'abord. 'version': 'prochaine' est remplacé par le numéro de la version au moment de la publication (publish.ps1). Les images sont les fichiers de ce dossier ; publish.ps1 les envoie avec la version.",
   "versions": [
     {
+      "version": "2026.11.13-1532",
+      "titre": "La longue-vue",
+      "points": [
+        "Nouvel instrument : la longue-vue. Touche B pour la porter à l'œil : la vue plonge vers l'horizon et grossit, dans un rond cerclé de laiton. Q et D balaient, B la baisse.",
+        "On porte la boussole OU la longue-vue, pas les deux : l'échange se fait au coffre du bateau (coffre à boulets, caisse à planches ou étagère de la cale). À l'équipage de se répartir les rôles.",
+        "L'œil à la longue-vue, on ne marche pas."
+      ]
+    },
+    {
       "version": "2026.11.13-1528",
       "titre": "Cordages attachés, lampadaires jaune paille",
       "points": [
