@@ -205,8 +205,13 @@ Règles ajoutées, vérifiées par le test :
   bandeaux, porte, fenêtres à volets, balcon de bois pour certaines, toit de tuiles à débord, cheminée. Les trois services
   « intérieur » (taverne, magasin, tailleur) ont une porte double et une potence d'enseigne. Captures : `ville-jour-large.png`,
   `ville-jour-rue.png`, `ville-soir-marche.png`, `ville-nuit-quai.png`.
-- **Restent en volumes simples** : les repères (église, maison du gouverneur, moulin, phare, batterie), les tentes, les
-  comptoirs, les halles, les cabanes de pêcheurs.
+- **Repères et lieux ouverts : faits.** `src/town/town_landmarks.gd` : église et clocher, maison du gouverneur, moulin (ailes
+  qui tournent), phare (feu et faisceaux la nuit), batterie, lavoir, cabanes de pêcheurs, halles (marché, chantier naval avec
+  une coque sur cale), tentes rayées ouvertes, tableau des quêtes, forge.
+- **Intérieurs : faits.** Taverne (avec sa terrasse et ses marches), magasin général, tailleur : ce sont les intérieurs de
+  l'ancienne ville (`data/town.json`), replacés et tournés sur leur bâtiment du plan (`xf` dans `src/land.gd`).
+- **Retour de Jimmy (13/11) : « des maisons posées au hasard, la porte donne dans l'herbe ».** Chaque maison regarde
+  maintenant la rue le long de laquelle elle est posée ; une maison en retrait a un sentier de sa porte à la rue (`paths`).
 - **Pas encore dans la maquette** : les intérieurs (taverne, magasin, tailleur : on parle aux marchands à leur porte), la
   colline du moulin (à plat), la pente de la grève (à plat, à la hauteur du quai), les lanternes, les figurants et les sons.
 - L'ancienne ville reste celle du jeu publié.

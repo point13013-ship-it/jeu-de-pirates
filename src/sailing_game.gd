@@ -1043,17 +1043,72 @@ func _build_town_life_v3() -> void:
 	for r: Dictionary in _town_plan.get("ramps", []):
 		lv.append({"id": str(r["id"]), "ramp": [float(r["a"][0]), float(r["a"][1]), float(r["b"][0]), float(r["b"][1]), float(r["width"])],
 				"h0": float(r["h0"]), "h1": float(r["h1"]), "solid": true})
-	_land.load_town({"levels": lv, "interiors": []})
+	# les intérieurs gardés de l'ancienne ville (taverne, magasin, tailleur : data/town.json), replacés et tournés sur leur
+	# bâtiment du plan ; la terrasse de la taverne et ses marches suivent
+	var old := _read_json("res://data/town.json")
+	var kept: Array = []
+	var inside: Dictionary = {}     # identifiant d'intérieur -> sa définition déplacée
+	for b: Dictionary in _town_plan.get("buildings", []):
+		if not b.has("interior"):
+			continue
+		for it0: Dictionary in old.get("interiors", []):
+			if str(it0["id"]) != str(b["interior"]):
+				continue
+			var it: Dictionary = it0.duplicate(true)
+			var fp: Array = it["footprint"]
+			it["xf"] = [(float(fp[0]) + float(fp[2])) * 0.5, (float(fp[1]) + float(fp[3])) * 0.5, float(b["x"]), float(b["y"]), float(b["ang"])]
+			it["building_node"] = "bldg_%s" % str(b["id"])
+			kept.append(it)
+			inside[str(it["id"])] = it
+			if str(it["id"]) == "taverne":
+				for l0: Dictionary in old.get("levels", []):
+					if str(l0["id"]) in ["terrasse_taverne", "marches_taverne", "marches_ouest", "marches_est"]:
+						var l1: Dictionary = l0.duplicate(true)
+						l1["xf"] = it["xf"]
+						lv.append(l1)
+	_land.load_town({"levels": lv, "interiors": kept})
+	for it2: Dictionary in kept:
+		var x: Array = it2["xf"]
+		var pivot := Node3D.new()                       # place et tourne ce qui est construit dans le repère d'origine
+		pivot.position = Vector3(float(x[2]), 0.0, -float(x[3]))
+		pivot.rotation.y = float(x[4])
+		_world_fixed.add_child(pivot)
+		var shift := Node3D.new()
+		shift.position = Vector3(-float(x[0]), 0.0, float(x[1]))
+		pivot.add_child(shift)
+		if str(it2["id"]) == "taverne":
+			var deck := Land.new()
+			for l2: Dictionary in lv:
+				if l2.has("xf") and l2.has("rect"):
+					deck.levels.append(l2)
+			TownBuilder.build_levels(shift, deck)
+		var room := ShopBuilder.build(it2) if it2.has("kind") else TownBuilder.build_tavern(it2)
+		room.visible = false
+		shift.add_child(room)
+		ToonLook.apply_tree(pivot)
+		var building: Node = _port.find_child(str(it2["building_node"]), true, false) if _port != null else null
+		_interior_nodes.append({"root": room, "building": building})
 	var cfg := _read_json("res://data/npcs.json")
 	_npc_range = float(cfg.get("range", 2.3))
 	var at: Dictionary = _town_plan.get("npcs", {})
 	var list: Array = []
 	for d: Dictionary in cfg.get("npcs", []):
-		if not at.has(str(d["id"])):
-			continue
 		var d2 := d.duplicate()
-		d2["pos"] = at[str(d["id"])]
-		d2["h"] = 0.0
+		if at.has(str(d["id"])):
+			d2["pos"] = at[str(d["id"])]
+			d2["h"] = 0.0
+		else:
+			# un marchand resté dans sa boutique : sa place d'origine, ramenée dans l'intérieur déplacé
+			var home := -1
+			for i in old.get("interiors", []).size():
+				var o: Dictionary = old["interiors"][i]
+				if Land._in_rect(Vector2(float(d["pos"][0]), float(d["pos"][1])), o["footprint"]) and inside.has(str(o["id"])):
+					var q := Land.from_local(Vector2(float(d["pos"][0]), float(d["pos"][1])), inside[str(o["id"])])
+					d2["pos"] = [q.x, q.y]
+					home = i
+			if home < 0:
+				continue
+			d2["indoor"] = true
 		list.append([d2, false])
 	var k := 0
 	for w: Dictionary in _town_plan.get("wanderers", []):
@@ -1061,7 +1116,10 @@ func _build_town_life_v3() -> void:
 		list.append([{"id": str(w["id"]), "name": "Passant", "role": "passant", "path": w["path"], "seed": k + 2, "lines": ["Belle journée pour prendre la mer."]}, true])
 	for e: Array in list:
 		var npc := TownNpc.from_data(e[0], bool(e[1]))
-		if not bool(e[1]):
+		npc.interior = -1
+		if bool((e[0] as Dictionary).get("indoor", false)):
+			npc.interior = _land.interior_at(npc.pos)   # (sa hauteur reste celle de data/npcs.json : comptoir, galerie)
+		elif not bool(e[1]):
 			var h := _land.surface_below(npc.pos, 50.0)   # (sur la terrasse de la haute ville ou sur le cap)
 			npc.h = h if h != Land.NO_SURFACE else 0.0
 			if npc.h == 0.0:
@@ -1069,7 +1127,6 @@ func _build_town_life_v3() -> void:
 		_world_fixed.add_child(npc.sprite)
 		npc.blob = _blob.duplicate() as MeshInstance3D
 		_world_fixed.add_child(npc.blob)
-		npc.interior = -1
 		_npcs.append(npc)
 		_quests.names[npc.id] = npc.display_name
 	_update_npcs(0.0)

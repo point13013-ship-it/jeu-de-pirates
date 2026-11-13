@@ -89,6 +89,12 @@ static func build(parent: Node3D, plan: Dictionary) -> Dictionary:
 				var y := _level_h(levels, mid) + 0.04
 				_quad(acc, col2, _w(p0 + side, y), _w(p1 + side, y), _w(p1 - side, y), _w(p0 - side, y), Vector3.UP)
 			_disc(acc, col2, b, width * 0.5, width * 0.5, _level_h(levels, b) + 0.04)
+	for pth: Dictionary in plan.get("paths", []):   # sentiers des maisons en retrait, de la porte à la rue
+		var a4 := Vector2(float(pth["pts"][0][0]), float(pth["pts"][0][1]))
+		var b4 := Vector2(float(pth["pts"][1][0]), float(pth["pts"][1][1]))
+		var side4 := (b4 - a4).normalized().orthogonal() * float(pth["width"]) * 0.5
+		var y4 := _level_h(levels, a4) + 0.035
+		_quad(acc, PAVE, _w(a4 + side4, y4), _w(b4 + side4, y4), _w(b4 - side4, y4), _w(a4 - side4, y4), Vector3.UP)
 	for pl: Dictionary in plan.get("plazas", []):
 		var c := Vector2(float(pl["x"]), float(pl["y"]))
 		_disc(acc, PAVE_MAIN, c, float(pl["rx"]), float(pl["ry"]), _level_h(levels, c) + 0.05)

@@ -317,9 +317,27 @@ func blocker_at(p: Vector2) -> String:
 func interior_at(p: Vector2) -> int:
 	var m := Vector2(p.x, -p.y)
 	for i in interiors.size():
-		if _in_rect(m, (interiors[i] as Dictionary)["footprint"]):
+		var it: Dictionary = interiors[i]
+		if _in_rect(_lm(m, it), it["footprint"]):
 			return i
 	return -1
+
+
+## Ville v3 : un intérieur ou un niveau de data/town.json peut être déplacé et tourné (« xf » : [ancien centre x, y, nouveau
+## centre x, y, angle]). Ses rectangles restent écrits dans leur repère d'origine : on y ramène le point à tester.
+static func _lm(m: Vector2, s: Dictionary) -> Vector2:
+	if not s.has("xf"):
+		return m
+	var x: Array = s["xf"]
+	return (m - Vector2(float(x[2]), float(x[3]))).rotated(-float(x[4])) + Vector2(float(x[0]), float(x[1]))
+
+
+## L'inverse : un point du repère d'origine d'une surface, dans le repère du fichier.
+static func from_local(m: Vector2, s: Dictionary) -> Vector2:
+	if not s.has("xf"):
+		return m
+	var x: Array = s["xf"]
+	return (m - Vector2(float(x[0]), float(x[1]))).rotated(float(x[4])) + Vector2(float(x[2]), float(x[3]))
 
 
 static func _in_rect(m: Vector2, r: Array) -> bool:
@@ -372,7 +390,7 @@ static func _blocked_by(m: Vector2, s: Dictionary) -> bool:
 
 func _in_door_cut(m: Vector2) -> bool:
 	for it: Dictionary in interiors:
-		if it.has("door_cut") and _in_rect(m, it["door_cut"]):
+		if it.has("door_cut") and _in_rect(_lm(m, it), it["door_cut"]):
 			return true
 	return false
 
@@ -410,29 +428,31 @@ func _candidates(m: Vector2) -> Array[float]:
 	var base_ok := false
 	var idx := -1
 	for i in interiors.size():
-		if _in_rect(m, (interiors[i] as Dictionary)["footprint"]):
+		if _in_rect(_lm(m, interiors[i]), (interiors[i] as Dictionary)["footprint"]):
 			idx = i
 	if idx >= 0:
 		surfaces = (interiors[idx] as Dictionary)["surfaces"]
+		m = _lm(m, interiors[idx])   # (les surfaces d'un intérieur sont dans son repère d'origine)
 	else:
 		base_ok = _on_ground(m) and (not _blocked(m) or _in_door_cut(m))
 	var carved := false
 	var on_ramp := false   # (ville v3 : là où passe une rampe, elle seule compte : elle entaille la terrasse qu'elle rejoint)
 	for s: Dictionary in surfaces:
-		if _in_surface(m, s) and s.get("solid", false):
+		if _in_surface(_lm(m, s), s) and s.get("solid", false):
 			carved = true
 			if s.has("ramp"):
 				on_ramp = true
 	for s: Dictionary in surfaces:
-		if not _in_surface(m, s) or (on_ramp and s.has("poly")):
+		var ml := _lm(m, s)
+		if not _in_surface(ml, s) or (on_ramp and s.has("poly")):
 			continue
 		if s.has("poly") and _blocked(m):
 			continue   # (un mur de bâtiment posé sur une terrasse arrête comme au sol)
 		if s.get("base", false):
-			if not carved and not _blocked_by(m, s):
+			if not carved and not _blocked_by(ml, s):
 				cands.append(float(s["h"]))
-		elif not _blocked_by(m, s):
-			cands.append(_rect_h(s, m))
+		elif not _blocked_by(ml, s):
+			cands.append(_rect_h(s, ml))
 	if base_ok and not carved:
 		cands.append(_ground_level(m))
 	return cands

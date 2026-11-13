@@ -86,10 +86,13 @@ func _initialize() -> void:
 
 	# les services de chaque retour sont à moins de 35 m du bateau (milieu du grand ponton)
 	var boat := Vector2(0.0, -float(plan["dock"]["y"]))
-	for id2: String in ["corbin", "petronille"]:
-		var p2: Array = plan["npcs"][id2]
-		var d := Vector2(float(p2[0]), -float(p2[1])).distance_to(boat)
-		_check(d < 35.0, "%s est à moins de 35 m du bateau (%.1f m)" % [id2, d])
+	var p2: Array = plan["npcs"]["corbin"]
+	var d := Vector2(float(p2[0]), -float(p2[1])).distance_to(boat)
+	_check(d < 35.0, "le receleur est à moins de 35 m du bateau (%.1f m)" % d)
+	for b7: Dictionary in plan["buildings"]:
+		if int(b7.get("num", 0)) in [2, 4]:   # tableau des quêtes, magasin général
+			var d2 := Vector2(float(b7["x"]), -float(b7["y"])).distance_to(boat)
+			_check(d2 < 38.0, "%s est à moins de 38 m du bateau (%.1f m)" % [str(b7["name"]), d2])
 
 	# chaque rampe monte de 0 à sa terrasse, à pied, et on en redescend
 	for r2: Dictionary in plan["ramps"]:

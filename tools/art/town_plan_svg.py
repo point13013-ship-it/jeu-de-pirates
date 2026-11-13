@@ -93,9 +93,9 @@ poly([(x * 0.86 + 190 * 0.14, y * 0.86 + 140 * 0.14) for x, y in FORT], PAVE)
 STREETS = [
     ("quai", [(54, 124), (64, 119), (78, 115.5), (92, 113.5), (105, 113), (118, 113.5), (132, 115.5), (146, 119), (156, 125), (164, 134), (170, 130)], 7.0),
     ("grand_rue", [(105, 104), (102, 94), (106, 84), (100, 75), (104, 66), (111, 58), (108, 48), (110, 40)], 6.0),
-    ("rue_marche", [(96, 102), (86, 97), (76, 93), (66, 90)], 4.0),
+    ("rue_marche", [(102, 94), (90, 88), (76, 87), (66, 89)], 4.0),
     ("rue_pecheurs", [(58, 92), (50, 100), (44, 110), (40, 120)], 3.5),
-    ("rue_corderie", [(116, 100), (128, 95.5), (140, 97.5), (152, 104), (160, 114)], 4.0),
+    ("rue_corderie", [(102, 94), (116, 93), (128, 92), (140, 95), (152, 103), (160, 114)], 4.0),
     ("contre_allee_o", [(66, 84), (72, 76), (84, 72), (100, 75)], 3.5),
     ("contre_allee_e", [(106, 84), (120, 82), (134, 86), (140, 96)], 3.5),
     ("montee_fort", [(160, 114), (168, 118), (176, 124)], 3.5),
@@ -104,10 +104,10 @@ STREETS = [
     ("rue_haute", [(60, 50), (76, 46), (92, 48), (110, 46), (128, 48), (146, 44), (164, 48)], 4.0),
     ("chemin_moulin", [(60, 50), (48, 50), (38, 48), (33.5, 47)], 2.4),
     ("chemin_jungle", [(23.5, 40.5), (18, 34), (12, 20)], 2.0),
-    ("ruelle_1", [(86, 97), (84, 86), (84, 72)], 1.8),
-    ("ruelle_2", [(128, 95.5), (124, 89), (120, 82)], 1.8),
-    ("ruelle_3", [(76, 93), (70, 104), (72, 114)], 1.8),
-    ("ruelle_4", [(140, 97.5), (141.5, 108), (140, 117)], 1.8),
+    ("ruelle_1", [(84, 87.5), (84, 80), (84, 72)], 1.8),
+    ("ruelle_2", [(128, 92), (124, 87), (120, 82)], 1.8),
+    ("ruelle_3", [(68, 92), (66.5, 104), (68, 116)], 1.8),
+    ("ruelle_4", [(140, 95), (141.5, 107), (140, 117)], 1.8),
 ]
 for _name, pts, w in STREETS:
     path(pts, PAVE_D, w + 0.8)
@@ -130,14 +130,14 @@ for _n, x, y, rx, ry in PLAZAS:
 # ------------------------------------------------------------------ bâtiments nommés (services et repères)
 # (numéro, nom, x, y, largeur, profondeur, angle en degrés, couleur du toit)
 NAMED = [
-    (1, "Receleur (étal)", 95.5, 109.5, 5.0, 3.5, -8, "#DCAE5C"),
+    (1, "Receleur (étal)", 99.0, 108.6, 5.0, 3.5, -6, "#DCAE5C"),
     (2, "Tableau des quêtes", 113.5, 110.5, 2.6, 1.4, 6, "#9C6A43"),
-    (3, "Taverne du Pélican Borgne", 89.0, 103.0, 13.0, 9.0, -14, "#7A3530"),
-    (4, "Magasin général", 122.0, 105.9, 9.5, 6.0, 12, "#B25A3E"),
+    (3, "Taverne du Pélican Borgne", 86.5, 99.6, 14.0, 10.0, -6, "#7A3530"),
+    (4, "Magasin général", 121.5, 103.4, 11.0, 9.0, 8, "#B25A3E"),
     (5, "Chantier naval (halle)", 157.0, 110.5, 15.0, 9.0, 34, "#6A4532"),
-    (6, "Voilerie", 132.5, 105.0, 8.0, 6.5, 12, "#DE8A5E"),
-    (7, "Armurier et doreur", 78.5, 99.5, 8.5, 7.0, -22, "#4A4258"),
-    (8, "Tailleur", 60.0, 80.5, 8.0, 7.0, 20, "#B25A3E"),
+    (6, "Voilerie", 134.0, 103.5, 8.0, 6.5, 10, "#DE8A5E"),
+    (7, "Armurier et doreur", 73.2, 102.5, 7.0, 6.0, -14, "#4A4258"),
+    (8, "Tailleur", 56.5, 78.5, 10.0, 9.0, 14, "#B25A3E"),
     (9, "Forge", 73.5, 83.0, 6.5, 6.0, -30, "#4A4258"),
     (10, "Halle du marché", 66.0, 88.0, 8.0, 5.0, 0, "#DCAE5C"),
     (11, "Église et clocher", 110.0, 30.0, 11.0, 15.0, 0, "#7A3530"),
@@ -145,7 +145,7 @@ NAMED = [
     (13, "Moulin", 28.0, 46.0, 6.0, 6.0, 0, "#EFE4CC"),
     (14, "Phare", 193.0, 157.0, 4.5, 4.5, 0, "#EFE4CC"),
     (15, "Batterie du fort", 190.0, 138.0, 16.0, 10.0, 20, "#7D7488"),
-    (16, "Entrepôts", 151.5, 95.5, 9.0, 6.5, 28, "#6A4532"),
+    (16, "Entrepôts", 153.0, 92.0, 9.0, 6.5, 30, "#6A4532"),
     (17, "Cimetière marin", 78.0, 32.0, 14.0, 9.0, -6, "#93C4A6"),
     (18, "Cabanes de pêcheurs", 30.0, 124.5, 22.0, 5.0, 5, "#9C6A43"),
     (19, "Bains et lavoir", 94.0, 55.5, 7.0, 5.0, 4, "#5F8FB0"),
@@ -185,6 +185,7 @@ def inside_poly(p, pts):
 
 # ------------------------------------------------------------------ maisons : le long des rues, des deux côtés, de guingois
 houses = []
+PATHS = []      # sentiers des maisons en retrait : [porte, point de la rue]
 
 # 13/11, retour de Jimmy sur la maquette grise : « les maisons sont l'une sur l'autre, on se sent à l'étroit ». Même leçon que pour
 # le bateau : de la place pour circuler. Règles : jamais moins de GAP m entre deux bâtiments (une ruelle où l'on passe à deux),
@@ -227,8 +228,15 @@ def rect_clear_of_plazas(cx, cy, w, d, ang):
     return True
 
 
+# la terrasse et ses marches occupent le devant de la taverne : (largeur, profondeur) à garder libre devant la façade
+FRONT_CLEAR = {3: (17.6, 5.0), 4: (3.0, 1.6), 8: (3.0, 1.6)}
 for _num, _name, x, y, w, d, a, _c in NAMED:
     solids.append((x, y, w, d, math.radians(a), GAP_NAMED))
+    if _num in FRONT_CLEAR:     # le parvis d'un intérieur (terrasse, marches) : aucune maison dessus
+        fw, fd = FRONT_CLEAR[_num]
+        ar = math.radians(a)
+        off = d * 0.5 + fd * 0.5
+        solids.append((x - math.sin(ar) * off, y + math.cos(ar) * off, fw, fd, ar, 0.5))
 
 
 def along(pts, s):
@@ -258,7 +266,11 @@ for row in (0, 1, 2):                      # 0 : les façades sur la rue ; 1 : u
                 cy = by0 + math.cos(ang) * side * set_back
                 rr = math.hypot(hw, hd) * 0.5
                 ok = cy < coast_y(cx) - 5.0 and 4 < cx < W - 4 and cy > 12
-                turn = ang + rnd.uniform(-0.16, 0.16)
+                # direction de la maison vers sa rue (plan : y vers le bas) ; la façade est le côté « sud » du repère de la maison
+                to_street = (math.sin(ang) * side, -math.cos(ang) * side)
+                turn = math.atan2(-to_street[0], to_street[1]) + rnd.uniform(-0.07, 0.07)
+                if abs(math.cos(turn - ang)) < 0.5:
+                    hw, hd = hw, hd      # (la façade est toujours la largeur : rien à échanger, l'angle suit la rue)
                 ok = ok and rect_clear_of_streets(cx, cy, hw, hd, turn) and rect_clear_of_plazas(cx, cy, hw, hd, turn)
                 mine = corners_of(cx, cy, hw, hd, turn)
                 ok = ok and not any(rects_overlap(mine, corners_of(ox, oy, ow, od, oa, og)) for ox, oy, ow, od, oa, og in solids)
@@ -267,6 +279,9 @@ for row in (0, 1, 2):                      # 0 : les façades sur la rue ; 1 : u
                 ok = ok and len(set(inside_poly(q, UP) for q in corners_of(cx, cy, hw, hd, turn, 1.0))) == 1
                 if ok and (row == 0 or rnd.random() < 0.75):
                     houses.append((cx, cy, hw, hd, turn, inside_poly((cx, cy), UP)))
+                    if row > 0:      # en retrait : un sentier de la porte à la rue
+                        door = (cx + to_street[0] * (hd * 0.5 + 0.2), cy + to_street[1] * (hd * 0.5 + 0.2))
+                        PATHS.append([door, (bx0 - math.sin(ang) * side * (w * 0.5 - 0.2), by0 + math.cos(ang) * side * (w * 0.5 - 0.2))])
                     solids.append((cx, cy, hw, hd, turn, GAP))
                     blocks.append((cx, cy, rr))
                     s += hw + GAP + rnd.uniform(0.0, 5.0)                       # des trous : jardins, passages, cours
@@ -280,6 +295,8 @@ for _k in range(260):
         circle(x, y, rnd.uniform(1.2, 2.4), GRASS_D, opacity=0.85)
         circle(x - 0.4, y - 0.5, rnd.uniform(0.6, 1.2), "#A3C650", opacity=0.8)
 
+for a, b in PATHS:
+    path([a, b], PAVE, 1.2)
 for cx, cy, hw, hd, ang, up in houses:
     poly(rot_rect(cx + 0.6, cy + 0.8, hw, hd, ang), INK, opacity=0.25)                    # ombre
     poly(rot_rect(cx, cy, hw, hd, ang), rnd.choice(FACADES), stroke=INK, sw=0.18)
@@ -390,8 +407,11 @@ MODES = {1: "tente", 2: "comptoir", 3: "interieur", 4: "interieur", 5: "halle", 
          10: "halle", 11: "repere", 12: "repere", 13: "repere", 14: "repere", 15: "repere", 16: "maison", 17: "jardin", 18: "cabanes", 19: "repere"}
 STOREYS = {3: 2, 4: 2, 5: 2, 8: 2, 11: 2, 12: 2, 13: 3, 14: 5, 15: 1, 16: 1, 19: 1}
 # qui se tient devant quel bâtiment (identifiants de data/npcs.json) ; décalage le long de la façade en m
-STAFF = {1: [("corbin", 0.0)], 3: [("barnabe", -2.5), ("ysolde", 2.5)], 4: [("petronille", 0.0)], 5: [("mathurin", 0.0)], 6: [("ariane", 0.0)],
-         7: [("armand", -1.8), ("prosper", 1.8)], 8: [("gaspard", 0.0)], 15: [("odilon", 0.0)], 11: [("hector", 4.0)]}
+STAFF = {1: [("corbin", 0.0)], 5: [("mathurin", 0.0)], 6: [("ariane", 0.0)],
+         7: [("armand", -1.8), ("prosper", 1.8)], 15: [("odilon", 0.0)], 11: [("hector", 4.0)]}
+# les intérieurs gardés (data/town.json) : l'identifiant de l'intérieur, et la terrasse de la taverne devant sa façade
+INTERIORS = {3: "taverne", 4: "magasin", 8: "tailleur"}
+
 
 land = [fp(q) for q in COAST] + [[115.0, 30.0], [108.0, 78.0], [84.0, 100.0], [40.0, 108.0], [-20.0, 110.0], [-70.0, 104.0], [-100.0, 80.0], [-105.0, 20.0]]
 buildings, npcs = [], {}
@@ -400,6 +420,10 @@ for num, name, x, y, w, d, a, c in NAMED:
     mode = MODES.get(num, "repere")
     buildings.append({"id": "b%d" % num, "num": num, "name": name, "x": fx(x), "y": fy(y), "w": w, "d": d, "ang": round(ang, 3),
                       "storeys": STOREYS.get(num, 1), "kind": "service" if mode in ("tente", "comptoir", "interieur", "halle") else "repere", "mode": mode})
+    if num in INTERIORS:
+        buildings[-1]["interior"] = INTERIORS[num]
+        buildings[-1]["door_u"] = 0.0
+        buildings[-1]["terrace"] = num == 3
     for who, off in STAFF.get(num, []):
         # devant la façade sud (vers la caméra), à 1,3 m du mur
         lx, ly = off, -(d * 0.5 + 1.3)
@@ -419,6 +443,7 @@ plan = {
               {"id": "escalier_ouest", "a": fp((68.4, 69.5)), "b": fp((66, 59)), "width": 2.4, "h0": 0.0, "h1": 3.0, "stairs": True},
               {"id": "montee_fort", "a": fp((166, 117)), "b": fp((177.5, 125.5)), "width": 3.5, "h0": 0.0, "h1": 3.0, "stairs": False}],
     "streets": [{"id": n, "pts": [fp(q) for q in pts], "width": w} for n, pts, w in STREETS],
+    "paths": [{"pts": [fp(a), fp(b)], "width": 1.2} for a, b in PATHS],
     "plazas": [{"name": n, "x": fx(x), "y": fy(y), "rx": rx, "ry": ry} for n, x, y, rx, ry in PLAZAS],
     "buildings": buildings,
     "pontoons": [{"name": n, "a": fp((x0, y0 - 1.0)), "b": fp((x1, y1)), "width": w} for n, x0, y0, x1, y1, w in PONTOONS],

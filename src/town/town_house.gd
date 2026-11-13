@@ -55,12 +55,18 @@ static func build(root: Node3D, b: Dictionary, base: float, seed: int) -> MeshIn
 	# façade sud : la porte, puis les fenêtres de chaque étage
 	var slots := maxi(int((w - 1.0) / 2.1), 1)
 	var door_slot := rng.randi() % slots
+	var fixed_door := b.has("door_u")   # (un service où l'on entre : la porte est là où l'intérieur l'attend)
+	if fixed_door:
+		door_slot = -1
+		_door(st, f, float(b["door_u"]), -d * 0.5, service, not bool(b.get("terrace", false)))
 	for k in slots:
 		var u := -w * 0.5 + w * (float(k) + 0.5) / slots
 		for s2 in storeys:
 			var z0 := PLINTH + STOREY * s2
 			if s2 == 0 and k == door_slot:
-				_door(st, f, u, -d * 0.5, service)
+				_door(st, f, u, -d * 0.5, service, true)
+			elif s2 == 0 and fixed_door and absf(u - float(b["door_u"])) < 1.7:
+				continue
 			else:
 				_window(st, f, Vector2(u, -d * 0.5), Vector2(0, -1), z0 + 1.0, rng.randf() < 0.85)
 	# côtés est et ouest, fond : moins de fenêtres, sans volets au fond
@@ -107,12 +113,13 @@ static func build(root: Node3D, b: Dictionary, base: float, seed: int) -> MeshIn
 
 
 ## Une porte en bois avec son seuil de pierre et son linteau ; un service a une porte double et une enseigne.
-static func _door(st: Array[SurfaceTool], f: Dictionary, u: float, v: float, service: bool) -> void:
+static func _door(st: Array[SurfaceTool], f: Dictionary, u: float, v: float, service: bool, steps: bool = true) -> void:
 	var dw := 1.7 if service else 1.15
 	_box(st[S_TRIM], f, Vector3(u, v - 0.03, PLINTH + 1.15), Vector3(dw + 0.3, 0.08, 2.4))
 	_box(st[S_WOOD], f, Vector3(u, v - 0.06, PLINTH + 1.08), Vector3(dw, 0.1, 2.16))
-	_box(st[S_STONE], f, Vector3(u, v - 0.4, PLINTH * 0.5), Vector3(dw + 0.5, 0.8, PLINTH))
-	_box(st[S_STONE], f, Vector3(u, v - 1.0, PLINTH * 0.25), Vector3(dw + 0.5, 0.4, PLINTH * 0.5))
+	if steps:
+		_box(st[S_STONE], f, Vector3(u, v - 0.4, PLINTH * 0.5), Vector3(dw + 0.5, 0.8, PLINTH))
+		_box(st[S_STONE], f, Vector3(u, v - 1.0, PLINTH * 0.25), Vector3(dw + 0.5, 0.4, PLINTH * 0.5))
 	if service:   # la potence de l'enseigne
 		_box(st[S_WOOD], f, Vector3(u + dw * 0.5 + 0.5, v - 0.5, PLINTH + 2.9), Vector3(0.08, 1.0, 0.08))
 		_box(st[S_WOOD], f, Vector3(u + dw * 0.5 + 0.5, v - 0.85, PLINTH + 2.45), Vector3(0.06, 0.7, 0.7))
