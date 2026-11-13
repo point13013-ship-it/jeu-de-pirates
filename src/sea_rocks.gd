@@ -44,6 +44,46 @@ func generate(islands: Array, port: Vector2) -> void:
 							var q := p + Vector2.from_angle(rng.randf() * TAU) * rng.randf_range(0.0, 3.2)
 							rocks.append([q.x, q.y, rng.randf_range(0.7, 1.3), "small"])
 				break
+	_generate_open_sea(islands, port, rng)
+
+
+## Les écueils du large : un par case tirée, loin des îles et des ports. Sortes : rocher, aiguille, amas, banc de sable, îlot nu.
+func _generate_open_sea(islands: Array, port: Vector2, rng: RandomNumberGenerator) -> void:
+	var cell := GameConfig.REEF_OPEN_CELL
+	var half := int(GameConfig.REEF_OPEN_RANGE / cell)
+	var kinds := ["rock", "rock", "spire", "cluster", "cluster", "sand", "sand", "islet"]
+	for cy in range(-half, half + 1):
+		for cx in range(-half, half + 1):
+			if rng.randf() > GameConfig.REEF_OPEN_CHANCE:
+				continue
+			var p := port + Vector2((float(cx) + rng.randf_range(0.15, 0.85)) * cell, (float(cy) + rng.randf_range(0.15, 0.85)) * cell)
+			var kind: String = kinds[rng.randi() % kinds.size()]
+			if p.distance_to(port) < GameConfig.REEF_OPEN_PORT_CLEAR or p.distance_to(port) > GameConfig.REEF_OPEN_RANGE \
+					or (GameConfig.TOWN_V3 and p.distance_to(GameConfig.OLD_TOWN_CENTER) < GameConfig.REEF_OPEN_PORT_CLEAR + 40.0):
+				continue
+			var near_island := false
+			for isl: Dictionary in islands:
+				if p.distance_to(isl["center"]) < float(isl["radius"]) + 45.0:
+					near_island = true
+			if near_island or not _free(p, islands, GameConfig.REEF_SPACING):
+				continue
+			match kind:
+				"rock":
+					rocks.append([p.x, p.y, rng.randf_range(1.8, 3.4), "rock"])
+				"spire":
+					rocks.append([p.x, p.y, rng.randf_range(1.4, 2.3), "spire"])
+				"sand":   # un banc de sable allongé : trois hauts-fonds en file
+					var along := Vector2.from_angle(rng.randf() * TAU)
+					for m in 3:
+						var q := p + along * (float(m) - 1.0) * rng.randf_range(4.5, 6.0)
+						rocks.append([q.x, q.y, rng.randf_range(3.0, 4.6), "sand"])
+				"islet":   # un îlot nu : un grand banc de sable et un rocher dessus
+					rocks.append([p.x, p.y, rng.randf_range(6.0, 8.5), "sand"])
+					rocks.append([p.x + rng.randf_range(-2.0, 2.0), p.y + rng.randf_range(-2.0, 2.0), rng.randf_range(1.4, 2.2), "rock"])
+				"cluster":
+					for m2 in rng.randi_range(3, 6):
+						var q2 := p + Vector2.from_angle(rng.randf() * TAU) * rng.randf_range(0.0, 4.5)
+						rocks.append([q2.x, q2.y, rng.randf_range(0.7, 1.4), "small"])
 
 
 ## Vrai si `p` est assez loin des récifs déjà posés et hors des îles.

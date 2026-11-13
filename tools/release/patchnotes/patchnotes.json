@@ -2,6 +2,18 @@
   "_commentaire": "Les nouveautés affichées dans la salle de jeux (bouton Nouveautés, et après chaque mise à jour). La plus récente d'abord. 'version': 'prochaine' est remplacé par le numéro de la version au moment de la publication (publish.ps1). Les images sont les fichiers de ce dossier ; publish.ps1 les envoie avec la version.",
   "versions": [
     {
+      "version": "prochaine",
+      "titre": "Port sûr, ville vivante, écueils",
+      "points": [
+        "Au port, plus personne ne t'attaque.",
+        "La ville est bien plus peuplée : des promeneurs dans toutes les rues et des enfants qui courent sur les places.",
+        "Changer de bateau au chantier naval est gratuit.",
+        "Le coffre du bateau garde aussi des balles et des cartouches.",
+        "Des rochers, des bancs de sable et des îlots nus se croisent au large : ouvre l'œil à la barre.",
+        "Moins de halos jaunes et de lampadaires en trop, les échelles sont au bord du quai."
+      ]
+    },
+    {
       "version": "2026.11.13-1813",
       "titre": "Le vieux port",
       "points": [

@@ -314,6 +314,12 @@ const REEF_PER_ISLAND_MAX := 3
 const REEF_FROM_SHORE_MIN := 10.0      ## m au large du rivage
 const REEF_FROM_SHORE_MAX := 30.0
 const REEF_SPACING := 26.0             ## m entre deux récifs au moins
+## 13/11 (Jimmy : « je n'en croise plus jamais ») : des écueils au large aussi, loin des îles : rochers, amas, bancs de sable
+## et îlots nus, tirés sur un quadrillage (une case sur REEF_OPEN_CHANCE en porte un), jamais près d'un port.
+const REEF_OPEN_CELL := 180.0          ## m : côté d'une case
+const REEF_OPEN_CHANCE := 0.4
+const REEF_OPEN_RANGE := 1500.0        ## m autour du port où l'on en pose
+const REEF_OPEN_PORT_CLEAR := 210.0    ## m autour d'un port sans écueil du large
 const REEF_PORT_CLEAR := 120.0         ## m autour du port sans aucun récif
 const SWIM_STROKE_EVERY := 0.8       ## s entre deux brassées entendues quand on nage
 const SWIM_LOOP_VOL := 0.32          ## volume du remous continu quand on nage (sans Maj)
@@ -470,6 +476,10 @@ const BOUND_MAX_TIME := 180.0           ## s : sans silex et sans aide, les lien
 const FLINT_CHEST_CHANCE := 0.35        ## chance de trouver un silex dans un coffre d'île
 ## Instruments de musique (13/11, 4.5).
 ## Ville v3 : les lieux qui s'entendent (13/11). Un son de lieu est plein à moins de TOWN_SPOT_NEAR m et s'éteint à TOWN_SPOT_FAR m.
+## 13/11 (Jimmy : « quatre à six fois plus de passants, des enfants, de l'activité ») : des promeneurs tirés sur chaque rue du plan.
+const TOWN_WALKERS_MAIN := 6            ## sur le quai et la grande rue (chacun)
+const TOWN_WALKERS_STREET := 2          ## sur chaque autre rue
+const TOWN_KIDS_PER_PLAZA := 2          ## des enfants qui courent autour de chaque grande place
 const TOWN_SPOT_NEAR := 6.0
 const TOWN_SPOT_FAR := 40.0
 const TOWN_SPOT_VOL := 0.8              ## volume général des sons de lieu (taverne, forge, marché, chantier, lavoir, quai, poules)

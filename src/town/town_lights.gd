@@ -46,14 +46,23 @@ static func lamp_points(plan: Dictionary) -> Array[Vector2]:
 				var n := (b - a).normalized().orthogonal()
 				if id == "quai":
 					side = -1.0 if n.y > 0.0 else 1.0   # toujours du côté de l'eau (le sud)
-				out.append(a.lerp(b, run / len) + n * side * (width * 0.5 - 0.35))
+				var lp := a.lerp(b, run / len) + n * side * (width * 0.5 - 0.35)
+				# 13/11 (Jimmy : « trop de lampadaires sur le petit square ») : une rue n'en pose pas sur une place
+				var on_plaza := false
+				for pz: Dictionary in plan.get("plazas", []):
+					var q := (lp - Vector2(float(pz["x"]), float(pz["y"]))) / Vector2(float(pz["rx"]) + 1.0, float(pz["ry"]) + 1.0)
+					if q.length() < 1.0:
+						on_plaza = true
+				if not on_plaza:
+					out.append(lp)
 				if id != "quai":
 					side = -side
 				run += every
 			run -= len
 	for pl: Dictionary in plan.get("plazas", []):
-		for k in 3:
-			var a2 := TAU * (float(k) / 3.0) + 0.6
+		var count := 1 if float(pl["rx"]) < 7.0 else 2   # (une petite place : un seul ; une grande : deux, face à face)
+		for k in count:
+			var a2 := TAU * (float(k) / float(count)) + 0.6
 			out.append(Vector2(float(pl["x"]) + cos(a2) * (float(pl["rx"]) - 0.6), float(pl["y"]) + sin(a2) * (float(pl["ry"]) - 0.6)))
 	for pt: Dictionary in plan.get("pontoons", []):
 		var a3 := Vector2(float(pt["a"][0]), float(pt["a"][1]))

@@ -132,6 +132,17 @@ static func add(root: Node3D, acc: Dictionary, circles: Array, plan: Dictionary,
 		for k2 in 2:
 			var a2 := 2.2 + PI * k2 + rng.randf_range(-0.3, 0.3)
 			var bp2 := c4 + Vector2(cos(a2) * (float(pl2["rx"]) - 1.4), sin(a2) * (float(pl2["ry"]) - 1.4))
+			# 13/11 (Jimmy : « un banc bloque le tableau d'information ») : pas de banc devant un étal, une tente ou un comptoir
+			for turn in 6:
+				var clear := true
+				for bd: Dictionary in plan.get("buildings", []):
+					if str(bd.get("mode", "")) in ["tente", "comptoir", "halle"] \
+							and bp2.distance_to(Vector2(float(bd["x"]), float(bd["y"]))) < maxf(float(bd["w"]), float(bd["d"])) * 0.5 + 3.5:
+						clear = false
+				if clear:
+					break
+				a2 += PI / 3.0
+				bp2 = c4 + Vector2(cos(a2) * (float(pl2["rx"]) - 1.4), sin(a2) * (float(pl2["ry"]) - 1.4))
 			TownGreybox._box(acc, CRATE, bp2, Vector2(1.7, 0.5), a2 + PI * 0.5, hb + 0.38, hb + 0.48)
 			TownGreybox._box(acc, CRATE, bp2 + Vector2(cos(a2), sin(a2)) * 0.26, Vector2(1.7, 0.08), a2 + PI * 0.5, hb + 0.48, hb + 0.95)
 			for e: float in [-0.7, 0.7]:

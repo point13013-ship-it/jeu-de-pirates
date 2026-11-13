@@ -79,7 +79,8 @@ func row(i: int) -> Dictionary:
 			return {"label": str(it["label"]), "desc": str(it["desc"]), "right": "ton bateau", "enabled": false}
 		if profile.ships.has(str(it["ship"])):
 			return {"label": str(it["label"]), "desc": str(it["desc"]), "right": "prendre", "enabled": true}
-		return {"label": str(it["label"]), "desc": str(it["desc"]), "right": "%d or" % int(it["price"]), "enabled": profile.gold >= int(it["price"])}
+		# 13/11 (Jimmy) : au port, on change de bateau gratuitement (le coffre du bord suit)
+		return {"label": str(it["label"]), "desc": str(it["desc"]), "right": "prendre", "enabled": true}
 	if kind == "skin":
 		var label := ShipSkin.label_of(str(it["cat"]), str(it["variant"]))
 		var cat_label := ShipSkin.category_label(str(it["cat"]))
@@ -195,10 +196,7 @@ func _activate_ship(it: Dictionary) -> Dictionary:
 	if _worn(it):
 		return {"ok": false, "msg": "C'est déjà ton bateau.", "look_changed": false, "ship_changed": false}
 	if not profile.ships.has(id):
-		if profile.gold < int(it["price"]):
-			return {"ok": false, "msg": "Pas assez d'or.", "look_changed": false, "ship_changed": false}
-		profile.gold -= int(it["price"])
-		profile.ships.append(id)
+		profile.ships.append(id)   # (gratuit depuis le 13/11)
 	profile.ship = id
 	profile.save()
 	return {"ok": true, "msg": "Ton bateau : %s" % str(it["label"]), "look_changed": false, "ship_changed": true, "ship": id}

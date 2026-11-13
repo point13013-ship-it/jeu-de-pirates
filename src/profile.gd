@@ -17,6 +17,8 @@ var quests: Dictionary = {}   ## id de quête -> "active" ou "done" (absent : pa
 var planks := START_PLANKS    ## planches en réserve (une prise à l'étagère de la cale en consomme une)
 var balls := START_BALLS      ## boulets dans le sac (13/11 : 10 au plus, GameConfig.BAG_MAX)
 var ship_planks := 30         ## planches dans le coffre du bateau (13/11 : stock commun à l'équipage, tenu par l'hôte)
+var ship_bullets := 40        ## balles dans le coffre du bateau (13/11 : toutes les munitions y ont une réserve de base)
+var ship_shells := 24         ## cartouches dans le coffre du bateau
 var ship_balls := 40          ## boulets dans le coffre du bateau
 var owned: Array = []         ## tenues possédées, « catégorie:variante » (ex. « hat:tricorn »)
 var ship_skin: Dictionary = {}   ## skin du bateau (voiles, coque, pavillon) : voir ShipSkin ; vide = modèle d origine
@@ -58,6 +60,8 @@ func load_file() -> void:
 		balls = int(d.get("balls", START_BALLS))
 		ship_planks = int(d.get("ship_planks", 30))
 		ship_balls = int(d.get("ship_balls", 40))
+		ship_bullets = int(d.get("ship_bullets", 40))
+		ship_shells = int(d.get("ship_shells", 24))
 		var o: Variant = d.get("owned", [])
 		owned = (o as Array).duplicate() if o is Array else []
 		var sk: Variant = d.get("ship_skin", {})
@@ -102,7 +106,7 @@ func save() -> void:
 		return
 	var f := FileAccess.open(PATH, FileAccess.WRITE)
 	if f != null:
-		f.store_string(JSON.stringify({"gold": gold, "quests": quests, "planks": planks, "balls": balls, "ship_planks": ship_planks, "ship_balls": ship_balls, "owned": owned, "ship_skin": ship_skin, "ships": ships, "ship": ship, "discovered": discovered, "berry": berry, "known_spells": known_spells, "berries": berries, "weapons": weapons, "weapon": weapon, "weapon2": weapon2, "skins_owned": skins_owned, "skin_worn": skin_worn, "bullets": bullets, "shells": shells, "captured": captured, "cabins": cabins, "reputation": reputation, "tool": tool, "flint": flint, "hidden": hidden, "instrument": instrument}, "\t"))
+		f.store_string(JSON.stringify({"gold": gold, "quests": quests, "planks": planks, "balls": balls, "ship_planks": ship_planks, "ship_balls": ship_balls, "ship_bullets": ship_bullets, "ship_shells": ship_shells, "owned": owned, "ship_skin": ship_skin, "ships": ships, "ship": ship, "discovered": discovered, "berry": berry, "known_spells": known_spells, "berries": berries, "weapons": weapons, "weapon": weapon, "weapon2": weapon2, "skins_owned": skins_owned, "skin_worn": skin_worn, "bullets": bullets, "shells": shells, "captured": captured, "cabins": cabins, "reputation": reputation, "tool": tool, "flint": flint, "hidden": hidden, "instrument": instrument}, "\t"))
 
 
 ## Gagne `n` points de réputation. Renvoie {from, to, rank_from, rank_to} (pour l'animation de progression), ou {} si rien n'a changé.

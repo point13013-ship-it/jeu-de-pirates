@@ -113,6 +113,15 @@ static func build(parent: Node3D, plan: Dictionary) -> Dictionary:
 				out += dir
 		out = out.normalized() if out.length() > 0.01 else Vector2(0, -1)
 		var ang := out.angle() + PI * 0.5
+		# 13/11 (Jimmy : « des échelles dans la pierre ») : on avance jusqu'au vrai bord du sol, l'échelle pend contre le quai
+		for step in 40:
+			var inside := false
+			for poly2: PackedVector2Array in walk:
+				if Geometry2D.is_point_in_polygon(at + out * 0.1, poly2):
+					inside = true
+			if not inside:
+				break
+			at += out * 0.1
 		var foot := at + out * 0.12
 		for s3: float in [-1.0, 1.0]:
 			var rail := foot + out.orthogonal() * 0.27 * s3
@@ -159,7 +168,9 @@ static func build(parent: Node3D, plan: Dictionary) -> Dictionary:
 				buildings.append(house)
 				if house.has_meta("door_lamp"):   # (la lanterne à la porte d'une boutique où l'on entre : elle éclaire la nuit)
 					(extras["lamps"] as Array).append(house.get_meta("door_lamp"))
-				if bool(house.get_meta("lit", false)):
+				# 13/11 (Jimmy : « toutes les maisons ont la même aura jaune en bas ») : une maison sur trois seulement, et les
+				# boutiques où l'on entre
+				if bool(house.get_meta("lit", false)) and (mode == "interieur" or k2 % 3 == 0):
 					spills.append([c2 + Vector2(0.0, -size.y * 0.5 - 0.1).rotated(ang), size.x * 0.8, ang, base])
 			_:
 				var lm := TownLandmarks.build(root, b3, base, circles, extras)

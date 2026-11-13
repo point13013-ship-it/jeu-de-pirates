@@ -15,6 +15,7 @@ const FIRE_RANGE := 64.0       ## m : portée de ses canons
 const FIRE_ARC := 0.5          ## rad : le flanc doit viser à ce point près
 const MIN_DIST := 26.0         ## m : il ne s'approche pas plus près
 const SINK_TIME := 7.0         ## s : durée du naufrage
+const PORT_PEACE := 170.0      ## m : 13/11 (Jimmy) : un bateau des joueurs au port (à moins de ça) n'est ni pris en chasse ni canonné
 const PORT_SAFE := 300.0       ## m : pas d'ennemi qui apparaît si près du port
 const VOLLEY_COOLDOWN := 5.0
 const KINDS: Array = ["sloop", "brigantin", "galion"]
@@ -41,6 +42,7 @@ var water_free_cb: Callable = Callable() ## (position Vector2) -> vrai si l'eau 
 var wave_cb: Callable = Callable()       ## (position Vector2) -> hauteur de la houle
 var blocker_cb: Callable = Callable()    ## (modèle ShipModel, position Vector2, cap) -> vrai si le bateau toucherait celui des joueurs : il s'arrête
 var sunk_cb: Callable = Callable()       ## (id, nom) : un ennemi vient de couler
+var port_peace := 0.0                    ## m : rayon du refuge autour du port (0 : aucun ; le jeu met PORT_PEACE)
 var spawn_origin := Vector2.ZERO         ## le port : pas d'apparition à moins de PORT_SAFE
 var spawn_enabled := true                ## faux : plus d'apparition spontanée (essais, ou `--no-enemies`)
 
@@ -280,6 +282,11 @@ func _ai(s: Dictionary, dt: float, target: Dictionary) -> void:
 	var bearing := atan2(-to.y, to.x)   # cap qui mène droit au bateau des joueurs (même convention que ShipSim.yaw)
 	var desired := sim.yaw
 	var alive := bool(target.get("alive", true))
+	if port_peace > 0.0 and tpos.distance_to(spawn_origin) < port_peace:
+		alive = false   # au port, les joueurs sont à l'abri : l'ennemi les ignore et repart en patrouille
+		if s["state"] == "chase":
+			s["wp"] = sim.position + (sim.position - spawn_origin).normalized() * 200.0
+			s["wp_t"] = 40.0
 	if s["state"] == "patrol":
 		s["wp_t"] = float(s["wp_t"]) - dt
 		if float(s["wp_t"]) <= 0.0 or sim.position.distance_to(s["wp"]) < 25.0:

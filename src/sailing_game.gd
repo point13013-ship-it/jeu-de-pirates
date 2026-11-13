@@ -1473,6 +1473,10 @@ func _build_town_v3() -> void:
 	var surface_shader := load("res://shaders/surface.gdshader") as Shader
 	_town_lights = TownLights.new()
 	_town_lights.name = "lumieres_ville"
+	var open_nodes := {"bldg_halle": true}
+	for b: Dictionary in _town_plan.get("buildings", []):
+		if str(b.get("mode", "")) in ["tente", "comptoir", "halle"]:
+			open_nodes["bldg_%s" % str(b["id"])] = true
 	for mi: MeshInstance3D in made["buildings"]:
 		var cols: Array = mi.get_meta("colors")
 		var kinds: Array = mi.get_meta("kinds", [])   # (matières peintes : enduit, tuiles, bois, pierre ; 4 = couleur unie)
@@ -1497,7 +1501,10 @@ func _build_town_v3() -> void:
 			(record["ghost"] as Dictionary)[s] = ghost
 			if s == glass and not (GameConfig.WINDOWS_SHOW_INSIDE and bool(mi.get_meta("see_through", false))):
 				_town_lights.add_glass(mat, ghost, bool(mi.get_meta("lit", false)))
-		_buildings.append(record)
+		# 13/11 (Jimmy, le chantier naval) : une halle, une tente ou un comptoir ouverts ne deviennent pas transparents quand on
+		# passe dessous : on voit déjà à travers
+		if not open_nodes.has(String(mi.name)):
+			_buildings.append(record)
 	ToonLook.apply_tree(_port)
 	_world_fixed.add_child(_town_lights)
 	_town_lights.setup(made["lamps"], made["spills"], _land, SEA_Y, made["extras"])
@@ -1667,7 +1674,10 @@ func _build_town_life_v3() -> void:
 	var k := 0
 	for w: Dictionary in _town_plan.get("wanderers", []):
 		k += 1
-		list.append([{"id": str(w["id"]), "name": "Passant", "role": "passant", "path": w["path"], "seed": k + 2, "lines": ["Belle journée pour prendre la mer."]}, true])
+		var safe := _safe_walk_path(w["path"])   # (13/11 : un passant marchait sur l'eau : son trajet coupait la baie)
+		if safe.size() >= 2:
+			list.append([{"id": str(w["id"]), "name": "Passant", "role": "passant", "path": safe, "seed": k + 2, "lines": ["Belle journée pour prendre la mer."]}, true])
+	list.append_array(_town_walkers(k))
 	for e: Array in list:
 		var npc := TownNpc.from_data(e[0], bool(e[1]))
 		npc.interior = -1
@@ -1678,12 +1688,91 @@ func _build_town_life_v3() -> void:
 			npc.h = h if h != Land.NO_SURFACE else 0.0
 			if npc.h == 0.0:
 				_land.circles.append([npc.pos.x, -npc.pos.y, 0.45])
+		if npc.id.begins_with("p_enfant"):
+			npc.sprite.scale = Vector3.ONE * 0.68
+		if (e[0] as Dictionary).has("start"):   # (chacun part d'un endroit différent de sa rue)
+			var st := int((e[0] as Dictionary)["start"]) % npc._path.size()
+			npc.pos = npc._path[st]
+			npc._target = (st + 1) % npc._path.size()
 		_world_fixed.add_child(npc.sprite)
 		npc.blob = _blob.duplicate() as MeshInstance3D
 		_world_fixed.add_child(npc.blob)
 		_npcs.append(npc)
 		_quests.names[npc.id] = npc.display_name
 	_update_npcs(0.0)
+
+
+## Garde d'un trajet (points du plan, [x, y]) la partie où l'on a pied : on s'arrête au premier tronçon qui passe au-dessus de
+## l'eau ou dans un mur.
+func _safe_walk_path(pts: Array) -> Array:
+	var out: Array = []
+	var prev := Vector2.INF
+	for q: Array in pts:
+		var p := Vector2(float(q[0]), float(q[1]))
+		var ok := _land.surface_below(Vector2(p.x, -p.y), 50.0) != Land.NO_SURFACE
+		if ok and prev != Vector2.INF:
+			for i in range(1, 8):
+				var m := prev.lerp(p, float(i) / 8.0)
+				if _land.surface_below(Vector2(m.x, -m.y), 50.0) == Land.NO_SURFACE:
+					ok = false
+		if not ok:
+			if out.size() >= 2:
+				break
+			out.clear()
+			prev = Vector2.INF
+			continue
+		out.append([p.x, p.y])
+		prev = p
+	return out
+
+
+## 13/11 — la ville s'anime : des promeneurs sur chaque rue du plan (plus nombreux sur le quai et la grande rue), qui vont et
+## viennent à leur pas, et des enfants qui courent autour des grandes places. Tirage fixe (la même ville chez tous).
+func _town_walkers(seed_from: int) -> Array:
+	var list: Array = []
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 9173
+	var lines := ["Belle journée pour prendre la mer.", "Le Pélican Borgne sert le meilleur rhum de la baie.", "On dit qu'un galion a coulé au large.",
+			"Méfie-toi des squelettes de l'île aux crânes.", "Le marché ouvre à l'aube, les bonnes affaires partent vite.",
+			"La cloche a sonné : le poisson est arrivé.", "Tu cherches du travail ? Va voir le tableau des quêtes.", "Le vent tourne, ça sent la pluie."]
+	var n := seed_from
+	for s: Dictionary in _town_plan.get("streets", []):
+		var id := str(s["id"])
+		var width := float(s["width"])
+		var count := GameConfig.TOWN_WALKERS_MAIN if id in ["quai", "grand_rue"] else GameConfig.TOWN_WALKERS_STREET
+		for c in count:
+			var off := Vector2(rng.randf_range(-1.0, 1.0), rng.randf_range(-1.0, 1.0)) * minf(width * 0.22, 1.3)
+			var pts: Array = []
+			for q: Array in s["pts"]:
+				pts.append([float(q[0]) + off.x, float(q[1]) + off.y])
+			var safe := _safe_walk_path(pts)
+			if safe.size() < 2:
+				continue
+			var back := safe.duplicate()
+			back.reverse()
+			safe.append_array(back.slice(1, back.size() - 1))   # aller, puis retour par le même chemin
+			n += 1
+			list.append([{"id": "p_%s_%d" % [id, c], "name": "Passant", "role": "passant", "path": safe, "seed": n + 2,
+					"speed": rng.randf_range(0.8, 1.35), "pause": rng.randf_range(0.4, 3.5), "lines": [lines[rng.randi() % lines.size()]],
+					"start": rng.randi_range(0, safe.size() - 1)}, true])
+	for pl: Dictionary in _town_plan.get("plazas", []):
+		if float(pl["rx"]) < 7.0:
+			continue
+		for c2 in GameConfig.TOWN_KIDS_PER_PLAZA:
+			var pts2: Array = []
+			var turn := rng.randf() * TAU
+			for i in 6:
+				var a := turn + TAU * float(i) / 6.0 * (1.0 if c2 % 2 == 0 else -1.0)
+				var rad := rng.randf_range(0.35, 0.7)
+				pts2.append([float(pl["x"]) + cos(a) * float(pl["rx"]) * rad, float(pl["y"]) + sin(a) * float(pl["ry"]) * rad])
+			var safe2 := _safe_walk_path(pts2)
+			if safe2.size() < 3:
+				continue
+			n += 1
+			list.append([{"id": "p_enfant_%d" % n, "name": "Enfant", "role": "passant", "path": safe2, "seed": n + 2,
+					"speed": rng.randf_range(2.0, 2.7), "pause": rng.randf_range(0.2, 1.2), "lines": ["Tu m'attraperas pas !", "T'es un vrai pirate, toi ?"]}, true])
+	_dbg("promeneurs de la ville : %d" % list.size())
+	return list
 
 
 ## Amarrage : coque contre le flanc est du ponton, étrave au sud (+z dans le jeu).
@@ -2090,7 +2179,7 @@ func _build_hud() -> void:
 	# or et quête en cours
 	_profile.persistent = not _args.has("fresh")
 	_profile.load_file()
-	_ship_stock = {"plank": _profile.ship_planks, "ball": _profile.ship_balls}   # (le coffre du bateau de l'hôte ; un client reçoit celui de l'hôte)
+	_ship_stock = {"plank": _profile.ship_planks, "ball": _profile.ship_balls, "bullets": _profile.ship_bullets, "shells": _profile.ship_shells}   # (le coffre du bateau de l'hôte ; un client reçoit celui de l'hôte)
 	_quests = QuestLog.new(_profile)
 	_sync_quest_destination()
 	_gold_label = Label.new()
@@ -2438,6 +2527,7 @@ func _setup_hull() -> void:
 	_spawn_pos = _sim.position
 	_spawn_yaw = _sim.yaw
 	_fleet.spawn_origin = _spawn_pos
+	_fleet.port_peace = EnemyFleet.PORT_PEACE
 	_hold_layout.setup(_ship.length, _ship.hatch_pos().x, _hull)
 	_hold = HoldRoom.new()
 	_hold.position = Vector3(0.0, HOLD_Y, 0.0)
@@ -2607,6 +2697,11 @@ func _build_old_town_life() -> void:
 func _update_npcs(delta: float) -> void:
 	for npc: TownNpc in _npcs:
 		var move := npc.update(delta)
+		if npc.wanderer and (npc.id.begins_with("p_") or npc.id.begins_with("w_")) and not _town_plan.is_empty() \
+				and npc.pos.distance_to(GameConfig.OLD_TOWN_CENTER) > 200.0:
+			var hw := _land.surface_below(npc.pos, 50.0)
+			if hw != Land.NO_SURFACE:
+				npc.h = hw
 		var shown := npc.interior < 0 or npc.interior == _interior_active
 		npc.sprite.visible = shown and npc.sprite.texture != null
 		npc.blob.visible = shown
@@ -5799,7 +5894,8 @@ func ship_state() -> Array:
 			_sim.sail_level, _sim.sail_open, 1 if _sim.anchored else 0, mask, _helm_owner, _time,
 			_hull.leaks, _hull.patched, _hull.water, _sim.sail_trim, _sim.wind_angle, _sim.sail_trim_target, _stash.duplicate(),
 			_grap_state, _grap_hook.x, _grap_hook.y, _grap_target.x, _grap_target.y, Hook.kind_code(_grap_kind), _grap_owner,
-			int(_ship_stock["plank"]), int(_ship_stock["ball"]), _deck_items.duplicate(true), _spy_holder]
+			int(_ship_stock["plank"]), int(_ship_stock["ball"]), _deck_items.duplicate(true), _spy_holder,
+			int(_ship_stock["bullets"]), int(_ship_stock["shells"])]
 
 
 ## Client : reçoit l'état du bateau de l'hôte. La position et le cap servent de cible (recalage en
@@ -5813,8 +5909,11 @@ func apply_ship_state(s: Array) -> void:
 	if s.size() > 29 and int(s[29]) != _spy_holder:
 		_spy_holder = int(s[29])
 		_spy_holder_changed()
-	if s.size() > 27 and (int(s[26]) != int(_ship_stock["plank"]) or int(s[27]) != int(_ship_stock["ball"])):
-		_ship_stock = {"plank": int(s[26]), "ball": int(s[27])}
+	var bul := int(s[30]) if s.size() > 31 else int(_ship_stock["bullets"])
+	var she := int(s[31]) if s.size() > 31 else int(_ship_stock["shells"])
+	if s.size() > 27 and (int(s[26]) != int(_ship_stock["plank"]) or int(s[27]) != int(_ship_stock["ball"])
+			or bul != int(_ship_stock["bullets"]) or she != int(_ship_stock["shells"])):
+		_ship_stock = {"plank": int(s[26]), "ball": int(s[27]), "bullets": bul, "shells": she}
 		_refresh_chest_ui()
 	if _grap_state == 0 and int(s[19]) != 0:   # le crochet vient de partir : son lancer sert à tracer l'arc
 		_grap_total = maxf(Vector2(float(s[19 + 1]), float(s[19 + 2])).distance_to(Vector2(float(s[22]), float(s[23]))), 1.0)
@@ -7303,12 +7402,12 @@ func apply_request(peer: int, kind: String, value: int) -> void:
 			if _spy_holder == peer:
 				_spy_holder = 0
 				_spy_holder_changed()
-		"chest_put":   # coffre du bateau : `peer` range (valeur = genre x 1000 + nombre ; 0 planche, 1 boulet)
-			var pk := "plank" if value / 1000 == 0 else "ball"
+		"chest_put":   # coffre du bateau : `peer` range (valeur = genre x 1000 + nombre ; 0 planche, 1 boulet, 2 balles, 3 cartouches)
+			var pk: String = SHIP_CHEST_KINDS[clampi(value / 1000, 0, 3)]
 			_ship_stock[pk] = int(_ship_stock[pk]) + maxi(value % 1000, 0)
 			_ship_stock_changed()
 		"chest_take":   # coffre du bateau : `peer` prend ; l'hôte donne ce qui reste, dans l'ordre des demandes
-			var tk := "plank" if value / 1000 == 0 else "ball"
+			var tk: String = SHIP_CHEST_KINDS[clampi(value / 1000, 0, 3)]
 			var got := mini(maxi(value % 1000, 0), int(_ship_stock[tk]))
 			if got > 0:
 				_ship_stock[tk] = int(_ship_stock[tk]) - got
@@ -8657,7 +8756,7 @@ func _nearest_deck_item() -> int:
 
 # --- le coffre du bateau (13/11) : planches et boulets communs à l'équipage, tenus par l'hôte ; même panneau que le coffre de cabane
 
-var _ship_stock := {"plank": 30, "ball": 40}   ## le contenu du coffre du bateau (l'hôte fait autorité ; diffusé avec l'état du bateau)
+var _ship_stock := {"plank": 30, "ball": 40, "bullets": 40, "shells": 24}   ## le contenu du coffre du bateau (l'hôte fait autorité ; diffusé avec l'état du bateau)
 var _bag_spill_t := 0.0
 
 
@@ -8670,13 +8769,17 @@ func _open_ship_chest() -> void:
 	_inventory.open(_chest_rows())
 
 
+## 13/11 (Jimmy) : le coffre du bateau garde aussi une réserve de balles et de cartouches (toutes les munitions).
+const SHIP_CHEST_KINDS := ["plank", "ball", "bullets", "shells"]
+
+
 func _ship_chest_rows() -> Array:
 	var rows: Array = []
-	var names := {"plank": "Planches", "ball": "Boulets"}
-	rows.append({"head": true, "label": "Dans ton sac (10 au plus) — clic : ranger"})
-	for kind: String in ["plank", "ball"]:
+	var names := {"plank": "Planches", "ball": "Boulets", "bullets": "Balles", "shells": "Cartouches"}
+	rows.append({"head": true, "label": "Dans ton sac (10 planches et 10 boulets au plus) — clic : ranger"})
+	for kind: String in SHIP_CHEST_KINDS:
 		var have := _have_of(kind)
-		rows.append({"kind": "cab_put", "id": kind, "label": "%s  %d / %d" % [names[kind], have, GameConfig.BAG_MAX], "count": have,
+		rows.append({"kind": "cab_put", "id": kind, "label": ("%s  %d / %d" % [names[kind], have, GameConfig.BAG_MAX]) if kind in ["plank", "ball"] else "%s  %d" % [names[kind], have], "count": have,
 				"right": "ranger" if have > 0 else "", "enabled": have > 0,
 				"desc": "Le coffre du bateau est à tout l'équipage. On recharge un canon et on bouche une voie d'eau avec ce qu'on a dans le sac."})
 	# 13/11 (4.1) : l'instrument. On porte la boussole OU la longue-vue ; l'autre reste au coffre.
@@ -8688,7 +8791,7 @@ func _ship_chest_rows() -> Array:
 			"right": "la reposer" if spy else ("prendre la longue-vue" if free else "c'est %s qui l'a" % who), "enabled": spy or free,
 			"desc": "La boussole montre le cap de l'île choisie. La longue-vue fait voir très loin devant soi. Il n'y en a qu'une à bord : celui qui la prend laisse sa boussole, et la repose ici pour qu'un autre s'en serve."})
 	rows.append({"head": true, "label": "Dans le coffre du bateau — clic : prendre"})
-	for kind: String in ["plank", "ball"]:
+	for kind: String in SHIP_CHEST_KINDS:
 		var inside := int(_ship_stock.get(kind, 0))
 		var room := _room_for(kind)
 		rows.append({"kind": "cab_take", "id": kind, "label": "%s  x%d" % [names[kind], inside], "count": inside,
@@ -8708,10 +8811,10 @@ func _ship_chest_use(kind: String, item: String) -> void:
 			return
 		_sfx.play_at(Synth.thump(), _my_scene_pos(), 0.6)
 		return
-	if item != "plank" and item != "ball":
+	if not SHIP_CHEST_KINDS.has(item):
 		return
 	var all := Input.is_key_pressed(KEY_SHIFT)
-	var code := 0 if item == "plank" else 1
+	var code := SHIP_CHEST_KINDS.find(item)
 	if kind == "cab_put":
 		var n := _have_of(item) if all else mini(GameConfig.SHIP_CHEST_STEP, _have_of(item))
 		if n > 0:
@@ -8728,6 +8831,8 @@ func _ship_chest_use(kind: String, item: String) -> void:
 func _ship_stock_changed() -> void:
 	_profile.ship_planks = int(_ship_stock["plank"])
 	_profile.ship_balls = int(_ship_stock["ball"])
+	_profile.ship_bullets = int(_ship_stock["bullets"])
+	_profile.ship_shells = int(_ship_stock["shells"])
 	_profile.save()
 	_refresh_chest_ui()
 
@@ -8794,6 +8899,8 @@ func _room_for(kind: String) -> int:
 		return maxi(GameConfig.BAG_MAX - _profile.planks, 0)   # (13/11 : le sac porte 10 planches et 10 boulets)
 	if kind == "ball":
 		return maxi(GameConfig.BAG_MAX - _profile.balls, 0)
+	if kind == "bullets" or kind == "shells":
+		return maxi(99 - _have_of(kind), 0)
 	return 1000000
 
 
