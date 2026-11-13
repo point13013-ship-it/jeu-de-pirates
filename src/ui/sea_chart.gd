@@ -129,6 +129,9 @@ func _layout() -> void:
 	# la carte couvre le port et toutes les îles, avec de l'air autour
 	var lo := Vector2(PORT_RECT.position)
 	var hi := PORT_RECT.end
+	if GameConfig.TOWN_V3:
+		lo = lo.min(PORT_RECT.position + GameConfig.OLD_TOWN_POS)
+		hi = hi.max(PORT_RECT.end + GameConfig.OLD_TOWN_POS)
 	for k in world.islands.size():
 		if not _listed(k):
 			continue
@@ -170,6 +173,11 @@ func _draw() -> void:
 	draw_rect(pr, SAND_D)
 	draw_rect(pr.grow(-3), SAND)
 	draw_string(font, pr.position + Vector2(0, pr.size.y * 0.5 + 6), "PORT", HORIZONTAL_ALIGNMENT_CENTER, pr.size.x, 15, INK)
+	if GameConfig.TOWN_V3:   # 13/11 : l'ancienne ville, ville secondaire à l'ouest
+		var po := Rect2(_to_screen(PORT_RECT.position + GameConfig.OLD_TOWN_POS), PORT_RECT.size * _scale)
+		draw_rect(po, SAND_D)
+		draw_rect(po.grow(-3), SAND)
+		draw_string(font, po.position + Vector2(-30, po.size.y * 0.5 + 6), "VIEUX PORT", HORIZONTAL_ALIGNMENT_CENTER, po.size.x + 60, 13, INK)
 	# les îles
 	for i in world.islands.size():
 		if not _listed(i):

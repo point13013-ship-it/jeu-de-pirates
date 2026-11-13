@@ -2,6 +2,14 @@
   "_commentaire": "Les nouveautés affichées dans la salle de jeux (bouton Nouveautés, et après chaque mise à jour). La plus récente d'abord. 'version': 'prochaine' est remplacé par le numéro de la version au moment de la publication (publish.ps1). Les images sont les fichiers de ce dossier ; publish.ps1 les envoie avec la version.",
   "versions": [
     {
+      "version": "prochaine",
+      "titre": "Le vieux port",
+      "points": [
+        "L'ancienne ville n'a pas disparu : elle est maintenant sur une île à part, à 600 m à l'ouest de la nouvelle (cap plein ouest en sortant du port). Mêmes boutiques, mêmes habitants.",
+        "Elle est marquée « VIEUX PORT » sur la carte des mers."
+      ]
+    },
+    {
       "version": "2026.11.13-1803",
       "titre": "Abordage, musique, nouvelle ville au départ",
       "points": [

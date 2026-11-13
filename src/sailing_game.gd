@@ -1204,6 +1204,10 @@ func _update_shelters(around: Vector2) -> void:
 		var d := c.distance_to(around) - float(isl["radius"])
 		if d < 260.0:
 			near.append([d, Vector3(c.x, c.y, float(isl["radius"]))])
+	if _old_port != null:
+		var oc := Vector2(GameConfig.PORT_SHELTER.x, GameConfig.PORT_SHELTER.y) + GameConfig.OLD_TOWN_POS
+		if oc.distance_to(around) - GameConfig.PORT_SHELTER.z < 260.0:
+			near.append([-0.5, Vector3(oc.x, oc.y, GameConfig.PORT_SHELTER.z)])
 	if not _town_plan.is_empty():   # la baie de la ville v3 est un abri elle aussi : le bassin est calme
 		near.append([-1.0, Vector3(GameConfig.TOWN_SHELTER.x, GameConfig.TOWN_SHELTER.y, GameConfig.TOWN_SHELTER.z)])
 	elif _has_port():
@@ -1311,23 +1315,43 @@ func _build_port() -> void:
 	# (essai : --town=v1) en attendant d'être posée sur une île à part, comme ville secondaire.
 	if (GameConfig.TOWN_V3 and str(_args.get("town", "")) != "v1") or str(_args.get("town", "")) == "v3":
 		_build_town_v3()
+		if str(_args.get("town", "")) != "v3-seule":
+			_build_port_model(GameConfig.OLD_TOWN_POS, true)   # l'ancienne ville, ville secondaire sur son île à part
 		return
+	_build_port_model(Vector2.ZERO, false)
+
+
+## Le modèle de l'ancienne ville (port.glb), posé en `origin` (monde x, z). `secondary` : la ville v3 est celle du jeu, celle-ci
+## s'y ajoute (son terrain rejoint celui de la v3, on n'y amarre pas le bateau au départ).
+var _old_port: Node3D
+var _old_meta: Dictionary = {}
+
+
+func _build_port_model(origin: Vector2, secondary: bool) -> void:
 	var scene := load("res://assets/models/port/port.glb") as PackedScene
 	var f := FileAccess.open("res://assets/models/port/port_meta.json", FileAccess.READ)
 	if scene == null or f == null:
 		return
 	var parsed: Variant = JSON.parse_string(f.get_as_text())
-	_port_meta = parsed if parsed is Dictionary else {}
-	_land.load_meta(_port_meta)
-	_port = scene.instantiate() as Node3D
-	_world_fixed.add_child(_port)
-	_remove_town_sand()
+	var meta: Dictionary = parsed if parsed is Dictionary else {}
+	var port_node := scene.instantiate() as Node3D
+	port_node.position = Vector3(origin.x, 0.0, origin.y)
+	_world_fixed.add_child(port_node)
+	if secondary:
+		_old_meta = meta
+		_old_port = port_node
+		_land.add_port(meta, origin, GameConfig.TOWN_SAND_CUT_X)
+	else:
+		_port_meta = meta
+		_land.load_meta(_port_meta)
+		_port = port_node
+	_remove_town_sand(port_node, origin.x, not secondary)
 	var kinds := {"ground_cobble": 0, "ground_planks": 1, "ground_sand": 2, "ground_grass": 3}
 	# matières peintes : le nom du matériau Blender dit quel motif utiliser (enduit, tuiles, bois, pierre)
 	var surface_kinds := {"pl_": 0, "roof_": 1, "wood": 2, "stone": 3}
 	var ground_shader := load("res://shaders/ground.gdshader") as Shader
 	var surface_shader := load("res://shaders/surface.gdshader") as Shader
-	var stack: Array[Node] = [_port]
+	var stack: Array[Node] = [port_node]
 	while not stack.is_empty():
 		var n: Node = stack.pop_back()
 		stack.append_array(n.get_children())
@@ -1402,7 +1426,7 @@ func _build_port() -> void:
 					(record["normal"] as Dictionary)[s] = pane
 		if is_building and not (record["normal"] as Dictionary).is_empty():
 			_buildings.append(record)
-	ToonLook.apply_tree(_port)   # prototype de refonte : lumière en paliers
+	ToonLook.apply_tree(port_node)   # prototype de refonte : lumière en paliers
 	# les réverbères du quai et la lanterne du ponton éclairent vraiment le sol la nuit (ils ne faisaient que briller)
 	var spots: Array = [Vector3(14.3, 2.7, 29.6)]
 	for lx in range(-38, 40, 8):
@@ -1416,10 +1440,11 @@ func _build_port() -> void:
 		l.omni_range = GameConfig.LAMP_RANGE
 		l.omni_attenuation = 1.3
 		l.shadow_enabled = false
-		l.position = at
+		l.position = at + Vector3(origin.x, 0.0, origin.y)
 		_world_fixed.add_child(l)
 		_port_lamps.append(l)
-	_moor_at_dock()
+	if not secondary:
+		_moor_at_dock()
 
 
 ## Ville v3 (13/11, design/ville-v3/conception.md) : la maquette grise de data/town_plan.json à la place du port. Le sol, les
@@ -1679,9 +1704,9 @@ func _moor_at_dock() -> void:
 ## sol où l'on marche : un pirate qui y sautait se retrouvait à nager dans le sable, ou coincé contre son bord. On la retire au
 ## chargement, avec ses palmiers (fondus dans le maillage « props » de tout le port : on n'en garde que les triangles à droite de la
 ## coupe) et leurs collisions. Fait ici plutôt que dans port.glb, que tools/art/make_port_scene.py régénère.
-func _remove_town_sand() -> void:
-	var cut := GameConfig.TOWN_SAND_CUT_X
-	var stack: Array[Node] = [_port]
+func _remove_town_sand(port_node: Node3D, dx: float, filter_land: bool) -> void:
+	var cut := GameConfig.TOWN_SAND_CUT_X + dx
+	var stack: Array[Node] = [port_node]
 	while not stack.is_empty():
 		var n: Node = stack.pop_back()
 		stack.append_array(n.get_children())
@@ -1695,7 +1720,8 @@ func _remove_town_sand() -> void:
 		if box.position.x < cut and box.end.x > cut:
 			_strip_mesh_west_of(mi, cut)
 	# plus de palmiers sur la plage disparue : leurs cercles n'arrêtent plus un saut ni un crochet
-	_land.circles = _land.circles.filter(func(c: Array) -> bool: return float(c[0]) > cut)
+	if filter_land:   # (ville secondaire : Land.add_port a déjà écarté ces cercles)
+		_land.circles = _land.circles.filter(func(c: Array) -> bool: return float(c[0]) > cut)
 
 
 ## Retire d'un maillage tous les triangles entièrement à l'ouest de `cut_x` (coordonnées du monde).
@@ -2502,6 +2528,7 @@ func _read_json(path: String) -> Dictionary:
 func _build_town() -> void:
 	if not _town_plan.is_empty():
 		_build_town_life_v3()
+		_build_old_town_life()
 		return
 	var town_cfg := _read_json("res://data/town.json")
 	# la haute ville (12/11) : son plateau est décrit par la méta du port (fabriquée avec le modèle), au même format
@@ -2529,6 +2556,50 @@ func _build_town() -> void:
 				_land.circles.append([npc.pos.x, -npc.pos.y, 0.45])   # on ne marche pas à travers un boutiquier
 			_npcs.append(npc)
 			_quests.names[npc.id] = npc.display_name
+	_update_npcs(0.0)
+
+
+## 13/11 — la vie de l'ancienne ville, devenue ville secondaire (GameConfig.OLD_TOWN_POS) : ses terrasses, ses escaliers, ses
+## intérieurs, ses boutiquiers (les mêmes boutiques que dans la nouvelle ville) et ses promeneurs, tous décalés avec elle.
+func _build_old_town_life() -> void:
+	if _old_port == null:
+		return
+	var o := GameConfig.OLD_TOWN_POS
+	var town_cfg := _read_json("res://data/town.json")
+	var lv: Array = (town_cfg.get("levels", []) as Array).duplicate()
+	lv.append_array(_old_meta.get("levels", []))
+	_land.add_town({"levels": lv, "interiors": town_cfg.get("interiors", [])}, o)
+	var holder := Node3D.new()
+	holder.name = "vieux_port"
+	holder.position = Vector3(o.x, 0.0, o.y)
+	_world_fixed.add_child(holder)
+	var deck := Land.new()   # (les terrasses et les escaliers se construisent dans leur repère d'origine, sous le nœud décalé)
+	deck.levels = lv
+	TownBuilder.build_levels(holder, deck)
+	for it: Dictionary in town_cfg.get("interiors", []):
+		var room := ShopBuilder.build(it) if it.has("kind") else TownBuilder.build_tavern(it)
+		room.visible = GameConfig.WINDOWS_SHOW_INSIDE
+		holder.add_child(room)
+		_interior_nodes.append({"root": room, "building": _old_port.find_child(str(it.get("building_node", "")), true, false)})
+	var cfg := _read_json("res://data/npcs.json")
+	for kind in ["npcs", "wanderers"]:
+		for d: Dictionary in cfg.get(kind, []):
+			var d2: Dictionary = d.duplicate(true)
+			if d2.has("pos"):
+				d2["pos"] = [float(d["pos"][0]) + o.x, float(d["pos"][1]) - o.y]
+			if d2.has("path"):
+				var path: Array = []
+				for q: Array in d["path"]:
+					path.append([float(q[0]) + o.x, float(q[1]) - o.y])
+				d2["path"] = path
+			var npc := TownNpc.from_data(d2, kind == "wanderers")
+			_world_fixed.add_child(npc.sprite)
+			npc.blob = _blob.duplicate() as MeshInstance3D
+			_world_fixed.add_child(npc.blob)
+			npc.interior = _land.interior_at(npc.pos)
+			if kind == "npcs" and npc.interior < 0 and npc.h == 0.0:
+				_land.circles.append([npc.pos.x, -npc.pos.y, 0.45])
+			_npcs.append(npc)
 	_update_npcs(0.0)
 
 
@@ -6193,7 +6264,8 @@ func _update_atmosphere(delta: float) -> void:
 			"face": _face, "focus": _cam_focus, "paused": _pause.is_open(), "battle": battle,
 			"intensity": clampf(maxf(heat + _music_heat, _shark_threat), 0.0, 1.0), "ground": _ground_kind(),
 			"sharks": not _sharks.is_empty(),
-			"town": 1.0 - smoothstep(GameConfig.TOWN_SOUND_NEAR, GameConfig.TOWN_SOUND_FAR, pos.distance_to(GameConfig.TOWN_CENTER))})
+			"town": 1.0 - smoothstep(GameConfig.TOWN_SOUND_NEAR, GameConfig.TOWN_SOUND_FAR, minf(pos.distance_to(GameConfig.TOWN_CENTER),
+					pos.distance_to(GameConfig.TOWN_CENTER + GameConfig.OLD_TOWN_POS) if _old_port != null else INF))})
 	_apply_grade()
 	_spawn_castaways()
 
@@ -6218,10 +6290,19 @@ func _ground_kind() -> int:
 	if _land.interior_at(_lpos) >= 0:
 		return 2
 	var m := Vector2(_lpos.x, -_lpos.y)   # (repère du fichier du port)
+	var pmeta := _port_meta
+	var rects: Array = _land.walk_rects
+	if _old_port != null and _lpos.distance_to(GameConfig.OLD_TOWN_CENTER) < 170.0:
+		# 13/11 : dans l'ancienne ville déplacée, on se ramène à son repère d'origine
+		m -= Vector2(GameConfig.OLD_TOWN_POS.x, -GameConfig.OLD_TOWN_POS.y)
+		pmeta = _old_meta
+		rects = _old_meta.get("walk_rects", [])
+	elif _old_port != null:
+		rects = []
 	# la haute ville (12/11) : herbe, sauf sur ses ruelles pavées et sa placette
-	var up: Array = _port_meta.get("grass_rect", [])
+	var up: Array = pmeta.get("grass_rect", [])
 	if up.size() == 4 and m.x >= float(up[0]) and m.x <= float(up[2]) and m.y >= float(up[1]) and m.y <= float(up[3]):
-		for path: Dictionary in _port_meta.get("paved_paths", []):
+		for path: Dictionary in pmeta.get("paved_paths", []):
 			var pts: Array = path["pts"]
 			var half := float(path["w"]) * 0.5 + 0.2
 			for i in pts.size():
@@ -6230,8 +6311,8 @@ func _ground_kind() -> int:
 				if Geometry2D.get_closest_point_to_segment(m, a, b).distance_to(m) < half:
 					return 4
 		return 1
-	for k in range(1, _land.walk_rects.size()):   # le premier rectangle est le quai et la ville ; les suivants, les pontons
-		var r: Array = _land.walk_rects[k]
+	for k in range(1, rects.size()):   # le premier rectangle est le quai et la ville ; les suivants, les pontons
+		var r: Array = rects[k]
 		if r == up:
 			continue
 		if m.x >= float(r[0]) and m.x <= float(r[2]) and m.y >= float(r[1]) and m.y <= float(r[3]):

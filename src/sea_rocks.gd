@@ -28,7 +28,8 @@ func generate(islands: Array, port: Vector2) -> void:
 			for attempt in 12:
 				var a := rng.randf() * TAU
 				var p := c + Vector2.from_angle(a) * (r + rng.randf_range(GameConfig.REEF_FROM_SHORE_MIN, GameConfig.REEF_FROM_SHORE_MAX))
-				if p.distance_to(port) < GameConfig.REEF_PORT_CLEAR or not _free(p, islands, GameConfig.REEF_SPACING):
+				if p.distance_to(port) < GameConfig.REEF_PORT_CLEAR or not _free(p, islands, GameConfig.REEF_SPACING) \
+						or (GameConfig.TOWN_V3 and p.distance_to(GameConfig.OLD_TOWN_CENTER) < GameConfig.REEF_PORT_CLEAR + 60.0):
 					continue
 				var kind: String = kinds[rng.randi() % kinds.size()]
 				match kind:

@@ -422,6 +422,11 @@ const WORK_VOL_VAR := 0.25            ## … et volume tiré entre 75 % et 100 %
 const SHORE_SWELL := 0.2              ## part de la houle qui reste au bord d'une île (1 = comme au large)
 const SHELTER_WIDTH := 30.0           ## m : distance au bord de l'île sur laquelle la houle reprend toute sa hauteur
 ## Ville v3 (13/11, design/ville-v3/conception.md).
+## 13/11 (demande de Jimmy) : l'ancienne ville est gardée comme ville secondaire, sur une île à part, à l'ouest de la nouvelle.
+## Position dans le monde (x, z) de son ancienne origine (le milieu du quai) ; la ville s'étend de 50 m de chaque côté, de 132 m
+## vers le nord et de 30 m (ses pontons) vers le sud.
+const OLD_TOWN_POS := Vector2(-600.0, 0.0)
+const OLD_TOWN_CENTER := Vector2(-600.0, -50.0)   ## son milieu, pour tenir les îles et les récifs à l'écart
 const TOWN_V3 := true                 ## true : la nouvelle ville (maquette grise de data/town_plan.json) remplace le port ; essai : --town=v3
 const LADDER_EXIT_REACH := 2.0        ## m : dans la ville v3, un nageur sort de l'eau à moins de cette distance d'une échelle (ou par la grève)
 const LAMP_EVERY_MAIN := 13.0          ## m entre deux lanternes sur le quai et la Grand-Rue

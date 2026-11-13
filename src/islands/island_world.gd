@@ -81,6 +81,8 @@ func setup(islands_cfg: Dictionary, enemies_cfg: Dictionary) -> void:
 		var i := _register_island(_scaled_island(d, ISLAND_SCALE), false)
 		var isl: Dictionary = islands[i]
 		_fixed_avoid.append(Vector3((isl["center"] as Vector2).x, (isl["center"] as Vector2).y, float(isl["radius"])))
+	if GameConfig.TOWN_V3:   # (13/11 : l'ancienne ville, sur son île à part : pas d'île tirée au hasard dessus)
+		_fixed_avoid.append(Vector3(GameConfig.OLD_TOWN_CENTER.x, GameConfig.OLD_TOWN_CENTER.y, 110.0))
 
 
 ## Ajoute l'île décrite par `d` (format de data/islands.json, coordonnées déjà à l'échelle) : terre, ennemis, coffres, baies,

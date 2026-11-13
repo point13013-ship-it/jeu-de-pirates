@@ -93,6 +93,35 @@ func can_exit_water(p: Vector2, reach: float) -> bool:
 	return false
 
 
+## 13/11 — l'ancienne ville posée ailleurs (ville secondaire) : ses rectangles de sol, ses murs, ses poteaux et la terre qui
+## arrête les bateaux s'ajoutent à ceux de la ville v3, décalés de `at` (monde x, z). `min_x` : coupe de la plage ouest retirée.
+func add_port(meta: Dictionary, at: Vector2, min_x: float) -> void:
+	var s := Vector2(at.x, -at.y)   # (le même décalage dans le repère du fichier : y = -z)
+	for r: Array in meta.get("walk_rects", []):
+		walk_rects.append([float(r[0]) + s.x, float(r[1]) + s.y, float(r[2]) + s.x, float(r[3]) + s.y])
+	for o: Array in meta.get("obstacles", []):
+		obstacles.append([float(o[0]) + s.x, float(o[1]) + s.y, float(o[2]) + s.x, float(o[3]) + s.y])
+	for c: Array in meta.get("circles", []):
+		if float(c[0]) > min_x:
+			circles.append([float(c[0]) + s.x, float(c[1]) + s.y, float(c[2])])
+	for r: Array in SHIP_LAND:
+		ship_polys.append(PackedVector2Array([Vector2(float(r[0]), float(r[1])) + at, Vector2(float(r[2]), float(r[1])) + at,
+				Vector2(float(r[2]), float(r[3])) + at, Vector2(float(r[0]), float(r[3])) + at]))
+
+
+## Ses terrasses, ses escaliers et ses intérieurs (data/town.json), décalés de même (« xf », voir _lm). À appeler après load_town.
+func add_town(cfg: Dictionary, at: Vector2) -> void:
+	var xf := [0.0, 0.0, at.x, -at.y, 0.0]
+	for l: Dictionary in cfg.get("levels", []):
+		var l2: Dictionary = l.duplicate(true)
+		l2["xf"] = xf
+		levels.append(l2)
+	for it: Dictionary in cfg.get("interiors", []):
+		var it2: Dictionary = it.duplicate(true)
+		it2["xf"] = xf
+		interiors.append(it2)
+
+
 func load_meta(meta: Dictionary) -> void:
 	walk_rects = meta.get("walk_rects", [])
 	obstacles = meta.get("obstacles", [])
