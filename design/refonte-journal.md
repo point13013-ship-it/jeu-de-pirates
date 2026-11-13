@@ -236,3 +236,36 @@ Plan complet et réponses de Jimmy : design/plan-retours-session-3-joueurs.md.
 - Cercle de l'ancre : la jauge ne se redessinait plus quand son opacité atteignait zéro ; après une saccade elle restait affichée.
 - Vagues depuis la vigie : surface de mer étendue (400 m, maille 1 m) dans le nid, en vue dézoomée (< 0,5) ou rasante (< 30°).
 - Brume : bancs du filtre d'image coupés (`FOG_SCREEN_BANKS`), densité -15 % (`FOG_DENSITY_BASE`, `FOG_DENSITY_GAIN`).
+
+## Retours de la session à 3 joueurs : lots 3, 4 et 5 (nuit du 13/11/2026)
+
+### Lot 3 : collisions, multijoueur, naufrage
+- Nageur repoussé par les coques ennemies (`_push_out_of_enemy_hulls`, calculé par chaque joueur). Un bateau qui chevauche déjà
+  une coque ennemie ne peut plus que s'en éloigner (il finissait par la traverser). À vérifier en vraie partie.
+- Plages : le nageur prend pied sur la pente de sable et sort en marchant (`_beach_height`, `_wading`).
+- Canons des alliés : angle envoyé toutes les 0,12 s s'il change (action « gun_aim », relayée par l'hôte), tube lissé.
+- Hisser un coéquipier : fonctionnait en local ; indication « E : hisser … à bord » ajoutée, portée 2,6 -> 4,5 m (`HOIST_REACH`).
+- Naufrage : trésors du coffre du capitaine et trésors portés à bord à la dérive sur place 5 minutes (`SINK_LOOT_TTL`).
+- Protocole réseau 14.
+
+### Lot 4 : navigation et météo (réglages dans GameConfig, section « Retours de la session à 3 joueurs »)
+- Barre : `RUDDER_RATE` 0,6 (1,6 s du centre à fond, avant 0,63 s), `RUDDER_RETURN` 0,45, `TURN_INERTIA` 1,2 s,
+  `PLAYER_TURN_SCALE` 0,77. Ancre : `ANCHOR_BRAKE` 1,2 (avant 2,6), `ANCHOR_RESTART` 2 s à 40 %.
+- Vent : zones de calme fixes (src/sea/wind_zones.gd, mêmes chez tous) et sautes de vent (hôte). Voiles hautes : freinage x2,2 ;
+  carguées : le bateau court sur son erre (`SAILS_FURLED_GLIDE` 0,5). Hors calme et saute, le vent debout ralentit sans arrêter.
+- Canons : arc de 100° (`GUN_ARC_DEG` 50), boulet 31 m/s (`BALL_SPEED`). Crochet : 22 m. Météo : 83 / 8 / 6 / 3 %.
+
+### Lot 5 : combat et PNJ
+- Un ennemi touché par balle ne se fige plus (`GUN_KNOCK_SCALE` 0,3, son élan n'est plus cassé).
+- Mobs : PV 3 / 5 / 6 / 11 / 24, vitesse +10 %, repos -15 % (data/enemies.json).
+- Dispersion des armes x2,5 en courant, x3,5 en sautant ; marche à 85 % et course à 1,35 en portant un trésor.
+- Bateaux ennemis : plus de barre de vie ; dégâts visibles par paliers (`EnemyFleet._update_damage`) ; équipages renforcés par
+  rang (canonniers en plus 0/1/2/3, `ENEMY_LOAD_TIME`, `ENEMY_AIM_PER_RANK`).
+- Abordage : depuis l'eau, E près de l'échelle de coque ennemie. Le pont ennemi est un sol mobile (le pirate reste en mode
+  « à terre », position tenue dans le repère du bateau ennemi : `_board_id`, `_bpos`). Sabre et armes à feu abattent
+  l'équipage (`CREW_HP` 3, retour après `CREW_RESPAWN` 30 s, demande « crew_hit » à l'hôte). Timonier abattu : bateau désemparé.
+  E au cabestan : leur ancre (`ENEMY_ANCHOR_TIME` 40 s). Les squelettes à portée frappent. Espace : plonger.
+  Les armes servent aussi sur notre pont (sans dégâts entre coéquipiers).
+- Limites connues de l'abordage : on ne monte que depuis l'eau (pas de saut de pont à pont, pas de crochet) ; les squelettes
+  ne poursuivent pas, ils frappent ce qui passe à leur portée ; à valider à plusieurs.
+- Essais : --enemy-hp=0.3 (dégâts visibles), --swim près d'une échelle ennemie puis --press=E.
