@@ -95,19 +95,19 @@ STREETS = [
     ("grand_rue", [(105, 104), (102, 94), (106, 84), (100, 75), (104, 66), (111, 58), (108, 48), (110, 40)], 6.0),
     ("rue_marche", [(96, 102), (86, 97), (76, 93), (66, 90)], 4.0),
     ("rue_pecheurs", [(58, 92), (50, 100), (44, 110), (40, 120)], 3.5),
-    ("rue_corderie", [(116, 102), (128, 99), (140, 101), (152, 106), (160, 114)], 4.0),
+    ("rue_corderie", [(116, 100), (128, 95.5), (140, 97.5), (152, 104), (160, 114)], 4.0),
     ("contre_allee_o", [(66, 84), (72, 76), (84, 72), (100, 75)], 3.5),
     ("contre_allee_e", [(106, 84), (120, 82), (134, 86), (140, 96)], 3.5),
     ("montee_fort", [(160, 114), (168, 118), (176, 124)], 3.5),
     ("escalier_est", [(134, 86), (142, 74), (146, 62), (146, 45)], 2.4),
     ("escalier_ouest", [(72, 76), (68, 68), (66, 60), (62, 50.5)], 2.4),
     ("rue_haute", [(60, 50), (76, 46), (92, 48), (110, 46), (128, 48), (146, 44), (164, 48)], 4.0),
-    ("chemin_moulin", [(60, 50), (48, 50), (38, 48), (28, 46)], 2.4),
-    ("chemin_jungle", [(28, 46), (18, 34), (12, 20)], 2.0),
+    ("chemin_moulin", [(60, 50), (48, 50), (38, 48), (33.5, 47)], 2.4),
+    ("chemin_jungle", [(23.5, 40.5), (18, 34), (12, 20)], 2.0),
     ("ruelle_1", [(86, 97), (84, 86), (84, 72)], 1.8),
-    ("ruelle_2", [(128, 99), (124, 90), (120, 82)], 1.8),
+    ("ruelle_2", [(128, 95.5), (124, 89), (120, 82)], 1.8),
     ("ruelle_3", [(76, 93), (70, 104), (72, 114)], 1.8),
-    ("ruelle_4", [(140, 101), (142, 110), (140, 117)], 1.8),
+    ("ruelle_4", [(140, 97.5), (141.5, 108), (140, 117)], 1.8),
 ]
 for _name, pts, w in STREETS:
     path(pts, PAVE_D, w + 0.8)
@@ -133,9 +133,9 @@ NAMED = [
     (1, "Receleur (étal)", 95.5, 109.5, 5.0, 3.5, -8, "#DCAE5C"),
     (2, "Tableau des quêtes", 113.5, 110.5, 2.6, 1.4, 6, "#9C6A43"),
     (3, "Taverne du Pélican Borgne", 89.0, 103.0, 13.0, 9.0, -14, "#7A3530"),
-    (4, "Magasin général", 120.5, 105.0, 10.0, 8.0, 10, "#B25A3E"),
+    (4, "Magasin général", 122.0, 105.9, 9.5, 6.0, 12, "#B25A3E"),
     (5, "Chantier naval (halle)", 157.0, 110.5, 15.0, 9.0, 34, "#6A4532"),
-    (6, "Voilerie", 130.0, 106.5, 8.5, 7.0, 14, "#DE8A5E"),
+    (6, "Voilerie", 132.5, 105.0, 8.0, 6.5, 12, "#DE8A5E"),
     (7, "Armurier et doreur", 78.5, 99.5, 8.5, 7.0, -22, "#4A4258"),
     (8, "Tailleur", 60.0, 80.5, 8.0, 7.0, 20, "#B25A3E"),
     (9, "Forge", 73.5, 83.0, 6.5, 6.0, -30, "#4A4258"),
@@ -145,10 +145,10 @@ NAMED = [
     (13, "Moulin", 28.0, 46.0, 6.0, 6.0, 0, "#EFE4CC"),
     (14, "Phare", 193.0, 157.0, 4.5, 4.5, 0, "#EFE4CC"),
     (15, "Batterie du fort", 190.0, 138.0, 16.0, 10.0, 20, "#7D7488"),
-    (16, "Entrepôts", 146.0, 111.5, 9.0, 7.0, 24, "#6A4532"),
+    (16, "Entrepôts", 151.5, 95.5, 9.0, 6.5, 28, "#6A4532"),
     (17, "Cimetière marin", 78.0, 32.0, 14.0, 9.0, -6, "#93C4A6"),
     (18, "Cabanes de pêcheurs", 30.0, 124.5, 22.0, 5.0, 5, "#9C6A43"),
-    (19, "Bains et lavoir", 94.0, 52.5, 7.0, 5.0, 4, "#5F8FB0"),
+    (19, "Bains et lavoir", 94.0, 55.5, 7.0, 5.0, 4, "#5F8FB0"),
     (20, "Capitainerie", 105.0, 97.5, 0.1, 0.1, 0, "#DCAE5C"),
 ]
 NAMED = [n for n in NAMED if n[4] > 1.0]
@@ -186,6 +186,50 @@ def inside_poly(p, pts):
 # ------------------------------------------------------------------ maisons : le long des rues, des deux côtés, de guingois
 houses = []
 
+# 13/11, retour de Jimmy sur la maquette grise : « les maisons sont l'une sur l'autre, on se sent à l'étroit ». Même leçon que pour
+# le bateau : de la place pour circuler. Règles : jamais moins de GAP m entre deux bâtiments (une ruelle où l'on passe à deux),
+# GAP_NAMED autour d'un service ou d'un repère, STREET_MARGIN entre un mur et le bord d'une rue.
+GAP = 3.0
+GAP_NAMED = 3.2
+STREET_MARGIN = 0.8
+solids = []      # (cx, cy, w, d, angle, écart voulu) : tout ce qui a des murs
+
+
+def corners_of(cx, cy, w, d, ang, grow=0.0):
+    return rot_rect(cx, cy, w + grow * 2.0, d + grow * 2.0, ang)
+
+
+def rects_overlap(a, b):
+    """Deux rectangles tournés se touchent-ils ? (axes séparateurs)"""
+    for poly in (a, b):
+        for i in range(4):
+            x0, y0 = poly[i]
+            x1, y1 = poly[(i + 1) % 4]
+            nx, ny = y1 - y0, -(x1 - x0)
+            pa = [nx * x + ny * y for x, y in a]
+            pb = [nx * x + ny * y for x, y in b]
+            if max(pa) < min(pb) or max(pb) < min(pa):
+                return False
+    return True
+
+
+def rect_clear_of_streets(cx, cy, w, d, ang):
+    pts = corners_of(cx, cy, w, d, ang)
+    probes = pts + [((pts[i][0] + pts[(i + 1) % 4][0]) * 0.5, (pts[i][1] + pts[(i + 1) % 4][1]) * 0.5) for i in range(4)] + [(cx, cy)]
+    return all(street_clear(q, STREET_MARGIN) for q in probes)
+
+
+def rect_clear_of_plazas(cx, cy, w, d, ang):
+    for q in corners_of(cx, cy, w, d, ang) + [(cx, cy)]:
+        for _n, px0, py0, rx, ry in PLAZAS:
+            if ((q[0] - px0) / (rx + 1.0)) ** 2 + ((q[1] - py0) / (ry + 1.0)) ** 2 < 1.0:
+                return False
+    return True
+
+
+for _num, _name, x, y, w, d, a, _c in NAMED:
+    solids.append((x, y, w, d, math.radians(a), GAP_NAMED))
+
 
 def along(pts, s):
     """Point et direction à la distance s le long d'une polyligne."""
@@ -198,7 +242,7 @@ def along(pts, s):
     return pts[-1], 0.0
 
 
-for row in (0, 1):                      # 0 : les façades sur la rue ; 1 : un second rang derrière, plus clairsemé (cours, jardins)
+for row in (0, 1, 2):                      # 0 : les façades sur la rue ; 1 : un second rang derrière, plus clairsemé (cours, jardins)
     for name, pts, w in STREETS:
         if name in ("montee_fort", "chemin_moulin", "chemin_jungle") or name.startswith("escalier"):
             continue
@@ -209,20 +253,25 @@ for row in (0, 1):                      # 0 : les façades sur la rue ; 1 : un s
             while s < total - 1.0:
                 (bx0, by0), ang = along(pts, s)
                 hw, hd = rnd.uniform(6.0, 9.5), rnd.uniform(5.5, 8.0)
-                set_back = w * 0.5 + hd * 0.5 + rnd.uniform(0.3, 1.6) + row * rnd.uniform(8.5, 11.0)   # façades décalées, jamais alignées
+                set_back = w * 0.5 + hd * 0.5 + STREET_MARGIN + rnd.uniform(0.3, 1.8) + row * rnd.uniform(10.5, 12.5)   # façades décalées, jamais alignées
                 cx = bx0 - math.sin(ang) * side * set_back
                 cy = by0 + math.cos(ang) * side * set_back
                 rr = math.hypot(hw, hd) * 0.5
                 ok = cy < coast_y(cx) - 5.0 and 4 < cx < W - 4 and cy > 12
-                ok = ok and street_clear((cx, cy), min(hw, hd) * 0.5 - 0.2)
-                ok = ok and all(math.hypot(cx - ox, cy - oy) > rr * 0.8 + br for ox, oy, br in blocks)
-                ok = ok and not inside_poly((cx, cy), FORT) and math.hypot(cx - 28, cy - 46) > 21
-                if ok and (row == 0 or rnd.random() < 0.6):
-                    houses.append((cx, cy, hw, hd, ang + rnd.uniform(-0.16, 0.16), inside_poly((cx, cy), UP)))
-                    blocks.append((cx, cy, rr * 0.8))
-                    s += hw + rnd.uniform(0.4, 5.0)                             # des trous : jardins, passages, cours
+                turn = ang + rnd.uniform(-0.16, 0.16)
+                ok = ok and rect_clear_of_streets(cx, cy, hw, hd, turn) and rect_clear_of_plazas(cx, cy, hw, hd, turn)
+                mine = corners_of(cx, cy, hw, hd, turn)
+                ok = ok and not any(rects_overlap(mine, corners_of(ox, oy, ow, od, oa, og)) for ox, oy, ow, od, oa, og in solids)
+                ok = ok and not inside_poly((cx, cy), FORT) and math.hypot(cx - 28, cy - 46) > 23
+                # une maison ne chevauche pas le bord d'une terrasse : ses quatre coins sont du même côté du mur
+                ok = ok and len(set(inside_poly(q, UP) for q in corners_of(cx, cy, hw, hd, turn, 1.0))) == 1
+                if ok and (row == 0 or rnd.random() < 0.75):
+                    houses.append((cx, cy, hw, hd, turn, inside_poly((cx, cy), UP)))
+                    solids.append((cx, cy, hw, hd, turn, GAP))
+                    blocks.append((cx, cy, rr))
+                    s += hw + GAP + rnd.uniform(0.0, 5.0)                       # des trous : jardins, passages, cours
                 else:
-                    s += 2.0
+                    s += 1.0
 
 # jardins et arbres dans les creux
 for _k in range(260):
@@ -339,7 +388,7 @@ def fp(pt):
 # rue, on voit dedans sans entrer (façon Sea of Thieves) ; comptoir = étal ou comptoir sur la rue ; repère = décor et quêtes.
 MODES = {1: "tente", 2: "comptoir", 3: "interieur", 4: "interieur", 5: "halle", 6: "tente", 7: "tente", 8: "interieur", 9: "comptoir",
          10: "halle", 11: "repere", 12: "repere", 13: "repere", 14: "repere", 15: "repere", 16: "maison", 17: "jardin", 18: "cabanes", 19: "repere"}
-STOREYS = {3: 2, 4: 2, 5: 2, 8: 2, 11: 3, 12: 3, 13: 3, 14: 5, 15: 1, 16: 2, 19: 1}
+STOREYS = {3: 2, 4: 2, 5: 2, 8: 2, 11: 2, 12: 2, 13: 3, 14: 5, 15: 1, 16: 1, 19: 1}
 # qui se tient devant quel bâtiment (identifiants de data/npcs.json) ; décalage le long de la façade en m
 STAFF = {1: [("corbin", 0.0)], 3: [("barnabe", -2.5), ("ysolde", 2.5)], 4: [("petronille", 0.0)], 5: [("mathurin", 0.0)], 6: [("ariane", 0.0)],
          7: [("armand", -1.8), ("prosper", 1.8)], 8: [("gaspard", 0.0)], 15: [("odilon", 0.0)], 11: [("hector", 4.0)]}
@@ -357,7 +406,7 @@ for num, name, x, y, w, d, a, c in NAMED:
         npcs[who] = [round(fx(x) + math.cos(ang) * lx - math.sin(ang) * ly, 2), round(fy(y) + math.sin(ang) * lx + math.cos(ang) * ly, 2)]
 for k, (cx, cy, hw, hd, ang, up) in enumerate(houses):
     buildings.append({"id": "m%d" % k, "x": fx(cx), "y": fy(cy), "w": round(hw, 2), "d": round(hd, 2), "ang": round(-ang, 3),
-                      "storeys": 1 + (k * 7 % 3 > 0) + (k % 5 == 0), "kind": "maison", "mode": "maison"})
+                      "storeys": 1 + (k % 3 != 0) + (k % 11 == 0), "kind": "maison", "mode": "maison"})
 plan = {
     "_commentaire": "Plan de la ville v3 (Port-Cayonne), produit par tools/art/town_plan_svg.py : ne pas modifier à la main, changer le script. Coordonnées du fichier du port : x est, y nord, monde de jeu = (x, -y). Lu par src/town/town_greybox.gd (maquette grise) et src/land.gd (collisions).",
     "name": "Port-Cayonne",

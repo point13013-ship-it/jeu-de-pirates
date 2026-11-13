@@ -19,7 +19,7 @@ const ROOFS: Array[Color] = [Color("8a6a62"), Color("9a7466"), Color("7a6468")]
 const SERVICE := Color("dcae5c")
 const LANDMARK := Color("efe4cc")
 const LADDER := Color("e8352b")
-const STOREY := 3.0          ## m par étage
+const STOREY := 2.7          ## m par étage (13/11 : 3,0 ; avec le toit, les maisons se cachaient les unes les autres)
 const SEA_FLOOR := -3.2      ## bas du mur de quai
 
 
@@ -169,7 +169,7 @@ static func _house(root: Node3D, c: Vector2, size: Vector2, ang: float, base: fl
 	if num == 15:      # batterie : toit plat (parapet)
 		_raw_box(top, c, size + Vector2(0.4, 0.4), ang, base + h, base + h + 0.4)
 	else:
-		_raw_gable(top, c, size + Vector2(0.6, 0.6), ang, base + h, 2.4 if size.x < 12.0 else 3.2)
+		_raw_gable(top, c, size + Vector2(0.6, 0.6), ang, base + h, 1.7 if size.x < 12.0 else 2.3)
 	var mesh := ArrayMesh.new()
 	walls.commit(mesh)
 	top.commit(mesh)

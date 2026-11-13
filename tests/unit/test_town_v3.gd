@@ -11,6 +11,28 @@ func _check(ok: bool, what: String) -> void:
 		print("ÉCHEC ", what)
 
 
+func _corners(b: Dictionary) -> Array[Vector2]:
+	var out: Array[Vector2] = []
+	var c := Vector2(float(b["x"]), float(b["y"]))
+	for v: Vector2 in [Vector2(-1, -1), Vector2(1, -1), Vector2(1, 1), Vector2(-1, 1)]:
+		out.append(c + Vector2(v.x * float(b["w"]) * 0.5, v.y * float(b["d"]) * 0.5).rotated(float(b["ang"])))
+	return out
+
+
+## Plus petite distance entre les murs de deux bâtiments (0 s'ils se touchent).
+func _gap(a: Dictionary, b: Dictionary) -> float:
+	var pa := _corners(a)
+	var pb := _corners(b)
+	if not Geometry2D.intersect_polygons(PackedVector2Array(pa), PackedVector2Array(pb)).is_empty():
+		return 0.0
+	var best := INF
+	for i in 4:
+		for j in 4:
+			var pts := Geometry2D.get_closest_points_between_segments(pa[i], pa[(i + 1) % 4], pb[j], pb[(j + 1) % 4])
+			best = minf(best, pts[0].distance_to(pts[1]))
+	return best
+
+
 func _initialize() -> void:
 	var f := FileAccess.open("res://data/town_plan.json", FileAccess.READ)
 	var plan: Dictionary = JSON.parse_string(f.get_as_text())
@@ -36,6 +58,25 @@ func _initialize() -> void:
 		var open: bool = str(b["mode"]) in ["tente", "comptoir", "halle", "jardin"]
 		if not open:
 			_check(not land.is_walkable(c), "on ne marche pas dans %s" % str(b["id"]))
+
+	# de la place pour circuler (retour de Jimmy, 13/11) : jamais moins de 2,8 m entre deux bâtiments fermés, et aucun mur sur une rue
+	var solid: Array = []
+	for b4: Dictionary in plan["buildings"]:
+		if not (str(b4["mode"]) in ["tente", "comptoir", "halle", "jardin"]):
+			solid.append(b4)
+	for i in solid.size():
+		for j in range(i + 1, solid.size()):
+			var gap := _gap(solid[i], solid[j])
+			_check(gap >= 2.8, "%s et %s sont à %.1f m l'un de l'autre (2,8 m au moins)" % [str(solid[i]["id"]), str(solid[j]["id"]), gap])
+	for b5: Dictionary in solid:
+		for s4: Dictionary in plan["streets"]:
+			var pts: Array = s4["pts"]
+			for k2 in pts.size() - 1:
+				var a3 := Vector2(float(pts[k2][0]), float(pts[k2][1]))
+				var b6 := Vector2(float(pts[k2 + 1][0]), float(pts[k2 + 1][1]))
+				for c3: Vector2 in _corners(b5):
+					var dist := Geometry2D.get_closest_point_to_segment(c3, a3, b6).distance_to(c3) - float(s4["width"]) * 0.5
+					_check(dist > 0.3, "%s empiète sur la rue %s (%.1f m)" % [str(b5["id"]), str(s4["id"]), dist])
 
 	# chaque habitant est sur un sol praticable, pas dans un mur
 	for id: String in plan["npcs"]:

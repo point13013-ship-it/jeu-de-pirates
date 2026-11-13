@@ -62,7 +62,7 @@ Tirées de nos recherches (Lynch, Alexander, Level Design Book, BotW) et des por
 ## 4. La maquette en plan (v0)
 
 Voir `plan-maquette.png`. Emprise : environ 215 x 125 m de terre, soit un peu plus de 3 fois la ville actuelle (dessinée en
-pointillés blancs à la même échelle). 54 maisons de remplissage et 19 bâtiments nommés ; c'est un ordre de grandeur, les
+pointillés blancs à la même échelle). 36 maisons de remplissage et 19 bâtiments nommés ; c'est un ordre de grandeur, les
 maisons sont posées par le script pour juger la densité, pas une à une.
 
 | Quartier | Contenu | Identité |
@@ -170,6 +170,20 @@ Les étapes 1 à 4 se font sans un seul bel objet : c'est voulu. L'ancienne vill
 | Modèles | Bâtiments, quais et relief par nos scripts Blender ; petits objets (tonneaux, caisses, étals, barques) depuis un kit libre CC0 repeint à notre palette. Pas de kit payant : le dépôt est public |
 | Sortie de l'eau | Dans la nouvelle ville, on ne sort de l'eau que par une échelle ou par la grève (`LADDER_EXIT_REACH`) : le quai est trop haut |
 | Publication | Publier dans le lanceur à chaque palier jouable, sans redemander |
+
+### Retour de Jimmy sur la première maquette grise (13/11) : « des cubes qui s'empilent »
+
+Le plan vu à plat paraissait aéré, la maquette en 3D non : les maisons se touchaient par les coins et montaient à 2 ou 3
+étages, donc se cachaient les unes les autres sous la caméra. Même leçon que pour le bateau : **de la place pour circuler**.
+Règles ajoutées, vérifiées par le test :
+
+| Règle | Valeur |
+|---|---|
+| Écart minimal entre deux bâtiments fermés | 3 m (2,8 m contrôlés par le test) : une ruelle où l'on passe à deux |
+| Écart autour d'un service ou d'un repère | 3,2 m |
+| Recul d'un mur par rapport au bord d'une rue | 0,8 m au moins, aucun mur sur une rue |
+| Hauteur des maisons | surtout rez-de-chaussée plus un étage (2,7 m par étage), toits plus bas ; les repères seuls dépassent |
+| Densité | 36 maisons et 19 bâtiments nommés (au lieu de 54 + 19) : on resserrera à la main là où un quartier doit l'être |
 
 ## 11. Où on en est
 
