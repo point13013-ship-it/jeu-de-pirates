@@ -2,6 +2,22 @@
   "_commentaire": "Les nouveautés affichées dans la salle de jeux (bouton Nouveautés, et après chaque mise à jour). La plus récente d'abord. 'version': 'prochaine' est remplacé par le numéro de la version au moment de la publication (publish.ps1). Les images sont les fichiers de ce dossier ; publish.ps1 les envoie avec la version.",
   "versions": [
     {
+      "version": "2026.11.13-1145",
+      "titre": "Retours de la session à 3 : abordage, coffre du bateau, interface épurée",
+      "points": [
+        "Abordage : à la nage près de l'échelle d'un bateau ennemi, E pour monter. Abats les canonniers et le timonier (ils reviennent après 30 s), jette leur ancre au cabestan.",
+        "Navigation : barre plus lourde avec de l'inertie, ancre qui freine progressivement, zones de calme et sautes de vent, canons limités à un arc de 100°.",
+        "Sac limité à 10 planches et 10 boulets : le reste va dans le coffre du bateau, commun à l'équipage (E au coffre à boulets).",
+        "Trésors : une forme par valeur, de la bourse de cuir au coffre maudit du Kraken. On peut les poser sur le pont ; au naufrage ils flottent 5 minutes.",
+        "Les mains prises, plus de barre ni de canon : pose d'abord (clic). Échelle de mât à la main (Z / S), saut depuis la vigie (Espace).",
+        "Interface épurée : plus de bandeau, indication « [E] » sous le centre, boussole redessinée (B), nouveau curseur, nouveau menu principal.",
+        "Bateau : cale en trois pièces avec hublots, porte arrière de la cabine et balcon, voiles et vergues corrigées, échelles posées sur la coque.",
+        "Ennemis : mobs plus résistants qui ne se figent plus sous les balles, dégâts visibles sur les bateaux, équipages selon le rang.",
+        "Son : pluie deux fois moins forte avec son curseur, tromblon et fusil refaits. Météo plus clémente. La houle s'apaise près des îles.",
+        "Tout l'équipage doit mettre à jour (les anciennes versions ne peuvent plus se rejoindre)."
+      ]
+    },
+    {
       "version": "2026.11.12-2257",
       "titre": "Grande refonte : nouveau brigantin, haute ville, vrais sons",
       "points": [
