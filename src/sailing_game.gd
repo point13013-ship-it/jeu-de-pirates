@@ -2335,6 +2335,9 @@ func _sink_ship() -> void:
 		var a := TAU * float(k) / maxf(float(_stash.size()), 1.0)
 		_loot.spawn("t:" + str(_stash[k]), _last_sink_pos + Vector2.from_angle(a) * (3.0 + 0.8 * float(k % 3)), SINK_LOOT_TTL)
 	_stash.clear()
+	for it: Array in _deck_items:
+		_loot.spawn("t:" + str(it[1]), _last_sink_pos + Vector2(randf_range(-5.0, 5.0), randf_range(-5.0, 5.0)), SINK_LOOT_TTL)
+	_deck_items.clear()
 	_grap_state = 0
 	_hull.reset()
 	_sim.position = _spawn_pos
@@ -3270,6 +3273,7 @@ func _axis(neg: Array, pos: Array) -> float:
 
 
 func _update_player(delta: float) -> void:
+	_sync_deck_nodes()
 	_update_boarding(delta)
 	_spill_bag_surplus(delta)
 	_update_jump(delta)
@@ -4647,7 +4651,7 @@ func ship_state() -> Array:
 			_sim.sail_level, _sim.sail_open, 1 if _sim.anchored else 0, mask, _helm_owner, _time,
 			_hull.leaks, _hull.patched, _hull.water, _sim.sail_trim, _sim.wind_angle, _sim.sail_trim_target, _stash.duplicate(),
 			_grap_state, _grap_hook.x, _grap_hook.y, _grap_target.x, _grap_target.y, Hook.kind_code(_grap_kind), _grap_owner,
-			int(_ship_stock["plank"]), int(_ship_stock["ball"])]
+			int(_ship_stock["plank"]), int(_ship_stock["ball"]), _deck_items.duplicate(true)]
 
 
 ## Client : reçoit l'état du bateau de l'hôte. La position et le cap servent de cible (recalage en
@@ -4656,6 +4660,8 @@ func apply_ship_state(s: Array) -> void:
 	if _ship == null or s.size() < 26:
 		return
 	_stash = (s[18] as Array).duplicate()
+	if s.size() > 28:
+		_deck_items = (s[28] as Array).duplicate(true)
 	if s.size() > 27 and (int(s[26]) != int(_ship_stock["plank"]) or int(s[27]) != int(_ship_stock["ball"])):
 		_ship_stock = {"plank": int(s[26]), "ball": int(s[27])}
 		_refresh_chest_ui()
@@ -5684,6 +5690,10 @@ func _interact(secondary: bool) -> void:
 	if swimmer != 0 and not secondary:   # lot 2 (4.5) : un camarade à l'eau, à portée de bras : on le hisse
 		_start_action("hoist", "Hisser %s" % _remote_label(swimmer), swimmer)
 		return
+	var di := _nearest_deck_item()
+	if di >= 0 and not _carrying and not secondary:   # un trésor posé sur le pont, à mes pieds : je le reprends
+		_request("deck_take", int(_deck_items[di][0]))
+		return
 	var it := _nearest_interactable()
 	if it.is_empty():
 		return
@@ -6084,6 +6094,25 @@ func apply_request(peer: int, kind: String, value: int) -> void:
 				_ship_stock[tk] = int(_ship_stock[tk]) - got
 				_ship_stock_changed()
 				_give_item(peer, "s:%s:%d" % [tk, got])
+		"deck_drop":   # `peer` pose sur le pont le trésor d'indice `value`, là où il se tient
+			var dtid := Treasure.id_at(value)
+			var dp := Vector2.INF
+			if peer == _my_id():
+				dp = _ppos if _loc == Loc.SHIP else Vector2.INF
+			elif _remotes.has(peer) and int(_remotes[peer]["loc"]) == 0:
+				dp = _remotes[peer]["pos"]
+			if dtid != "":
+				if dp == Vector2.INF:
+					_give_item(peer, "t:" + dtid)   # il n'est plus sur le pont : il le garde
+				else:
+					_deck_items.append([_deck_next_id, dtid, dp.x, dp.y])
+					_deck_next_id += 1
+		"deck_take":   # `peer` reprend l'objet posé d'identifiant `value` (le premier arrivé l'a)
+			for k in _deck_items.size():
+				if int(_deck_items[k][0]) == value:
+					_give_item(peer, "t:" + str(_deck_items[k][1]))
+					_deck_items.remove_at(k)
+					break
 		"spill":   # naufrage : le trésor que `peer` portait à bord flotte sur le lieu du naufrage
 			if value >= 0 and Treasure.id_at(value) != "":
 				_loot.spawn("t:" + Treasure.id_at(value), _last_sink_pos + Vector2(randf_range(-4.0, 4.0), randf_range(-4.0, 4.0)), SINK_LOOT_TTL)
@@ -7082,6 +7111,10 @@ func _update_hud() -> void:
 	if to_hoist != 0:
 		_prompt.text = "E : hisser %s à bord" % _remote_label(to_hoist)
 		return
+	var deck_i := _nearest_deck_item()
+	if deck_i >= 0 and not _carrying:
+		_prompt.text = "E : prendre %s" % Treasure.name_of(str(_deck_items[deck_i][1]))
+		return
 	var it := _nearest_interactable()
 	if it.is_empty():
 		_prompt.text = ""
@@ -7359,6 +7392,47 @@ func _craft_cabin() -> void:
 		return
 	Crafting.pay(_profile, "cabin")
 	_cabin_send("build", i, "", 0, spot)
+
+
+# --- objets posés sur le pont (13/11) : un trésor posé à bord y reste, à sa place sur le pont ; E pour le reprendre. La liste est
+# tenue par l'hôte et diffusée avec l'état du bateau : tout l'équipage voit les mêmes objets au même endroit.
+
+var _deck_items: Array = []          ## [[id, identifiant du trésor, x, y (repère du modèle)]]
+var _deck_nodes: Dictionary = {}     ## id -> la maquette posée sur le pont
+var _deck_next_id := 1
+const DECK_PICK_REACH := 1.1         ## unités du modèle : distance pour reprendre un objet posé
+
+
+## Chaque image : les maquettes suivent la liste (créées, retirées).
+func _sync_deck_nodes() -> void:
+	var seen := {}
+	for it: Array in _deck_items:
+		var id := int(it[0])
+		seen[id] = true
+		if not _deck_nodes.has(id) and Treasure.exists(str(it[1])):
+			var node := Treasure.make_icon(str(it[1]))
+			node.scale = Vector3.ONE * 1.7
+			_ship.add_child(node)
+			node.position = _ship.to_local3(Vector2(float(it[2]), float(it[3])), 0.05)
+			_deck_nodes[id] = node
+	for id: int in _deck_nodes.keys():
+		if not seen.has(id):
+			(_deck_nodes[id] as Node).queue_free()
+			_deck_nodes.erase(id)
+
+
+## L'objet posé le plus proche de moi sur le pont : son indice dans _deck_items, ou -1.
+func _nearest_deck_item() -> int:
+	if _loc != Loc.SHIP or _mode != Mode.WALK:
+		return -1
+	var best := -1
+	var best_d := DECK_PICK_REACH
+	for k in _deck_items.size():
+		var d := Vector2(float(_deck_items[k][2]), float(_deck_items[k][3])).distance_to(_ppos)
+		if d < best_d:
+			best_d = d
+			best = k
+	return best
 
 
 # --- le coffre du bateau (13/11) : planches et boulets communs à l'équipage, tenus par l'hôte ; même panneau que le coffre de cabane
@@ -8189,8 +8263,15 @@ func _set_remote_carry(id: int, code: String) -> void:
 func _drop_to_ground() -> void:
 	if not _carrying:
 		return
+	if _loc == Loc.SHIP and _mode == Mode.WALK and _carry_kind == "treasure" and _pz <= 0.05:
+		# 13/11 : un trésor se pose sur le pont et y reste (E pour le reprendre) ; au naufrage, il part à l'eau avec le reste
+		_request("deck_drop", Treasure.index_of(_carry_item))
+		_sfx.play_at(Synth.thump(), _my_scene_pos(), 0.8)
+		_drop_carried()
+		_say("Posé sur le pont : E pour le reprendre", 2.5)
+		return
 	if _loc != Loc.LAND or _pz > 0.05:
-		_say("Pose-le à terre : sur le bateau, range-le (coffre du capitaine, caisse, étagère de la cale)", 3.5)
+		_say("Pose-le à terre ou sur le pont : dans la cale, range-le au coffre du bateau", 3.5)
 		return
 	var value := -1 if _carry_kind == "ball" else (-2 if _carry_kind == "plank" else Treasure.index_of(_carry_item))
 	if _carry_kind == "treasure" and value < 0:

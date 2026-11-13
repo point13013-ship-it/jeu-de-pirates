@@ -269,3 +269,35 @@ Plan complet et réponses de Jimmy : design/plan-retours-session-3-joueurs.md.
 - Limites connues de l'abordage : on ne monte que depuis l'eau (pas de saut de pont à pont, pas de crochet) ; les squelettes
   ne poursuivent pas, ils frappent ce qui passe à leur portée ; à valider à plusieurs.
 - Essais : --enemy-hp=0.3 (dégâts visibles), --swim près d'une échelle ennemie puis --press=E.
+
+## Retours de la session à 3 joueurs : lots 6, 7, 11 et début du lot 8 (nuit du 13/11/2026)
+
+### Lot 6 : interactions
+- Les mains prises, on ne tient plus la barre, les voiles, l'ancre, la carte, le crochet ni un canon (sauf pour le charger
+  avec le boulet porté). Clic gauche ou droit : poser ce qu'on porte.
+- Échelle de mât à la main : Z monte, S descend, on peut s'arrêter (plus de montée automatique). Le pirate est derrière l'échelle.
+  Les échelles de coque restent automatiques (une seconde) : à revoir si la demande les visait aussi.
+- Espace dans le nid de pie : saut vers l'extérieur (`NEST_JUMP_UP`, `NEST_JUMP_OUT`). Vigie dézoomée (`NEST_ZOOM` 0,30).
+
+### Lot 7 : planches, boulets, coffre du bateau
+- Le sac porte 10 planches et 10 boulets (`BAG_MAX`). Le surplus part tout seul au coffre du bateau.
+- Coffre à boulets, caisse à planches et étagère de la cale ouvrent le coffre du bateau : même panneau que le coffre de cabane
+  (cases, clic : ranger ou prendre 1 ; Maj + clic : tout). Stock commun tenu par l'hôte (`_ship_stock`, gardé dans son profil :
+  `ship_planks`, `ship_balls`), diffusé avec l'état du bateau ; demandes « chest_put » et « chest_take » servies dans l'ordre.
+- On répare avec une planche du sac ; un canon se recharge avec un boulet du sac.
+- Pas fait : les deux panneaux côte à côte et le glisser-déposer (le panneau liste « ton sac » puis « le coffre »).
+
+### Lot 11 : interface épurée (`GameConfig.HUD_MINIMAL`, `false` pour l'ancien HUD)
+- Retirés de l'écran : bandeau du haut, cadran rond, ligne d'aide des armes, or et coffre, quêtes en cours (journal), barre de
+  réputation (elle apparaît au moment d'un gain ; la réputation est en tête du sac).
+- Indication de touche : « [E] … », courte, sous le centre de l'écran (`_short_prompt`). Les messages passent tels quels.
+- Guidage seulement boussole en main (B), boussole redessinée (src/ui/island_hud.gd). Pseudo visible à la nage (dessiné après
+  la mer). La sirène s'en va 3 s après la sortie de l'eau. Curseur du jeu (`UiTheme.apply_cursor`).
+- Signalé : sans bandeau, la vitesse et l'angle de barre ne sont plus chiffrés (on les lit au sillage et à la roue).
+
+### Lot 8 (en cours)
+- Skins de bateau masqués (`SHIP_SKINS_ENABLED` = false : apparence d'origine, voilerie fermée, achats gardés).
+- Barre 12 % plus petite (`HELM_WHEEL_RADIUS` 0,44).
+- Trésors posés sur le pont : ils y restent (`_deck_items`, tenus par l'hôte, diffusés avec l'état du bateau), E pour reprendre ;
+  au naufrage ils partent à la dérive avec le reste.
+- Reste : cale en plusieurs pièces et hublots, porte arrière de la cabine et balcon praticable.
