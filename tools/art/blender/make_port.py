@@ -709,20 +709,6 @@ def up_building(bid, x0, x1, y0, y1, floors, wall, roof, rot_deg=0.0, **kw):
     U_OBST.append((min(p[0] for p in rc), min(p[1] for p in rc), max(p[0] for p in rc), max(p[1] for p in rc)))
 
 
-# les maisons (façade et porte au sud, vers la caméra) : tailles, hauteurs, couleurs et angles variés
-up_building("haut_so1", -24.5, -15.0, 53.6, 60.5, 2, "pl_white", "roof_terra", 4, timber=True)
-up_building("haut_se1", 5.6, 13.6, 56.2, 62.6, 2, "pl_rose", "roof_slate", -5, balcony=True)
-up_building("haut_se2", 19.6, 29.6, 54.4, 62.4, 3, "pl_ochre", "roof_terra", 3, balcony=True)
-up_building("haut_se3", 31.5, 39.5, 57.5, 65.0, 2, "pl_teal", "roof_green", -3, timber=True)
-up_building("haut_no1", -38.5, -30.0, 71.6, 79.0, 2, "pl_cream", "roof_slate", 5)
-up_building("haut_no2", -25.0, -15.5, 71.2, 78.6, 3, "pl_terra", "roof_green", -4, balcony=True)
-up_building("haut_no3", -13.0, -5.8, 72.6, 79.6, 2, "pl_ochre", "roof_terra", 2, timber=True)
-up_building("haut_no4", -38.0, -30.5, 83.6, 90.4, 2, "pl_rose", "roof_terra", -3)
-up_building("haut_no5", -24.0, -12.0, 84.2, 90.6, 3, "pl_cream", "roof_slate", 6, timber=True)
-up_building("haut_no6", -9.5, -3.6, 83.0, 89.4, 2, "pl_teal", "roof_terra", -6)
-up_building("haut_ne1", 6.5, 15.0, 80.4, 87.6, 2, "pl_white", "roof_green", -3, balcony=True)
-up_building("haut_ne2", 18.0, 26.0, 81.0, 89.0, 3, "pl_rose", "roof_slate", 4)
-up_building("haut_ne3", 30.5, 39.0, 80.0, 87.0, 2, "pl_ochre", "roof_terra", -2, timber=True)
 
 # le clocher : une tour haute et étroite sur la placette, le repère de la haute ville vu du port
 _bt = (9.6, 64.2, 13.4, 68.0)
@@ -804,6 +790,25 @@ def flowers(x, y, n=6, spread=1.2):
                rnd.uniform(0.18, 0.3), rnd.choice(["fruit_r", "fruit_y", "cloth_cream", "cloth_red", "leaf"]), 0.75)
 
 
+# les maisons (façade et porte au sud, vers la caméra) : tailles, hauteurs et couleurs variées. 13/11 (retours de la session
+# à 3) : toutes droites (les angles donnaient des maisons « de travers »), mais décalées en profondeur ; la rangée du fond
+# est aérée (quatre maisons au lieu de six, des jardins et des arbres entre elles).
+up_building("haut_so1", -24.5, -15.0, 53.6, 60.5, 2, "pl_white", "roof_terra", 0, timber=True)
+up_building("haut_se1", 5.6, 13.6, 56.2, 62.6, 2, "pl_rose", "roof_slate", 0, balcony=True)
+up_building("haut_se2", 19.6, 29.6, 54.4, 62.4, 3, "pl_ochre", "roof_terra", 0, balcony=True)
+up_building("haut_se3", 31.5, 39.5, 57.5, 65.0, 2, "pl_teal", "roof_green", 0, timber=True)
+up_building("haut_no1", -38.5, -30.0, 71.6, 79.0, 2, "pl_cream", "roof_slate", 0)
+up_building("haut_no2", -25.0, -15.5, 72.6, 80.0, 3, "pl_terra", "roof_green", 0, balcony=True)
+up_building("haut_no3", -13.0, -5.8, 71.2, 78.2, 2, "pl_ochre", "roof_terra", 0, timber=True)
+up_building("haut_no4", -37.0, -28.5, 84.4, 90.8, 2, "pl_rose", "roof_terra", 0)
+up_building("haut_no5", -17.5, -7.0, 83.2, 89.8, 3, "pl_cream", "roof_slate", 0, timber=True)
+up_building("haut_ne1", 7.5, 16.0, 82.4, 89.2, 2, "pl_white", "roof_green", 0, balcony=True)
+up_building("haut_ne3", 29.0, 38.0, 83.6, 90.4, 2, "pl_ochre", "roof_terra", 0, timber=True)
+# entre les maisons du fond : un jardin, des arbres
+for (x, y) in ((-24.5, 86.5), (-21.0, 88.5), (20.5, 85.0), (24.5, 88.0), (-2.5, 84.5)):
+    tree(x, y, rnd.uniform(3.8, 5.0), rnd.uniform(1.4, 1.9), kind=rnd.choice(["leaf", "leaf_d"]))
+for (x, y) in ((-23.0, 84.0), (22.5, 83.2), (3.5, 86.5)):
+    flowers(x, y, 8, 1.4)
 # potager clos au sud-ouest (palissade, portillon sur le sentier), et sa cabane à outils
 fence(-37.5, 53.0, -28.0, 53.0)
 fence(-37.5, 53.0, -37.5, 61.0)
@@ -941,7 +946,8 @@ meta = {
     # la haute ville : un niveau du jeu (data/town.json en a le même format), ajouté à ceux de la ville au chargement. Le mur du
     # chemin de ronde la sépare des remparts, sauf à la porte (x de -1,8 à 1,8).
     "levels": [{"id": "haute_ville", "rect": list(UP), "h": UP_Z, "solid": True, "style": "none",
-                "obstacles": [[round(v, 2) for v in o] for o in U_OBST] + [[UP[0], UP[1] - 0.1, -1.8, UP[1] + 0.3],
+                "obstacles": [[round(v, 2) for v in o] for o in U_OBST] + [[UP[0], UP[3] - 0.55, UP[2], UP[3] + 0.5], [UP[0] - 0.5, UP[1], UP[0] + 0.5, UP[3]],
+                                                                         [UP[2] - 0.5, UP[1], UP[2] + 0.5, UP[3]], [UP[0], UP[1] - 0.1, -1.8, UP[1] + 0.3],
                                                                          [1.8, UP[1] - 0.1, UP[2], UP[1] + 0.3]],
                 "circles": [[round(v, 2) for v in c] for c in U_CIRC], "decor": U_DECOR}],
     "grass_rect": list(UP), "paved_paths": PAVED,
