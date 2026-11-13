@@ -137,7 +137,7 @@ NAMED = [
     (5, "Chantier naval (halle)", 157.0, 110.5, 15.0, 9.0, 34, "#6A4532"),
     (6, "Voilerie", 134.0, 103.5, 8.0, 6.5, 10, "#DE8A5E"),
     (7, "Armurier et doreur", 73.2, 102.5, 7.0, 6.0, -14, "#4A4258"),
-    (8, "Tailleur", 56.5, 78.5, 10.0, 9.0, 14, "#B25A3E"),
+    (8, "Tailleur", 56.5, 78.5, 10.0, 9.0, -45, "#B25A3E"),   # (13/11 : façade tournée vers la place du Marché)
     (9, "Forge", 73.5, 83.0, 6.5, 6.0, -30, "#4A4258"),
     (10, "Halle du marché", 66.0, 88.0, 8.0, 5.0, 0, "#DCAE5C"),
     (11, "Église et clocher", 110.0, 30.0, 11.0, 15.0, 0, "#7A3530"),
@@ -265,7 +265,10 @@ for row in (0, 1, 2):                      # 0 : les façades sur la rue ; 1 : u
                 cx = bx0 - math.sin(ang) * side * set_back
                 cy = by0 + math.cos(ang) * side * set_back
                 rr = math.hypot(hw, hd) * 0.5
-                ok = cy < coast_y(cx) - 5.0 and 4 < cx < W - 4 and cy > 12
+                ok = cy < coast_y(cx) - 5.0 and 4 < cx < W - 4 and cy > 22   # (13/11 : plus de maison isolée tout au fond)
+                # 13/11 (Jimmy : « des maisons devant le tailleur, on ne comprend pas qu'on peut y entrer ») : rien entre le
+                # tailleur et la place du Marché, ni devant sa façade
+                ok = ok and not (42 < cx < 65 and 81 < cy < 100)
                 # direction de la maison vers sa rue (plan : y vers le bas) ; la façade est le côté « sud » du repère de la maison
                 to_street = (math.sin(ang) * side, -math.cos(ang) * side)
                 turn = math.atan2(-to_street[0], to_street[1]) + rnd.uniform(-0.07, 0.07)

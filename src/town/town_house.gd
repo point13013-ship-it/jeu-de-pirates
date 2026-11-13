@@ -59,7 +59,7 @@ static func build(root: Node3D, b: Dictionary, base: float, seed: int) -> MeshIn
 	var fixed_door := b.has("door_u")   # (un service où l'on entre : la porte est là où l'intérieur l'attend)
 	if fixed_door:
 		door_slot = -1
-		_door(st, f, float(b["door_u"]), -d * 0.5, service, not bool(b.get("terrace", false)))
+		_door(st, f, float(b["door_u"]), -d * 0.5, service, not bool(b.get("terrace", false)), true)
 		# une lanterne à gauche de la porte, sur sa potence de fer
 		var lu := float(b["door_u"]) - 1.45
 		_box(st[S_STONE], f, Vector3(lu, -d * 0.5 - 0.22, PLINTH + 2.62), Vector3(0.06, 0.44, 0.06))
@@ -123,10 +123,20 @@ static func build(root: Node3D, b: Dictionary, base: float, seed: int) -> MeshIn
 
 
 ## Une porte en bois avec son seuil de pierre et son linteau ; un service a une porte double et une enseigne.
-static func _door(st: Array[SurfaceTool], f: Dictionary, u: float, v: float, service: bool, steps: bool = true) -> void:
+## 13/11 (Jimmy : « on ne sait pas dans quel bâtiment on peut entrer ») : `open` : la porte d'un bâtiment où l'on entre est
+## grande ouverte : pas de vantail dans l'encadrement, on voit l'intérieur éclairé (la matière des vitres : un intérieur peint,
+## qui s'allume le soir), et les deux battants sont rabattus contre la façade.
+static func _door(st: Array[SurfaceTool], f: Dictionary, u: float, v: float, service: bool, steps: bool = true, open: bool = false) -> void:
 	var dw := 1.7 if service else 1.15
+	if open:
+		dw = 2.1
 	_box(st[S_TRIM], f, Vector3(u, v - 0.03, PLINTH + 1.15), Vector3(dw + 0.3, 0.08, 2.4))
-	_box(st[S_WOOD], f, Vector3(u, v - 0.06, PLINTH + 1.08), Vector3(dw, 0.1, 2.16))
+	if open:
+		_box(st[S_GLASS], f, Vector3(u, v - 0.06, PLINTH + 1.08), Vector3(dw, 0.1, 2.16))
+		for s: float in [-1.0, 1.0]:   # les battants ouverts, à l'équerre
+			_box(st[S_WOOD], f, Vector3(u + s * (dw * 0.5 + 0.1), v - 0.5, PLINTH + 1.08), Vector3(0.1, 0.9, 2.1))
+	else:
+		_box(st[S_WOOD], f, Vector3(u, v - 0.06, PLINTH + 1.08), Vector3(dw, 0.1, 2.16))
 	if steps:
 		_box(st[S_STONE], f, Vector3(u, v - 0.4, PLINTH * 0.5), Vector3(dw + 0.5, 0.8, PLINTH))
 		_box(st[S_STONE], f, Vector3(u, v - 1.0, PLINTH * 0.25), Vector3(dw + 0.5, 0.4, PLINTH * 0.5))

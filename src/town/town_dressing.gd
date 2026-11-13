@@ -39,8 +39,8 @@ static func add(root: Node3D, acc: Dictionary, circles: Array, plan: Dictionary,
 	var ball := SphereMesh.new()
 	ball.radius = 1.0
 	ball.height = 2.0
-	ball.radial_segments = 8
-	ball.rings = 5
+	ball.radial_segments = 12
+	ball.rings = 7
 	var leaf_mats: Array = []
 	for c: Color in LEAVES:
 		leaf_mats.append(ProcKit.flat(c))
@@ -55,6 +55,12 @@ static func add(root: Node3D, acc: Dictionary, circles: Array, plan: Dictionary,
 			if not Geometry2D.is_point_in_polygon(p2 + off, land) or TownGreybox._level_h(levels, p2 + off) != h or TownGreybox._on_ramp(ramps, p2 + off):
 				ok = false
 		if not ok or _busy(p2, segs, solids, 1.9):
+			continue
+		# 13/11 (Jimmy : « des arbres directement sur de la pierre ») : rien ne pousse sur le cap pavé de la batterie
+		for lvl: Dictionary in levels:
+			if str(lvl.get("id", "")) == "cap" and Geometry2D.is_point_in_polygon(p2, Land._poly(lvl["poly"])):
+				ok = false
+		if not ok:
 			continue
 		for q: Vector2 in placed:
 			if q.distance_to(p2) < 3.4:
@@ -166,18 +172,51 @@ static func _busy(p: Vector2, segs: Array, solids: Array, margin: float) -> bool
 
 ## Un arbre feuillu : un tronc, trois boules de feuillage de tailles et de verts différents.
 static func _tree(root: Node3D, acc: Dictionary, p: Vector2, h: float, rng: RandomNumberGenerator, ball: Mesh, mats: Array) -> void:
-	var th := rng.randf_range(1.5, 2.5)
-	TownGreybox._box(acc, TRUNK, p, Vector2(0.34, 0.34), rng.randf() * TAU, h, h + th + 0.4)
-	var size := rng.randf_range(1.2, 1.9)
-	for k in 3:
+	# 13/11 (Jimmy : « les arbres sont trop basiques ») : trois essences. Chacune a un tronc en deux tronçons qui s'affine, des
+	# branches, et un feuillage fait de plusieurs masses de deux tons (le dessous plus sombre, le dessus plus clair).
+	var kind := rng.randi() % 5   # 0-2 : feuillu rond, 3 : arbre haut et étroit, 4 : arbre en fleurs
+	var th := rng.randf_range(1.6, 2.6) * (1.35 if kind == 3 else 1.0)
+	var turn := rng.randf() * TAU
+	TownGreybox._box(acc, TRUNK, p, Vector2(0.42, 0.42), turn, h, h + th * 0.55)
+	TownGreybox._box(acc, TRUNK.lightened(0.08), p, Vector2(0.3, 0.3), turn + 0.6, h + th * 0.55, h + th + 0.5)
+	for b in 3:   # les branches maîtresses
+		var bd := Vector2.from_angle(turn + TAU * b / 3.0) * 0.45
+		TownGreybox._box(acc, TRUNK.lightened(0.05), p + bd, Vector2(0.75, 0.14), bd.angle(), h + th * 0.8, h + th * 0.8 + 0.16)
+	var size := rng.randf_range(1.3, 2.0)
+	var dark: Material = mats[0]
+	var blobs: Array = []   # [décalage (x, z), hauteur, rayon, écrasement, matière]
+	if kind == 3:
+		for k in 4:
+			blobs.append([Vector2.ZERO, th + 0.4 + k * size * 0.62, size * (0.85 - 0.17 * k), 1.25, mats[(k + 1) % mats.size()]])
+	else:
+		blobs.append([Vector2.ZERO, th + size * 0.5, size, 0.8, dark])
+		for k in 5:
+			var a := turn + TAU * k / 5.0 + rng.randf_range(-0.3, 0.3)
+			blobs.append([Vector2.from_angle(a) * size * rng.randf_range(0.5, 0.75), th + size * rng.randf_range(0.45, 0.95),
+					size * rng.randf_range(0.5, 0.68), 0.85, mats[1 + rng.randi() % (mats.size() - 1)]])
+		blobs.append([Vector2(rng.randf_range(-0.3, 0.3), rng.randf_range(-0.3, 0.3)), th + size * 1.15, size * 0.62, 0.8, mats[mats.size() - 1]])
+	for bl: Array in blobs:
 		var mi := MeshInstance3D.new()
 		mi.mesh = ball
-		mi.material_override = mats[rng.randi() % mats.size()]
-		var off := Vector2(rng.randf_range(-0.6, 0.6), rng.randf_range(-0.6, 0.6)) * (0.0 if k == 0 else 1.0)
-		var r := size * (1.0 if k == 0 else rng.randf_range(0.55, 0.8))
-		mi.scale = Vector3(r, r * 0.82, r)
-		mi.position = Vector3(p.x + off.x, h + th + r * 0.55 + (0.0 if k == 0 else rng.randf_range(-0.2, 0.5)), -(p.y + off.y))
+		mi.material_override = bl[4]
+		var r := float(bl[2])
+		mi.scale = Vector3(r, r * float(bl[3]), r)
+		var off: Vector2 = bl[0]
+		mi.position = Vector3(p.x + off.x, h + float(bl[1]), -(p.y + off.y))
 		root.add_child(mi)
+	if kind == 4:   # des fleurs : de petites touches claires posées sur le feuillage
+		var bloom := ProcKit.flat([Color("ffd9e6"), Color("ffb35c"), Color("efe4cc")][rng.randi() % 3])
+		for k2 in 14:
+			var a2 := rng.randf() * TAU
+			var up := rng.randf_range(0.25, 1.0)
+			var fl := MeshInstance3D.new()
+			fl.mesh = ball
+			fl.material_override = bloom
+			fl.scale = Vector3.ONE * rng.randf_range(0.12, 0.2)
+			fl.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			var rad := size * sqrt(maxf(1.0 - up * up * 0.6, 0.05)) * rng.randf_range(0.85, 1.05)
+			fl.position = Vector3(p.x + cos(a2) * rad, h + th + size * (0.45 + up * 0.75), -(p.y + sin(a2) * rad))
+			root.add_child(fl)
 
 
 ## Un palmier : un tronc qui penche, en trois tronçons, et six palmes qui retombent.

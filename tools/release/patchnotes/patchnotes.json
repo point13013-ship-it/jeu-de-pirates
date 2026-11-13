@@ -2,6 +2,15 @@
   "_commentaire": "Les nouveautés affichées dans la salle de jeux (bouton Nouveautés, et après chaque mise à jour). La plus récente d'abord. 'version': 'prochaine' est remplacé par le numéro de la version au moment de la publication (publish.ps1). Les images sont les fichiers de ce dossier ; publish.ps1 les envoie avec la version.",
   "versions": [
     {
+      "version": "prochaine",
+      "titre": "La ville, suite",
+      "points": [
+        "Les boutiques où l'on entre ont leur porte grande ouverte : on voit l'intérieur.",
+        "Le tailleur donne maintenant sur la place du Marché, bien en vue.",
+        "Des arbres plus détaillés et trois formes de lampadaires."
+      ]
+    },
+    {
       "version": "2026.11.13-1900",
       "titre": "Canons : visée libre",
       "points": [

@@ -134,10 +134,28 @@ func setup(lamps: Array, spills: Array, land: Land, sea_y: float, extras: Dictio
 	for e: Array in lamps:
 		var p: Vector2 = e[0]
 		var h := float(e[1])
+		# 13/11 (Jimmy : « les lampadaires n'ont qu'une seule forme ») : trois modèles, tirés d'après la place de chacun
+		var model := int(absf(p.x * 3.7 + p.y * 1.9)) % 3
 		TownGreybox._raw_box(posts, p, Vector2(0.14, 0.14), 0.0, h, h + LAMP_HEIGHT)
 		TownGreybox._raw_box(posts, p, Vector2(0.34, 0.34), 0.0, h, h + 0.25)
-		TownGreybox._raw_box(posts, p, Vector2(0.4, 0.4), 0.0, h + LAMP_HEIGHT + 0.36, h + LAMP_HEIGHT + 0.44)
-		TownGreybox._raw_box(lanterns, p, Vector2(0.3, 0.3), 0.0, h + LAMP_HEIGHT, h + LAMP_HEIGHT + 0.36)
+		TownGreybox._raw_box(posts, p, Vector2(0.22, 0.22), 0.0, h + 0.25, h + 0.6)
+		if model == 0:     # le réverbère droit : la lanterne au sommet, sous son chapeau
+			TownGreybox._raw_box(posts, p, Vector2(0.4, 0.4), 0.0, h + LAMP_HEIGHT + 0.36, h + LAMP_HEIGHT + 0.44)
+			TownGreybox._raw_box(posts, p, Vector2(0.16, 0.16), 0.0, h + LAMP_HEIGHT + 0.44, h + LAMP_HEIGHT + 0.56)
+			TownGreybox._raw_box(lanterns, p, Vector2(0.3, 0.3), 0.0, h + LAMP_HEIGHT, h + LAMP_HEIGHT + 0.36)
+		elif model == 1:   # la potence : un bras de fer, la lanterne pendue au bout
+			var side := Vector2(0.5, 0.0).rotated(p.x * 0.7)
+			TownGreybox._raw_box(posts, p + side * 0.5, Vector2(0.62, 0.08), side.angle(), h + LAMP_HEIGHT + 0.1, h + LAMP_HEIGHT + 0.18)
+			TownGreybox._raw_box(posts, p + side * 0.35, Vector2(0.5, 0.05), side.angle(), h + LAMP_HEIGHT - 0.25, h + LAMP_HEIGHT - 0.2)
+			TownGreybox._raw_box(posts, p + side, Vector2(0.04, 0.04), 0.0, h + LAMP_HEIGHT - 0.12, h + LAMP_HEIGHT + 0.1)
+			TownGreybox._raw_box(posts, p + side, Vector2(0.34, 0.34), 0.0, h + LAMP_HEIGHT - 0.14, h + LAMP_HEIGHT - 0.08)
+			TownGreybox._raw_box(lanterns, p + side, Vector2(0.26, 0.26), 0.0, h + LAMP_HEIGHT - 0.5, h + LAMP_HEIGHT - 0.14)
+		else:              # le candélabre : une traverse et deux lanternes
+			var bar := Vector2(0.42, 0.0).rotated(p.y * 0.9)
+			TownGreybox._raw_box(posts, p, Vector2(1.0, 0.08), bar.angle(), h + LAMP_HEIGHT - 0.06, h + LAMP_HEIGHT + 0.02)
+			for s: float in [-1.0, 1.0]:
+				TownGreybox._raw_box(lanterns, p + bar * s, Vector2(0.24, 0.24), 0.0, h + LAMP_HEIGHT + 0.02, h + LAMP_HEIGHT + 0.34)
+				TownGreybox._raw_box(posts, p + bar * s, Vector2(0.32, 0.32), 0.0, h + LAMP_HEIGHT + 0.34, h + LAMP_HEIGHT + 0.4)
 		var light := OmniLight3D.new()
 		light.light_color = WARM
 		light.light_energy = 0.0
