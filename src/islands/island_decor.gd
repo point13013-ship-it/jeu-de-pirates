@@ -197,7 +197,29 @@ static func dead_tree(root: Node3D, rng: RandomNumberGenerator) -> void:
 
 
 ## Rocher à facettes (le même que les récifs), avec un peu de mousse dessus.
+## 13/11 (choix de Jimmy) : les rochers des îles sont les modèles du lot nature de Quaternius (CC0), nus ou moussus
+## (assets/models/nature/Rock_1 à 7 et Rock_Moss_1 à 7), mis à la taille du rayon demandé. Une aiguille prend le modèle haut
+## (le n° 1), étiré. L'ancien rocher fabriqué sert de secours si le fichier manque.
+static func _rock_model(root: Node3D, radius: float, seed_value: int, tall: float) -> bool:
+	var n := 1 if tall > 1.5 else 2 + (absi(seed_value) % 6)
+	var path := "res://assets/models/nature/Rock_%s%d.glb" % ["Moss_" if absi(seed_value) % 3 != 0 else "", n]
+	if not ResourceLoader.exists(path):
+		return false
+	var scene := load(path) as PackedScene
+	if scene == null:
+		return false
+	var node := scene.instantiate() as Node3D
+	var width := 0.5 if n == 1 else [0.6, 0.78, 1.0, 0.8, 1.05, 1.0][n - 2] as float
+	var k := radius * 2.0 / width
+	node.scale = Vector3(k, k * (1.5 if tall > 1.5 else 1.0), k)
+	node.rotation.y = float(seed_value) * 1.7
+	root.add_child(node)
+	return true
+
+
 static func rock(root: Node3D, radius: float, seed_value: int, tall: float = 1.0) -> void:
+	if _rock_model(root, radius, seed_value, tall):
+		return
 	var mi := MeshInstance3D.new()
 	mi.mesh = SeaRocks.rock_mesh(seed_value + 300, radius)
 	var m := StandardMaterial3D.new()
@@ -213,6 +235,10 @@ static func rock(root: Node3D, radius: float, seed_value: int, tall: float = 1.0
 
 
 static func rock_spire(root: Node3D, radius: float, seed_value: int) -> void:
+	if _rock_model(root, radius, seed_value, 2.6):
+		_rock_model(root, radius * 0.5, seed_value + 5, 1.0)   # un petit rocher au pied de l'aiguille
+		(root.get_child(root.get_child_count() - 1) as Node3D).position = Vector3(radius * 0.8, 0.0, radius * 0.3)
+		return
 	rock(root, radius, seed_value, 2.6)
 	var k := MeshKit.new()
 	k.ball(_xf(Vector3(radius * 0.7, radius * 0.4, radius * 0.2)), radius * 0.45, Color(0.33, 0.31, 0.33), 6, 3)

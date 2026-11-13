@@ -85,7 +85,18 @@ static func add(root: Node3D, acc: Dictionary, circles: Array, plan: Dictionary,
 				var spare := IslandDecor.make(root, "palm", Vector2(p2.x, -p2.y), rng.randf() * TAU, rng.randi() % 100000, {}, h)
 				spare.scale = Vector3.ONE * rng.randf_range(1.25, 1.6)
 		else:
-			_tree(root, acc, p2, h, rng, ball, leaf_mats)
+			# 13/11 (choix de Jimmy) : les arbres de la ville sont ceux du lot nature de Quaternius (cinq feuillus et deux saules),
+			# tirés au sort, tournés et agrandis ; l'arbre fabriqué sert de secours
+			var tk := rng.randi() % 7
+			var tscene := load("res://assets/models/nature/%s.glb" % ("CommonTree_%d" % (tk + 1) if tk < 5 else "Willow_%d" % (tk - 4))) as PackedScene
+			if tscene != null:
+				var tree := tscene.instantiate() as Node3D
+				tree.position = Vector3(p2.x, h, -p2.y)
+				tree.rotation.y = rng.randf() * TAU
+				tree.scale = Vector3.ONE * rng.randf_range(1.7, 2.3)
+				root.add_child(tree)
+			else:
+				_tree(root, acc, p2, h, rng, ball, leaf_mats)
 
 	# bittes d'amarrage : le long du quai, tous les 7 m, à 60 cm du bord
 	var quay := Vector2(INF, -INF)
