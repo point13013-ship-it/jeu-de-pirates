@@ -5,6 +5,7 @@ shader_type spatial;
 
 uniform int kind = 0;
 uniform vec3 base : source_color = vec3(0.8, 0.7, 0.5);
+uniform float shop = 0.0;   // kind 5 : 1 = vitrine de boutique (étagères), 0 = fenêtre de maison (rideaux)
 uniform float emit = 0.0;   // kind 4 : couleur unie, éventuellement lumineuse (vitrines, lanternes)
 
 varying vec3 op;
@@ -73,11 +74,49 @@ void fragment() {
 		vec2 bf = fract(b);
 		c *= mix(0.84, 1.12, hash(floor(b)));
 		c = mix(c * 1.25, c, step(0.07, bf.y) * step(0.04, bf.x));
+	} else if (kind == 5) {
+		// 13/11 (2.2) : une vitre derrière laquelle on devine un intérieur. Rien n'est transparent (la caméra regarde d'en haut :
+		// on ne verrait rien) : l'intérieur est PEINT dans le verre. Fond de lumière chaude (`base`), plus sombre vers le haut ;
+		// `shop` = 1 : des étagères et leurs marchandises (bouteilles, pots, paquets) ; sinon une maison : rideaux sur les bords.
+		// Parfois une silhouette. `emit` : 0 éteint (verre sombre, formes à peine visibles) … 1 pleine lumière.
+		vec3 dark = vec3(0.16, 0.10, 0.12);
+		vec3 glass_off = vec3(0.14, 0.17, 0.26);
+		float storey = mod(p.y, 3.0);
+		c = base * mix(1.0, 0.72, smoothstep(0.6, 2.6, storey));
+		float ink = 0.0;
+		if (shop > 0.5) {
+			float shelf_y = mod(p.y, 0.5);
+			ink = max(ink, step(shelf_y, 0.05));
+			float cell = floor(p.x / 0.2);
+			float row = floor(p.y / 0.5);
+			float h = hash(vec2(cell, row));
+			float fx = fract(p.x / 0.2);
+			float tall = 0.10 + 0.26 * h;
+			float wide = mix(0.22, 0.42, hash(vec2(row, cell)));
+			float body = step(abs(fx - 0.5), wide) * step(0.05, shelf_y) * step(shelf_y, 0.05 + tall);
+			float neck = step(abs(fx - 0.5), 0.09) * step(shelf_y, 0.05 + tall + 0.08) * step(0.05 + tall, shelf_y) * step(0.5, h);
+			float item = max(body, neck) * step(0.22, h);
+			vec3 tint = mix(dark, vec3(0.45, 0.20, 0.16) + 0.25 * vec3(hash(vec2(cell, 3.0)), hash(vec2(cell, 5.0)), hash(vec2(cell, 7.0))), 0.55);
+			c = mix(c, tint, item * 0.85);
+		} else {
+			float edge = abs(fract(p.x / 1.1) - 0.5);
+			float fold = 0.5 + 0.5 * sin(p.x * 38.0);
+			c = mix(c, base * 0.55 + vec3(0.10, 0.03, 0.02), smoothstep(0.30, 0.42, edge) * (0.55 + 0.25 * fold));
+		}
+		float who = floor(p.x / 2.3);
+		if (hash(vec2(who, 11.0)) > 0.62) {
+			vec2 q = vec2(p.x - (who + 0.5) * 2.3 + sin(TIME * 0.3 + who) * 0.25, storey);
+			float head = step(length((q - vec2(0.0, 1.62)) * vec2(1.0, 0.9)), 0.15);
+			float torso = step(abs(q.x), 0.26 - 0.10 * smoothstep(1.1, 1.45, q.y)) * step(q.y, 1.45) * step(0.5, q.y);
+			ink = max(ink, max(head, torso) * 0.8);
+		}
+		c = mix(c, dark, ink);
+		c = mix(glass_off + c * 0.12, c, emit);
 	} else {
 		c = base;
 	}
 	ALBEDO = c;
-	EMISSION = base * emit;
+	EMISSION = (kind == 5 ? c * 0.9 : base) * emit;
 	ROUGHNESS = 1.0;
 	SPECULAR = 0.0;
 }

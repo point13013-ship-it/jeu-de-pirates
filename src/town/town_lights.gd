@@ -255,6 +255,10 @@ func update(night: float, focus: Vector3, player: Vector3, delta: float) -> void
 			var lit: bool = g[2]
 			var base := Color("2e2a44").lerp(GameConfig.WARM_GLOW, on) if lit else Color("2e2a44")
 			for m: ShaderMaterial in [g[0], g[1]]:
+				if GameConfig.WINDOW_INTERIORS:   # (intérieur peint dans la vitre : sa lumière monte avec la nuit)
+					m.set_shader_parameter("base", GameConfig.WARM_GLOW)
+					m.set_shader_parameter("emit", lerpf(GameConfig.WINDOW_DAY_LIGHT, 1.0, on) if lit else GameConfig.WINDOW_DAY_LIGHT * 0.6)
+					continue
 				m.set_shader_parameter("base", base)
 				m.set_shader_parameter("emit", (GameConfig.WINDOW_GLOW * on) if lit else 0.0)
 	_cull_t -= delta

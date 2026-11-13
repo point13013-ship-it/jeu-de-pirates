@@ -451,3 +451,5 @@ const WINDOWS_SHOW_INSIDE := false      ## vitres transparentes des bâtiments o
 const WINDOW_ALPHA := 0.30              ## opacité de ces vitres (1 : opaques)
 const PORT_SHELTER := Vector3(0.0, -46.0, 64.0)   ## (x, z, rayon) : la houle tombe à SHORE_SWELL autour de l'ancienne ville
 const WINDOW_GLASS := Color(0.72, 0.84, 0.90)   ## teinte du verre de ces vitres
+const WINDOW_INTERIORS := true          ## un intérieur peint derrière les vitres (étagères des boutiques, rideaux, silhouettes)
+const WINDOW_DAY_LIGHT := 0.55          ## lumière de ces vitres en plein jour (1 la nuit)

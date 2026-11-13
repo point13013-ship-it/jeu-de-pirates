@@ -1349,6 +1349,11 @@ func _build_port() -> void:
 				# 13/11 (2.1) : fenêtres, vitrines et lanternes éclairées étaient blanches ; elles prennent une teinte chaude
 				mat.set_shader_parameter("base", GameConfig.WARM_GLOW if src.emission_enabled else src.albedo_color)
 				mat.set_shader_parameter("emit", 1.0 if src.emission_enabled else 0.0)
+				# 13/11 (2.2) : derrière les vitres éclairées, un intérieur peint (étagères pour les boutiques, rideaux ailleurs)
+				if src.emission_enabled and GameConfig.WINDOW_INTERIORS:
+					mat.set_shader_parameter("kind", 5)
+					mat.set_shader_parameter("shop", 1.0 if String(n.name) in ["bldg_taverne", "bldg_tailleur", "bldg_magasin", "bldg_voilerie"] else 0.0)
+					_vitrines.append(mat)
 			if mat == null:
 				# 13/11 (retour de Jimmy : « les lampadaires restent blancs ») : leur verre brillait six fois trop fort, donc blanc
 				# quel que soit sa teinte. Il brille maintenant juste assez pour garder sa couleur (LAMP_GLASS, LAMP_GLASS_ENERGY).
@@ -1364,8 +1369,10 @@ func _build_port() -> void:
 				# la même matière en version transparente, qu'on met à la place quand le bâtiment cache le pirate
 				var ghost := ShaderMaterial.new()
 				ghost.shader = _ghost_shader(surface_shader)
-				for param in ["kind", "base", "emit"]:
+				for param in ["kind", "base", "emit", "shop"]:
 					ghost.set_shader_parameter(param, mat.get_shader_parameter(param))
+				if int(mat.get_shader_parameter("kind")) == 5:
+					_vitrines.append(ghost)
 				(record["normal"] as Dictionary)[s] = mat
 				(record["ghost"] as Dictionary)[s] = ghost
 				# 13/11 (2.2) : les vitres des bâtiments où l'on entre laissent deviner l'intérieur
@@ -1402,6 +1409,8 @@ func _build_port() -> void:
 ## murs, les pontons et la terre qui arrête les bateaux viennent tous du plan (Land.load_plan) : plus rien n'est écrit à la main.
 ## Essai : --town=v3 (ou GameConfig.TOWN_V3). L'ancienne ville reste celle du jeu tant que la nouvelle n'est pas prête.
 var _town_plan: Dictionary = {}
+var _vitrines: Array[ShaderMaterial] = []   ## les vitres à intérieur peint de l'ancienne ville (leur lumière suit l'heure)
+var _vitrine_lit := -1.0
 var _port_lamps: Array[OmniLight3D] = []   ## les réverbères de l'ancienne ville (allumés la nuit)
 var _town_lights: TownLights
 
@@ -1431,7 +1440,8 @@ func _build_town_v3() -> void:
 			var ghost := ShaderMaterial.new()
 			ghost.shader = _ghost_shader(surface_shader)
 			for m2: ShaderMaterial in [mat, ghost]:
-				m2.set_shader_parameter("kind", int(kinds[s]) if s < kinds.size() else 4)
+				m2.set_shader_parameter("kind", 5 if (s == glass and GameConfig.WINDOW_INTERIORS) else (int(kinds[s]) if s < kinds.size() else 4))
+				m2.set_shader_parameter("shop", 1.0 if bool(mi.get_meta("see_through", false)) else 0.0)
 				m2.set_shader_parameter("base", cols[s] as Color)
 				m2.set_shader_parameter("emit", 0.0)
 			if s == glass and GameConfig.WINDOWS_SHOW_INSIDE and bool(mi.get_meta("see_through", false)):
@@ -4016,6 +4026,12 @@ func _process(delta_raw: float) -> void:
 		_set_swim_loop(_swim_loop_gain)
 	_update_building_fade(delta)
 	_update_music(delta)
+	if not _vitrines.is_empty() and _atmo != null:   # le jour, l'intérieur se devine dans un verre peu éclairé ; la nuit, il rayonne
+		var lit := lerpf(GameConfig.WINDOW_DAY_LIGHT, 1.0, smoothstep(0.3, 0.8, 1.0 - _atmo.sky.daylight))
+		if absf(lit - _vitrine_lit) > 0.01:
+			_vitrine_lit = lit
+			for vm: ShaderMaterial in _vitrines:
+				vm.set_shader_parameter("emit", lit)
 	if not _port_lamps.is_empty() and _atmo != null:
 		var on := smoothstep(0.35, 0.8, 1.0 - _atmo.sky.daylight)
 		for pl: OmniLight3D in _port_lamps:
