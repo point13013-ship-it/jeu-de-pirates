@@ -4,6 +4,7 @@ extends Control
 ## ami, modifier ton pirate. Il se pose sur la mer vivante du jeu.
 
 signal play_solo(ship: String)
+signal preview_town(ship: String)   ## (13/11 : jouer seul dans la nouvelle ville en chantier)
 signal host_game(ship: String)
 signal join_game(code: String)
 signal edit_pirate
@@ -183,6 +184,8 @@ func _build_left() -> Control:
 	solo.add_theme_stylebox_override("normal", brass)
 	box.add_child(solo)
 	box.add_child(_big_button("Héberger une partie", func() -> void: host_game.emit(ship)))
+	# 13/11 : la nouvelle ville (design/ville-v3) se visite seul tant qu'elle est en chantier ; les parties à plusieurs gardent l'ancienne
+	box.add_child(_big_button("Aperçu : la nouvelle ville (seul)", func() -> void: preview_town.emit(ship)))
 	box.add_child(_big_button("Rejoindre un ami", _toggle_join))
 	_join_row = HBoxContainer.new()
 	_join_row.visible = false

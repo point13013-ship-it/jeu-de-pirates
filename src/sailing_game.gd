@@ -489,9 +489,22 @@ func _build_menu() -> void:
 	_main_menu = MainMenu.new(_local_look())
 	layer.add_child(_main_menu)
 	_main_menu.set_ships(MainMenu.ship_ids(), _profile.ship)   # tous les bateaux sont proposés d'emblée
-	_main_menu.play_solo.connect(func(ship_name: String) -> void: _setup_ship(ship_name))
-	_main_menu.host_game.connect(func(ship_name: String) -> void: _start_host(ship_name))
-	_main_menu.join_game.connect(func(code: String) -> void: _start_join(code))
+	var town_arg := _args.has("town")   # (demandée en ligne de commande : on la garde ; sinon seul l'aperçu du menu l'active)
+	_main_menu.play_solo.connect(func(ship_name: String) -> void:
+		if not town_arg:
+			_args.erase("town")
+		_setup_ship(ship_name))
+	_main_menu.preview_town.connect(func(ship_name: String) -> void:
+		_args["town"] = "v3"
+		_setup_ship(ship_name))
+	_main_menu.host_game.connect(func(ship_name: String) -> void:
+		if not town_arg:
+			_args.erase("town")
+		_start_host(ship_name))
+	_main_menu.join_game.connect(func(code: String) -> void:
+		if not town_arg:
+			_args.erase("town")
+		_start_join(code))
 	_main_menu.edit_pirate.connect(_open_editor)
 	_main_menu.quit_game.connect(func() -> void: get_tree().quit())
 	if not FileAccess.file_exists(PirateLook.SAVE_PATH) and not _args.has("editor"):
