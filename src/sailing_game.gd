@@ -473,6 +473,21 @@ func _toggle_compass() -> void:
 ## B la porte à l'œil : la vue descend presque à hauteur d'homme, vise loin devant dans la direction où regarde le pirate, grossit,
 ## et se resserre dans un rond noir. Q/D : balayer l'horizon. B de nouveau, un saut ou une action : on la baisse.
 var _spy := false
+## 13/11 (choix de Jimmy : « une par bateau ») : il n'y a qu'une longue-vue à bord. `_spy_holder` : l'identifiant du joueur qui
+## l'a en poche, 0 si elle est au coffre. L'hôte décide (demandes « spy_take » / « spy_put », servies dans l'ordre) et le
+## diffuse avec l'état du bateau ; chacun en déduit son instrument. Elle revient au coffre à chaque nouvelle partie.
+var _spy_holder := 0
+
+
+## Chez tout le monde : le détenteur a changé. Mon instrument suit (longue-vue si c'est moi, boussole sinon).
+func _spy_holder_changed() -> void:
+	var mine := _spy_holder == _my_id()
+	if not mine and _spy:
+		_toggle_spyglass()
+	if mine:
+		_sprite.compass_enabled = false
+	_profile.tool = "spyglass" if mine else "compass"
+	_refresh_chest_ui()
 var _spy_yaw := 0.0
 var _spy_keep := Vector2.ZERO       # (cap, inclinaison) de la caméra avant de regarder
 var _spy_mask: ColorRect
@@ -1888,8 +1903,10 @@ func _apply_test_args() -> void:
 		get_tree().create_timer(float(_args["down"])).timeout.connect(_go_down)
 	if _args.has("water-time"):   # essai : --water-time=85 (avec --swim) : déjà ce temps passé dans l'eau
 		get_tree().create_timer(0.4).timeout.connect(func() -> void: _water_t = float(_args["water-time"]))
-	if _args.has("tool"):   # essai : --tool=spyglass met la longue-vue en poche (--press=B@6 la porte à l'œil)
-		_profile.tool = "spyglass" if str(_args["tool"]) == "spyglass" else "compass"
+	_profile.tool = "compass"   # (la longue-vue du bord est au coffre au début de chaque partie)
+	if _args.has("tool") and str(_args["tool"]) == "spyglass":   # essai : --tool=spyglass la met en poche (--press=B@6 : à l'œil)
+		_spy_holder = _my_id()
+		_profile.tool = "spyglass"
 	if _args.has("gold"):   # essai : --gold=150 donne de l'or
 		_profile.gold = int(_args["gold"])
 	if _args.has("quest"):   # essai : --quest=tonnelet met cette quête en cours
@@ -5085,7 +5102,7 @@ func ship_state() -> Array:
 			_sim.sail_level, _sim.sail_open, 1 if _sim.anchored else 0, mask, _helm_owner, _time,
 			_hull.leaks, _hull.patched, _hull.water, _sim.sail_trim, _sim.wind_angle, _sim.sail_trim_target, _stash.duplicate(),
 			_grap_state, _grap_hook.x, _grap_hook.y, _grap_target.x, _grap_target.y, Hook.kind_code(_grap_kind), _grap_owner,
-			int(_ship_stock["plank"]), int(_ship_stock["ball"]), _deck_items.duplicate(true)]
+			int(_ship_stock["plank"]), int(_ship_stock["ball"]), _deck_items.duplicate(true), _spy_holder]
 
 
 ## Client : reçoit l'état du bateau de l'hôte. La position et le cap servent de cible (recalage en
@@ -5096,6 +5113,9 @@ func apply_ship_state(s: Array) -> void:
 	_stash = (s[18] as Array).duplicate()
 	if s.size() > 28:
 		_deck_items = (s[28] as Array).duplicate(true)
+	if s.size() > 29 and int(s[29]) != _spy_holder:
+		_spy_holder = int(s[29])
+		_spy_holder_changed()
 	if s.size() > 27 and (int(s[26]) != int(_ship_stock["plank"]) or int(s[27]) != int(_ship_stock["ball"])):
 		_ship_stock = {"plank": int(s[26]), "ball": int(s[27])}
 		_refresh_chest_ui()
@@ -5454,7 +5474,10 @@ func on_host_left() -> void:
 
 
 func on_peers_changed() -> void:
-	pass
+	# (13/11 : celui qui quitte la partie avec la longue-vue la laisse au coffre)
+	if _is_authority() and _spy_holder != 0 and _spy_holder != _my_id() and not _remotes.has(_spy_holder):
+		_spy_holder = 0
+		_spy_holder_changed()
 
 
 func _player_world() -> Vector3:
@@ -6549,6 +6572,14 @@ func apply_request(peer: int, kind: String, value: int) -> void:
 				_notify_all("Un squelette de l'équipage ennemi est abattu !" if (value % 1000) / 10 > 0 else "Leur timonier est abattu : le bateau est désemparé !")
 		"enemy_anchor":   # abordage : `peer` jette l'ancre de l'ennemi `value`
 			_fleet.drop_anchor(value)
+		"spy_take":   # la longue-vue du bord : `peer` la prend si elle est au coffre (une seule par bateau)
+			if _spy_holder == 0:
+				_spy_holder = peer
+				_spy_holder_changed()
+		"spy_put":   # … et la repose
+			if _spy_holder == peer:
+				_spy_holder = 0
+				_spy_holder_changed()
 		"chest_put":   # coffre du bateau : `peer` range (valeur = genre x 1000 + nombre ; 0 planche, 1 boulet)
 			var pk := "plank" if value / 1000 == 0 else "ball"
 			_ship_stock[pk] = int(_ship_stock[pk]) + maxi(value % 1000, 0)
@@ -7926,11 +7957,13 @@ func _ship_chest_rows() -> Array:
 				"right": "ranger" if have > 0 else "", "enabled": have > 0,
 				"desc": "Le coffre du bateau est à tout l'équipage. On recharge un canon et on bouche une voie d'eau avec ce qu'on a dans le sac."})
 	# 13/11 (4.1) : l'instrument. On porte la boussole OU la longue-vue ; l'autre reste au coffre.
-	var spy := _profile.tool == "spyglass"
-	rows.append({"head": true, "label": "Ton instrument (touche B) — clic : échanger"})
+	var spy := _spy_holder == _my_id()
+	var free := _spy_holder == 0
+	var who := "" if (spy or free) else _remote_label(_spy_holder)
+	rows.append({"head": true, "label": "Instrument (touche B) — une seule longue-vue à bord"})
 	rows.append({"kind": "cab_tool", "id": "tool", "label": "En poche : %s" % ("longue-vue" if spy else "boussole"), "count": 1,
-			"right": "prendre la %s" % ("boussole" if spy else "longue-vue"), "enabled": true,
-			"desc": "La boussole montre le cap de l'île choisie. La longue-vue fait voir très loin devant soi. On n'a que l'une des deux : à l'équipage de se répartir les rôles."})
+			"right": "la reposer" if spy else ("prendre la longue-vue" if free else "c'est %s qui l'a" % who), "enabled": spy or free,
+			"desc": "La boussole montre le cap de l'île choisie. La longue-vue fait voir très loin devant soi. Il n'y en a qu'une à bord : celui qui la prend laisse sa boussole, et la repose ici pour qu'un autre s'en serve."})
 	rows.append({"head": true, "label": "Dans le coffre du bateau — clic : prendre"})
 	for kind: String in ["plank", "ball"]:
 		var inside := int(_ship_stock.get(kind, 0))
@@ -7944,13 +7977,13 @@ func _ship_chest_rows() -> Array:
 ## Clic dans le coffre du bateau : je range ou je demande à prendre (l'hôte décide de ce qui sort : pas de doublon possible).
 func _ship_chest_use(kind: String, item: String) -> void:
 	if kind == "cab_tool":
-		if _spy:
-			_toggle_spyglass()
-		_profile.tool = "compass" if _profile.tool == "spyglass" else "spyglass"
-		_sprite.compass_enabled = false   # (la boussole n'est plus en main : la longue-vue la remplace, ou elle est rangée)
-		_profile.save()
+		if _spy_holder == _my_id():
+			_request("spy_put", 0)
+		elif _spy_holder == 0:
+			_request("spy_take", 0)
+		else:
+			return
 		_sfx.play_at(Synth.thump(), _my_scene_pos(), 0.6)
-		_refresh_chest_ui()
 		return
 	if item != "plank" and item != "ball":
 		return
