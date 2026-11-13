@@ -411,7 +411,18 @@ def wall(name, x0, y0, x1, y1, mat="hull_l", z0=None, z1=None, solid=True):
         OBST_BOXES.append((x0, y0, x1, y1))
 
 
-wall("cut_wall_w", wx, -ny, wx + T, ny)
+BACK_DOOR = 0.42 if V2 else 0.0   # 13/11 : demi-largeur de la porte arrière de la cabine (vers le balcon de poupe)
+WALK_EXTRA: list = []            # rectangles praticables hors de la coque (le balcon), repère du modèle
+if V2:
+    wall("cut_wall_w", wx, -ny, wx + T, -BACK_DOOR)
+    wall("cut_wall_w", wx, BACK_DOOR, wx + T, ny)
+    wall("cut_wall_w_top", wx, -BACK_DOOR, wx + T, BACK_DOOR, z0=fz + 1.5, solid=False)
+    for sy in (-1, 1):   # chambranle, et la porte ouverte rabattue contre le mur, à l'intérieur
+        box("cut_wall_w_jamb", wx + T / 2, sy * (BACK_DOOR + 0.03), fz + 0.75, T + 0.06, 0.07, 1.5, "mast")
+    box("int_back_door", wx + T + 0.42, -BACK_DOOR - 0.06, fz + 0.74, 0.8, 0.05, 1.44, "deck", rot=(0, 0, math.radians(8)))
+    box("int_back_door_iron", wx + T + 0.42, -BACK_DOOR - 0.03, fz + 0.74, 0.7, 0.03, 0.08, "iron", rot=(0, 0, math.radians(8)))
+else:
+    wall("cut_wall_w", wx, -ny, wx + T, ny)
 wall("cut_wall_n", wx, ny - T, ex, ny)
 wall("cut_wall_s", wx, -ny, ex, -ny + T)
 wall("cut_wall_e1", ex - T, -ny, ex, DOOR[0])
@@ -445,9 +456,9 @@ def window(name, x, y, z, across_x, w=0.5, h=0.44):
 
 
 # fenêtres éclairées sur les murs extérieurs
-_nw = 3 if V2 else 2   # v2 : trois fenêtres à l'arrière de la cabine (la poupe, vue de derrière, est la façade du bateau)
-for k in range(_nw):
-    window("cut_win_w", wx - 0.02, (k - (_nw - 1) / 2) * (wid0 * (0.3 if V2 else 0.5)), fz + 1.0, True, w=0.44 if V2 else 0.5)
+# (13/11 : sur le brigantin, la porte du balcon prend la place de la fenêtre du milieu)
+for k in range(2):
+    window("cut_win_w", wx - 0.02, (k - 0.5) * (wid0 * (0.56 if V2 else 0.5)), fz + 1.0, True, w=0.44 if V2 else 0.5)
 for sgn, tag in ((-1, "s"), (1, "n")):
     window("cut_win_" + tag, cabin_cx - 0.3, sgn * (ny + 0.02), fz + 1.0, False)
 # mobilier : couchette, coffre, table, tapis, lanterne suspendue
@@ -646,11 +657,14 @@ if V2:
     # et un couronnement doré qui dépasse du toit, avec les deux lanternes de poupe.
     for k in range(4):
         window("stern_win", xt - 0.03, (k - 1.5) * hw_t * 0.42, dz_t - 0.52, True, w=0.36, h=0.32)
-    gx = xt - 0.32                         # le balcon dépasse de 30 cm derrière le tableau
+    gx = xt - 0.5                          # le balcon dépasse de 50 cm derrière le tableau (13/11 : 30 cm ; on y marche)
     gz = fz + 0.12                         # son plancher : un peu au-dessus de celui de la cabine
     gw = hw_t * 2 * 0.86
-    box("gallery_floor", gx + 0.02, 0, gz, 0.62, gw, 0.08, "hull_l")
-    box("gallery_sole", gx - 0.02, 0, gz - 0.1, 0.54, gw * 0.96, 0.12, "red")
+    box("gallery_floor", gx + 0.1, 0, gz, 1.2, gw, 0.08, "hull_l")
+    box("gallery_sole", gx + 0.06, 0, gz - 0.1, 1.1, gw * 0.96, 0.12, "red")
+    # le balcon et le seuil de la porte sont praticables (ils sont hors de la coque : le jeu les lit dans la méta)
+    WALK_EXTRA.append((gx - 0.14, -gw / 2 + 0.12, wx + 0.02, gw / 2 - 0.12))
+    WALK_EXTRA.append((wx - 0.02, -BACK_DOOR + 0.08, wx + T + 0.4, BACK_DOOR - 0.08))
     for q in range(9):                     # consoles sous le balcon
         box("gallery_bracket", gx + 0.05, (q - 4) * gw / 8.4, gz - 0.24, 0.42, 0.06, 0.2, "hull", rot=(0, math.radians(-28), 0))
     nb = 13
@@ -1029,7 +1043,8 @@ if HEADINGS == 0:
          "helm": list(HELM), "ammo": [_bx, _by], "anchor": list(ANCHOR),
          "masts": [[m[0], m[1]] for m in CFG["masts"]],
          "ladders": [list(l) for l in LADDERS], "nests": [list(n) for n in NESTS],
-         "mast_ladder": list(MAST_LADDER), "bow_x": L / 2 - 0.4, "sheer": SHEER}))
+         "mast_ladder": list(MAST_LADDER), "bow_x": L / 2 - 0.4, "sheer": SHEER,
+         "walk_extra": [list(r) for r in WALK_EXTRA]}))
     print("export termine", SHIP)
     sys.exit(0)
 

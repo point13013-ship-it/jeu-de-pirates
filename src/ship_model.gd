@@ -22,6 +22,7 @@ var ladders: Array = []        ## [x, y du pirate, côté, y de la coque] : éch
 var nests: Array = []          ## [x, y, z du plancher, hauteur du mât]
 var mast_ladder: Array = []    ## [x, y, z bas, z haut] : échelle du mât le plus haut, vers son nid
 var bow_x := 0.0               ## abscisse la plus avancée où l'on peut se tenir (la pointe)
+var walk_extra: Array = []     ## rectangles praticables hors de la coque (13/11 : le balcon de poupe du brigantin, sa porte)
 var sheer := 1.0               ## tonture : facteur sur la remontée du pont vers l'étrave et la poupe (méta du modèle)
 var low_boxes: Array = []      ## indices des boîtes qu'on peut enjamber d'un saut (caisses), les autres sont des murs
 var low_circles: Array = []    ## indices des cercles qu'on peut enjamber (barre, tonneau) ; les mâts sont trop hauts
@@ -66,6 +67,7 @@ func load_ship(p_name: String) -> bool:
 	mast_ladder = meta.get("mast_ladder", [])
 	bow_x = float(meta.get("bow_x", length * 0.5 - 0.4))
 	sheer = float(meta.get("sheer", 1.0))
+	walk_extra = meta.get("walk_extra", [])
 	masts = meta.get("masts", [])
 	_model = scene.instantiate() as Node3D
 	_model.scale = Vector3.ONE * SCALE
@@ -576,6 +578,9 @@ func inside_cabin(bp: Vector2) -> bool:
 ## de l'axe, pour que le passage vers l'avant reste ouvert.
 func is_walkable(bp: Vector2) -> bool:
 	var r := WALK_RADIUS
+	for wr: Array in walk_extra:   # le balcon de poupe et le seuil de sa porte
+		if bp.x >= float(wr[0]) and bp.x <= float(wr[2]) and bp.y >= float(wr[1]) and bp.y <= float(wr[3]):
+			return true
 	var u := (bp.x + length * 0.5) / length
 	if u < 0.03 or bp.x > bow_x:
 		return false
