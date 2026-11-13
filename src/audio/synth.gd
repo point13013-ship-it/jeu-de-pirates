@@ -523,6 +523,23 @@ static func rope() -> AudioStream:
 		return _to_stream(_normalize(out, 0.5), false))
 
 
+## 13/11 (2.4) — le couinement du canard en plastique : deux notes qui montent puis retombent, un peu nasillardes.
+static func duck_squeak() -> AudioStream:
+	return _cached("duck_squeak", func() -> AudioStreamWAV:
+		var len := int(0.62 * RATE)
+		var out := PackedFloat32Array()
+		out.resize(len)
+		var ph := 0.0
+		for i in len:
+			var t := float(i) / RATE
+			var u := fmod(t, 0.31) / 0.31
+			var f := lerpf(760.0, 1320.0, sin(u * PI)) * (1.0 if t < 0.31 else 0.84)
+			ph += TAU * f / RATE
+			var env := sin(u * PI) ** 0.6
+			out[i] = env * (sin(ph) * 0.6 + sin(ph * 2.0) * 0.28 + sin(ph * 3.0) * 0.16)
+		return _to_stream(_normalize(out, 0.8), false))
+
+
 ## 13/11 (2.3) — l'alerte au combat : la cloche du bord sonnée trois fois, de plus en plus fort, sur trois coups de tambour
 ## graves. Elle se joue à l'instant où un navire ennemi nous prend en chasse (personne ne remarquait la musique seule).
 static func aggro_sting() -> AudioStream:

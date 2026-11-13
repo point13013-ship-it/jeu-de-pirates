@@ -9065,57 +9065,43 @@ func _sharks_threat(center: Vector2, sharks: Array) -> float:
 ## avec une lueur à la surface. Son chant (Synth « siren_hum ») s'entend de plus en plus fort en approchant.
 func _make_siren() -> Node3D:
 	var root := Node3D.new()
-	var skin := Color(0.93, 0.76, 0.64)
-	var hair_c := Color(0.86, 0.3, 0.26)
-	var scale_c := Color(0.12, 0.62, 0.62)
-	var scale_l := Color(0.3, 0.85, 0.78)
-	var torso := _siren_capsule(0.17, 0.62, skin)
-	torso.position = Vector3(0, 0.72, 0)
-	root.add_child(torso)
-	var head := _make_ball(0.15, skin)
-	head.position = Vector3(0, 1.17, 0)
+	# 13/11 (2.4, demande de Jimmy) : la sirène est remplacée par un canard en plastique géant, même rôle et même comportement
+	# (il vient chercher le nageur et le ramène au bateau). Le nom « sirène » reste dans le code.
+	var yellow := Color(1.0, 0.82, 0.16)
+	var orange := Color(0.96, 0.48, 0.12)
+	var body := _make_ball(0.62, yellow)
+	body.scale = Vector3(0.92, 0.72, 1.18)
+	body.position = Vector3(0, 0.36, 0)
+	root.add_child(body)
+	var chest := _make_ball(0.4, yellow)
+	chest.position = Vector3(0, 0.5, 0.42)
+	root.add_child(chest)
+	var head := _make_ball(0.36, yellow)
+	head.position = Vector3(0, 1.0, 0.5)
 	root.add_child(head)
-	for side in [-1.0, 1.0]:   # bras le long du corps, mains vers l'avant (elle tend la main)
-		var arm := _siren_capsule(0.05, 0.5, skin)
-		arm.position = Vector3(side * 0.21, 0.82, 0.06)
-		arm.rotation = Vector3(-0.5, 0.0, side * 0.18)
-		root.add_child(arm)
-		var eye := _make_ball(0.025, Color(0.08, 0.2, 0.25))
-		eye.position = Vector3(side * 0.055, 1.19, 0.13)
+	var tail := _make_ball(0.22, yellow)        # le croupion relevé
+	tail.scale = Vector3(0.8, 0.9, 1.4)
+	tail.position = Vector3(0, 0.62, -0.72)
+	tail.rotation = Vector3(-0.7, 0.0, 0.0)
+	root.add_child(tail)
+	for side in [-1.0, 1.0]:
+		var wing := _make_ball(0.3, yellow.darkened(0.08))
+		wing.scale = Vector3(0.35, 0.62, 1.15)
+		wing.position = Vector3(side * 0.52, 0.46, -0.06)
+		wing.rotation = Vector3(0.0, 0.0, side * 0.25)
+		root.add_child(wing)
+		var eye := _make_ball(0.062, Color(0.06, 0.05, 0.07))
+		eye.position = Vector3(side * 0.15, 1.1, 0.8)
 		root.add_child(eye)
-	for k in 7:   # la chevelure : des mèches qui tombent dans le dos et sur les épaules
-		var a := lerpf(-1.1, 1.1, float(k) / 6.0)
-		var lock := _siren_capsule(0.045, 0.7 + 0.12 * absf(sin(a * 2.0)), hair_c)
-		lock.position = Vector3(sin(a) * 0.13, 0.98, -0.08 - 0.04 * cos(a))
-		lock.rotation = Vector3(0.25, 0.0, -sin(a) * 0.25)
-		root.add_child(lock)
-	var crown := _make_ball(0.16, hair_c)
-	crown.position = Vector3(0, 1.24, -0.02)
-	crown.scale = Vector3(1.05, 0.75, 1.1)
-	root.add_child(crown)
-	for k in 3:   # coquillages
-		var shell := _make_ball(0.04, Color(0.98, 0.85, 0.8))
-		shell.position = Vector3((float(k) - 1.0) * 0.07, 1.33, 0.06)
-		root.add_child(shell)
-	for k in 5:   # la queue : des anneaux d'écailles qui plongent en courbe derrière elle
-		var u := float(k) / 4.0
-		var ring := _siren_capsule(lerpf(0.16, 0.06, u), 0.32, scale_c if k % 2 == 0 else scale_l)
-		ring.position = Vector3(0, 0.3 - 0.35 * sin(u * PI * 0.8), -0.12 - u * 0.75)
-		ring.rotation = Vector3(PI / 2.0 - 0.6 + u * 1.3, 0.0, 0.0)
-		root.add_child(ring)
-	for side in [-1.0, 1.0]:   # la nageoire qui sort de l'eau
-		var fin := MeshInstance3D.new()
-		var pm := PrismMesh.new()
-		pm.size = Vector3(0.36, 0.42, 0.04)
-		fin.mesh = pm
-		var fm := StandardMaterial3D.new()
-		fm.albedo_color = scale_l
-		fm.emission_enabled = true
-		fm.emission = scale_l * 0.25
-		fin.material_override = fm
-		fin.position = Vector3(side * 0.16, 0.42, -1.0)
-		fin.rotation = Vector3(0.3, 0.0, side * 0.9)
-		root.add_child(fin)
+		var shine := _make_ball(0.022, Color(1, 1, 1))
+		shine.position = Vector3(side * 0.165, 1.13, 0.845)
+		root.add_child(shine)
+	for k in 2:   # le bec, en deux moitiés légèrement ouvertes
+		var beak := _make_ball(0.16, orange)
+		beak.scale = Vector3(1.15, 0.3, 1.3)
+		beak.position = Vector3(0, 0.96 - 0.07 * k, 0.86 - 0.02 * k)
+		beak.rotation = Vector3(0.12 if k == 0 else -0.22, 0.0, 0.0)
+		root.add_child(beak)
 	var glow := _make_ball(1.0, Color(0.5, 1.0, 0.92))   # la lueur à la surface
 	var gm := glow.material_override as StandardMaterial3D
 	gm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
@@ -9133,7 +9119,7 @@ func _make_siren() -> Node3D:
 	light.position = Vector3(0, 1.2, 0)
 	root.add_child(light)
 	_world_fixed.add_child(root)
-	_sfx.play_at(Synth.chime(), root.global_position, 0.8, 0.8)
+	_sfx.play_at(Synth.duck_squeak(), root.global_position, 1.0, 1.0)
 	return root
 
 
@@ -9408,13 +9394,17 @@ func _lot4_center_text() -> String:
 		return "%s\nRéapparition sur ton bateau dans %d s" % [str(why.get(_dead_why, "Tu es mort…")), ceili(_dead_t)]
 	if _is_down():
 		return "À TERRE — %d s\n%s" % [ceili(_downed_t), "Un camarade te relève…" if not _revivers.is_empty() else "Un camarade peut te relever (E près de toi)"]
+	# 13/11 (retour de Jimmy : plus de texte au centre de l'écran à la nage) : les messages de noyade et du canard sont retirés.
+	# Restent seulement « à terre » et « mort », où l'on ne joue plus et où il faut connaître le temps d'attente.
+	if not GameConfig.HUD_NOTICES:
+		return ""
 	if _loc == Loc.SWIM and _water_t >= GameConfig.DROWN_AFTER - GameConfig.DROWN_WARNING:
-		return "Tu te noies ! %d s — remonte à bord, ou rejoins la sirène" % ceili(GameConfig.DROWN_AFTER - _water_t)
-	if _loc == Loc.SWIM and _siren != null:   # (12/11 : on ne comprenait pas quoi faire de la sirène)
+		return "Tu te noies ! %d s — remonte à bord, ou rejoins le canard" % ceili(GameConfig.DROWN_AFTER - _water_t)
+	if _loc == Loc.SWIM and _siren != null:
 		var sd := _lpos.distance_to(_siren_pos)
 		if sd <= GameConfig.SIREN_REACH + 0.4:
-			return "E : la sirène te ramène à ton bateau"
-		return "Une sirène t'attend à %d m : nage vers sa lumière" % ceili(sd)
+			return "E : le canard te ramène à ton bateau"
+		return "Un canard t'attend à %d m : nage vers sa lumière" % ceili(sd)
 	return ""
 
 
