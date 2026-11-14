@@ -45,7 +45,7 @@ void vertex() {
 	op = VERTEX;
 }
 
-vec3 grass(vec2 p) {
+vec3 grass(vec2 p, float detail) {
 	// (13/11 : le dessin des taches est déformé par un second bruit : des contours souples au lieu de pavés)
 	vec2 warp = vec2(vn(p * 0.21 + 3.1), vn(p * 0.21 + 9.7)) - 0.5;
 	float n = fbm(p * 0.32 + warp * 1.6);
@@ -64,7 +64,7 @@ vec3 grass(vec2 p) {
 	vec2 s = floor(f * 6.0);
 	// touffe : trois brins, un pixel de large
 	bool blade = (s.x == 2.0 && s.y >= 1.0 && s.y <= 3.0) || (s.x == 1.0 && s.y == 3.0) || (s.x == 3.0 && s.y == 2.0);
-	if (h > 0.80 && blade) {
+	if (detail > 0.5 && h > 0.80 && blade) {
 		col = h > 0.93 ? grass_high : grass_dark;
 	}
 	// fleurs : rares, groupées par grandes zones
@@ -72,7 +72,7 @@ vec3 grass(vec2 p) {
 	vec2 ff = floor(fract(p * 3.6) * 10.0);
 	float fh = hash(fc + 31.0);
 	float zone = vn(p * 0.2 + 11.0);
-	if (zone > 0.62 && fh > 1.0 - 0.09 * flowers && ff.x >= 4.0 && ff.x <= 5.0 && ff.y >= 4.0 && ff.y <= 5.0) {
+	if (detail > 0.5 && zone > 0.62 && fh > 1.0 - 0.09 * flowers && ff.x >= 4.0 && ff.x <= 5.0 && ff.y >= 4.0 && ff.y <= 5.0) {
 		col = fh > 1.0 - 0.04 * flowers ? flower_b : flower_a;
 		if (ff.x == 4.0 && ff.y == 4.0) {
 			col = vec3(0.98, 0.95, 0.88);
@@ -81,7 +81,7 @@ vec3 grass(vec2 p) {
 	return col;
 }
 
-vec3 sand(vec2 p) {
+vec3 sand(vec2 p, float detail) {
 	vec3 col = vec3(0.86, 0.74, 0.52);
 	// longues ondulations de sable : bandes claires et foncées qui serpentent
 	float w = p.y * 0.55 + sin(p.x * 0.3) * 0.8 + vn(p * 0.3) * 2.2;
@@ -92,13 +92,13 @@ vec3 sand(vec2 p) {
 		col = vec3(0.94, 0.86, 0.66);
 	}
 	float s = hash(floor(p * 12.0));
-	col = mix(col, vec3(0.74, 0.62, 0.42), step(0.93, s));
-	col = mix(col, vec3(0.94, 0.86, 0.66), step(s, 0.04));
+	col = mix(col, vec3(0.74, 0.62, 0.42), step(0.93, s) * detail);
+	col = mix(col, vec3(0.94, 0.86, 0.66), step(s, 0.04) * detail);
 	// coquillages et petits cailloux
 	vec2 cell = floor(p * 2.25);
 	vec2 f = floor(fract(p * 2.25) * 16.0);
 	float h = hash(cell + 5.0);
-	if (h > 0.93 && f.x >= 7.0 && f.x <= 8.0 && f.y >= 7.0 && f.y <= 8.0) {
+	if (detail > 0.5 && h > 0.93 && f.x >= 7.0 && f.x <= 8.0 && f.y >= 7.0 && f.y <= 8.0) {
 		col = h > 0.97 ? vec3(0.84, 0.33, 0.36) : vec3(0.93, 0.95, 0.9);
 	}
 	return col;
@@ -116,6 +116,9 @@ vec3 rock(vec3 o) {
 
 void fragment() {
 	vec2 p = op.xz;
+	// vue 4 (perspective) : les détails d'un pixel (brins, fleurs, cailloux, coquillages) tombent sous le pixel et crépitent : ils disparaissent.
+	// 1 en orthographique (rien ne change), 0 en perspective.
+	float detail = PROJECTION_MATRIX[3][3];
 	float grass_amt = COLOR.r;
 	float wet = COLOR.g;
 	float path = COLOR.b;
@@ -124,7 +127,7 @@ void fragment() {
 	if (cliff > 0.5) {
 		col = rock(op);
 	} else if (grass_amt > 0.5) {
-		col = grass(p);
+		col = grass(p, detail);
 		if (relief_top > 0.5) {
 			float alt = clamp(op.y / relief_top, 0.0, 1.0);
 			float band = floor(alt * 5.0 + vn(p * 0.35) * 0.6) / 5.0;
@@ -138,18 +141,18 @@ void fragment() {
 		if (edge > 0.55) {
 			col = vec3(0.74, 0.62, 0.42);
 			float pebble = hash(floor(p * 10.5));
-			col = mix(col, vec3(0.62, 0.52, 0.36), step(0.9, pebble));
-			col = mix(col, vec3(0.86, 0.74, 0.52), step(pebble, 0.05));
+			col = mix(col, vec3(0.62, 0.52, 0.36), step(0.9, pebble) * detail);
+			col = mix(col, vec3(0.86, 0.74, 0.52), step(pebble, 0.05) * detail);
 		}
 	} else {
-		col = sand(p);
+		col = sand(p, detail);
 		float edge = path + (vn(p * 3.0) - 0.5) * 0.4;
 		if (edge > 0.7) {
 			col = mix(col, vec3(0.74, 0.62, 0.42), 1.0);
 		}
 		if (wet > 0.5) {
 			col = vec3(0.62, 0.52, 0.36);
-			if (hash(floor(p * 9.0)) > 0.9) {
+			if (detail > 0.5 && hash(floor(p * 9.0)) > 0.9) {
 				col = vec3(0.74, 0.62, 0.42);
 			}
 		}

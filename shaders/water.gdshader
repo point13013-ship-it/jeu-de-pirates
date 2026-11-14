@@ -161,6 +161,15 @@ void vertex() {
 }
 
 void fragment() {
+	// vue 4 (perspective) : la hauteur de vague et l'écume de sillage sont recalculées PAR PIXEL. Interpolées entre les sommets du maillage, elles
+	// découpent l'eau en grands polygones aux bords droits près de la caméra (les triangles y sont grands). Orthographique : inchangé.
+	float wh = wave_h;
+	float wf = wake_foam;
+	if (PROJECTION_MATRIX[3][3] < 0.5) {
+		vec2 wk = wake_at(wp.xz);
+		wh = waves_at(wp.xz) + wk.x;
+		wf = wk.y;
+	}
 	// épaisseur d'eau entre la surface et ce qu'il y a dessous, le long du regard (pour l'écume
 	// tout contre la coque)
 	float depth = texture(depth_tex, SCREEN_UV).r;
@@ -187,7 +196,7 @@ void fragment() {
 	// la houle se lit d'un coup d'œil (12/11) : sur le haut d'une vague, l'eau monte d'un ton ; au fond du creux, elle
 	// descend d'un ton. On voit les rangées de vagues avancer, en restant dans les quatre tons peints de la mer.
 	float amp = max(waves[0].x + waves[1].x + waves[2].x + waves[3].x, 0.01);
-	float rel = wave_h / amp;   // -0,7 (creux) .. 1,4 (crête)
+	float rel = wh / amp;   // -0,7 (creux) .. 1,4 (crête)
 	tone = clamp(tone + step(0.55, rel) - step(rel, -0.42), 0.0, 3.0);
 	vec3 col = c_trough;
 	col = mix(col, c_side, step(0.5, tone));
@@ -214,12 +223,12 @@ void fragment() {
 	float nz = sin(wp.x * 3.1 + st * 2.0) * sin(wp.z * 2.7 - st * 1.6);
 	vec2 hd = hull_dist(wp.xz);
 	float n2 = sin(wp.x * 2.3 - st * 2.6 + wp.z * 1.1) * sin(wp.z * 3.4 + st * 1.9 - wp.x * 0.7);
-	float band = 0.22 + 0.25 * ship_speed + max(wave_h, 0.0) * 1.6;
+	float band = 0.22 + 0.25 * ship_speed + max(wh, 0.0) * 1.6;
 	band *= 1.0 + smoothstep(0.7, 1.0, hd.y) * (0.3 + 1.0 * ship_speed);
 	float ring = step(0.0, hd.x) * step(hd.x, band * (0.7 + 0.35 * n2));
 	float ring_far = step(band * 1.2, hd.x) * step(hd.x, band * 1.55) * step(0.7, n2);
 	float contact = max(1.0 - step(contact_foam * (0.75 + 0.35 * nz), thickness), max(ring, ring_far));
-	float wake = step(0.72, wake_foam + 0.3 * nz);
+	float wake = step(0.72, wf + 0.3 * nz);
 	col = mix(col, foam_color, max(contact, wake));
 
 	ALBEDO = debug_view == 1 ? vec3(clamp(thickness / 4.0, 0.0, 1.0)) : col;

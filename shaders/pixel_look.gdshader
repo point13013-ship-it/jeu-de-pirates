@@ -8,6 +8,7 @@ shader_type canvas_item;
 uniform float outline_threshold = 0.22;
 uniform float outline_strength = 0.30;
 uniform bool use_palette = true;   // faux : couleurs brutes (diagnostic, mesure des tons)
+uniform float posterize = 0.0;     // vue 4 : nombre de paliers par canal (0 = aucun). Les dégradés continus (voiles, collines, ciel) deviennent des aplats aux bords francs.
 // Couleurs des pirates (apparence personnalisable) : elles sont hors de la palette du décor et passent
 // telles quelles ; seule une correspondance quasi exacte compte, pour ne jamais « voler » un pixel du décor.
 uniform sampler2D char_palette : filter_nearest, hint_default_black;
@@ -120,7 +121,11 @@ bool is_sea(vec3 q) {
 void fragment() {
 	if (!use_palette) {
 		// rendu fin : couleurs vraies (pas de palette), seulement l'étalonnage du ciel
-		COLOR = vec4(grade(texture(TEXTURE, UV).rgb, UV), 1.0);
+		vec3 graded = grade(texture(TEXTURE, UV).rgb, UV);
+		if (posterize > 1.0) {
+			graded = floor(graded * posterize + 0.5) / posterize;
+		}
+		COLOR = vec4(graded, 1.0);
 	} else {
 	vec2 px = TEXTURE_PIXEL_SIZE;
 	vec3 q = quantize(texture(TEXTURE, UV).rgb);

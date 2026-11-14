@@ -1006,6 +1006,7 @@ func _layout_view() -> void:
 		# une peau un peu teintée par la lumière ou la brume sortait de la palette des pirates et virait aux couleurs du décor,
 		# d'où des PNJ « sans peau » chez Jimmy)
 		_post_mat.set_shader_parameter("use_palette", _hd() < 2 and not _args.has("no-palette") and not ToonLook.enabled)
+		_post_mat.set_shader_parameter("posterize", float(_args.get("post", "0")) if _vue4_enabled() else 0.0)   # vue 4 : aplats aux bords francs ; --post=0 pour couper, --post=N pour N paliers par canal
 	_viewport.size = view
 	_post_vp.size = view
 	_post_rect.size = Vector2(view)
@@ -1114,6 +1115,7 @@ func _build_view() -> void:
 	resized.connect(_layout_view)
 	_layout_view.call_deferred()
 
+	SkyCycle.crisp = _vue4_enabled()   # vue 4 : pas de lueur (bloom) ni de vignettage : des bords et des aplats nets
 	var env := Environment.new()
 	# ciel en bandes plates (shaders/ciel.gdshader), piloté par SkyCycle ; la couleur de fond ne sert plus que de secours
 	var sky_mat := ShaderMaterial.new()
@@ -1140,7 +1142,9 @@ func _build_view() -> void:
 	sun.light_energy = 1.9 if day else 1.7
 	sun.shadow_enabled = true
 	sun.shadow_opacity = 0.62
-	sun.shadow_blur = 1.6
+	sun.shadow_blur = 0.0 if _vue4_enabled() else 1.6   # (vue 4 : ombres aux bords francs)
+	if _vue4_enabled():
+		RenderingServer.directional_soft_shadow_filter_set_quality(RenderingServer.SHADOW_QUALITY_HARD)
 	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_ORTHOGONAL
 	sun.directional_shadow_max_distance = 70.0
 	_world.add_child(sun)
@@ -6682,7 +6686,7 @@ func _apply_grade() -> void:
 	var g: Dictionary = _atmo.sky.grade
 	if g.is_empty() or _loc == Loc.HOLD or not _atmo.sky.enabled:
 		g = {"tint": Vector3.ONE, "shadow": Vector3.ZERO, "high": Vector3.ZERO, "sat": 1.0, "contrast": 1.0,
-				"vignette": 0.12, "haze_color": Vector3(0.8, 0.8, 0.8), "haze": 0.0}
+				"vignette": 0.0 if _vue4_enabled() else 0.12, "haze_color": Vector3(0.8, 0.8, 0.8), "haze": 0.0}
 	_post_mat.set_shader_parameter("grade_tint", g["tint"])
 	_post_mat.set_shader_parameter("grade_warm_keep", float(g.get("warm_keep", 0.0)))
 	_post_mat.set_shader_parameter("grade_shadow", g["shadow"])

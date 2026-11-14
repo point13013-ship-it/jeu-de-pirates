@@ -231,7 +231,7 @@ func _dress_sails(node: Node) -> void:
 		m.albedo_texture = emblem_sail_texture() if key == "sail_e" else canvas_texture()
 		m.uv1_triplanar = false
 		m.uv1_scale = Vector3.ONE
-		m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+		m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST if SkyCycle.crisp else BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS   # (vue 4 : texture nette, pas lissée)
 		m.cull_mode = BaseMaterial3D.CULL_DISABLED   # (toile vue des deux côtés)
 		m.transparency = BaseMaterial3D.TRANSPARENCY_DISABLED
 		if base != null and key != "sail" and key != "sail_e":
@@ -258,7 +258,7 @@ func _dress_flag() -> void:
 		m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
 		m.alpha_scissor_threshold = 0.5
 		m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-		m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+		m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST if SkyCycle.crisp else BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS   # (vue 4 : texture nette, pas lissée)
 		q.material_override = m
 		disc.get_parent().add_child(q)
 		# 13/11 : à FLAG_EMBLEM_OFFSET de part et d'autre du PLAN DU PAVILLON (z = 0 dans le modèle). Avant, à ±3 cm du disque
@@ -309,7 +309,7 @@ static func canvas_image() -> Image:
 		for x in w:
 			var u := float(x) / float(w - 1)
 			var c := 0.95
-			c += 0.018 * (1.0 if (x + y) % 2 == 0 else -1.0)                 # tissage
+			if not SkyCycle.crisp: c += 0.018 * (1.0 if (x + y) % 2 == 0 else -1.0)                 # tissage
 			var stain := noise.get_noise_2d(float(x), float(y))
 			c -= maxf(stain, 0.0) * 0.14 + (1.0 - v) * 0.07                 # usure, et la toile plus sale en bas
 			var pu := u * panels
@@ -329,7 +329,7 @@ static func canvas_image() -> Image:
 				c -= 0.3                                                      # les garcettes
 			if (u < 0.08 or u > 0.92) and (v < 0.08 or v > 0.92):
 				c -= 0.05                                                     # renforts aux coins
-			c += rng.randf_range(-0.01, 0.01)
+			if not SkyCycle.crisp: c += rng.randf_range(-0.01, 0.01)   # (grain et tissage : seulement hors vue 4, ils feraient du bruit sans lissage)
 			img.set_pixel(x, y, Color(c, c * 0.985, c * 0.955))
 	return img
 
@@ -372,8 +372,15 @@ static func emblem_texture(_on_flag: bool = true) -> ImageTexture:
 	return t
 
 
+## Bord d'un dessin : adouci, ou franc (un seul pixel de transition) quand l'image doit être nette (vue 4).
+static func _sm(a: float, b: float, x: float) -> float:
+	if SkyCycle.crisp:
+		return 1.0 if x >= (a + b) * 0.5 else 0.0
+	return smoothstep(a, b, x)
+
+
 ## Peint une tête de mort aux tibias croisés centrée en `c` (px), de taille `s` (largeur du crâne ≈ s). Orbites, nez et dents
-## sont creusés (laissent voir la toile, ou transparents sur le pavillon). Bords adoucis.
+## sont creusés (laissent voir la toile, ou transparents sur le pavillon). Bords adoucis (francs en vue 4).
 static func _paint_emblem(img: Image, c: Vector2, s: float, col: Color, transparent_holes: bool) -> void:
 	var w := img.get_width()
 	var h := img.get_height()
@@ -392,22 +399,22 @@ static func _paint_emblem(img: Image, c: Vector2, s: float, col: Color, transpar
 				var along := q.dot(dir)
 				var across := absf(q.dot(Vector2(-dir.y, dir.x)))
 				if absf(along) < 1.0:
-					ink = maxf(ink, 1.0 - smoothstep(0.06, 0.09, across))
+					ink = maxf(ink, 1.0 - _sm(0.06, 0.09, across))
 				for e in [-1.0, 1.0]:
 					var knob: Vector2 = dir * float(e) * 1.02
 					for o in [-1.0, 1.0]:
 						var kp: Vector2 = knob + Vector2(-dir.y, dir.x) * float(o) * 0.07
-						ink = maxf(ink, 1.0 - smoothstep(0.09, 0.12, q.distance_to(kp)))
+						ink = maxf(ink, 1.0 - _sm(0.09, 0.12, q.distance_to(kp)))
 			# le crâne : une calotte ronde et une mâchoire plus étroite
 			var head := Vector2(p.x / 0.5, (p.y + 0.05) / 0.46).length()
 			var jaw := absf(p.x) < 0.27 and p.y > 0.25 and p.y < 0.52
-			var skull := 1.0 - smoothstep(0.96, 1.04, head)
+			var skull := 1.0 - _sm(0.96, 1.04, head)
 			if jaw:
 				skull = 1.0
 			# orbites, nez, dents : creusés
 			var hole := 0.0
 			for e in [-1.0, 1.0]:
-				hole = maxf(hole, 1.0 - smoothstep(0.11, 0.14, Vector2((p.x - e * 0.19) / 1.1, p.y - 0.02).length()))
+				hole = maxf(hole, 1.0 - _sm(0.11, 0.14, Vector2((p.x - e * 0.19) / 1.1, p.y - 0.02).length()))
 			if p.y > 0.13 and p.y < 0.27 and absf(p.x) < (p.y - 0.13) * 0.55:
 				hole = 1.0
 			if p.y > 0.36 and p.y < 0.47 and fmod(absf(p.x) + 0.03, 0.09) < 0.025:

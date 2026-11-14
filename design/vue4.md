@@ -38,3 +38,23 @@ Décidée le 14/11 avec Ilan (réglage retenu : 7° et zoom 0,5, comparé à 13�
 - Captures : `qa_vue4/defaut_mer.png` (avant), `qualite_jour_apres.png`, `qualite_nuit_apres.png`. Tests unitaires : mêmes résultats qu'avant
   (tout vert sauf `test_town.gd`, déjà en échec).
 - Pas vérifié : mauvais temps (pluie, orage, brume épaisse), crépuscule, le ciel depuis la vigie, et le scintillement en mouvement.
+
+## Netteté (14/11, demande d'Ilan : « hyper net, même en pixel art »)
+
+Mesure (`tools/net_check.gd`) : la grille de pixels est déjà parfaite (100 % de blocs réguliers, pas de lissage à l'agrandissement).
+Le flou venait d'autres endroits, tous corrigés pour la vue 4 (rien ne change avec `--no-vue4` ni en orthographique) :
+
+- **Texture de voile et emblème** (`ship_model.gd`) : la tête de mort était peinte avec des bords adoucis et lissée à l'affichage.
+  Maintenant bords francs, filtrage au plus proche voisin, sans grain ni tissage fin (qui crépiteraient). Pavillon et toile de même.
+- **Ombres portées** (`sailing_game.gd`) : ombres dures (`shadow_blur = 0`, filtre `SHADOW_QUALITY_HARD`) : le mât sur la voile, les
+  réverbères sur les pavés ont des bords nets au lieu d'un halo.
+- **Lueur et vignettage** (`sky_cycle.gd`, `SkyCycle.crisp`) : plus de bloom autour des fenêtres, plus de vignettage (de grands dégradés
+  qui sortent en anneaux dès qu'on aplatit les couleurs).
+- **Détails d'un pixel sur le sol des îles** (`island_ground.gdshader`) : brins d'herbe, fleurs, cailloux, coquillages tombent sous le pixel
+  en vue à horizon et crépitent : supprimés en perspective seulement (`PROJECTION_MATRIX[3][3]`), gardés à terre.
+- **Eau** (`water.gdshader`) : en perspective, la hauteur de vague et l'écume du sillage sont recalculées par pixel (elles étaient
+  interpolées entre sommets : grands polygones aux bords droits près de la caméra).
+- **Posterisation du filtre d'image** (`pixel_look.gdshader`, `--post=N`) : essayée, laissée à 0 par défaut. À 12 paliers elle fait
+  apparaître des anneaux (vignette, lueur) ; à 16 elle salit les dégradés de la toile.
+- Captures : `qa_vue4/net/` (voile et colline avant/après, mer, île, terre). `tools/crop_compare.gd` compare deux captures sur une zone.
+- Pas traité : les traînées de vent (traits translucides, utiles à la navigation) ; la netteté en mouvement (pas rejoué) ; mauvais temps.

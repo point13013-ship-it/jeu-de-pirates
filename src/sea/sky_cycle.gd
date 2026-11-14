@@ -17,6 +17,7 @@ const NIGHT_AMBIENT := Color(0.30, 0.36, 0.66)
 const NIGHT_SUN := Color(0.55, 0.68, 1.0)
 const GREY := Color(0.50, 0.54, 0.62)
 
+static var crisp := false   ## vue 4 : image nette, sans lueur ni vignettage (réglé par SailingGame)
 var night := false
 var daylight := 1.0
 var rain := 0.0
@@ -302,7 +303,7 @@ func _apply(_delta: float) -> void:
 		sm.set_shader_parameter("drift", Time.get_ticks_msec() / 1000.0 * 0.004)
 		sm.set_shader_parameter("flash", flash)
 	# lueur (bloom) : discrète le jour, nette la nuit pour les lanternes et les fenêtres
-	_env.glow_enabled = true
+	_env.glow_enabled = not crisp
 	_env.glow_intensity = lerpf(0.95, 0.35, daylight)
 	_env.glow_bloom = lerpf(0.10, 0.02, daylight)
 	_env.glow_hdr_threshold = lerpf(0.85, 1.0, daylight)
@@ -331,7 +332,7 @@ func _compute_grade(day: float, dusk: float, fog_amount: float) -> void:
 	vig += 0.25 * dark
 	haze_c = haze_c.lerp(Vector3(0.30, 0.33, 0.40) * lerpf(0.4, 1.0, day), dark * 0.7)
 	grade = {
-		"tint": tint, "shadow": shadow, "high": high, "sat": sat, "contrast": con, "vignette": vig,
+		"tint": tint, "shadow": shadow, "high": high, "sat": sat, "contrast": con, "vignette": 0.0 if crisp else vig,
 		"warm_keep": GameConfig.NIGHT_WARM_KEEP * (1.0 - day),
 		"haze_color": haze_c, "haze": fog_amount * GameConfig.FOG_SCREEN_BANKS,   # (13/11 : coupés, ils s'amassaient d'un côté en traînées opaques)
 	}
