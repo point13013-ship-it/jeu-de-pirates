@@ -36,8 +36,8 @@ const CANNON_SPEED := 19.0             ## m/s : vitesse horizontale du pirate ti
 const CANNON_LIFT := 9.0               ## m/s : vitesse verticale au départ du canon
 const ZOOM_SEA := 0.6                  ## grossissement de la caméra en mer (1 = proche, plus petit = on voit plus loin)
 const ZOOM_LAND := 0.85
-const ZOOM_MIN := 0.28   ## (13/11 : 0,4 ; la vigie dézoome à 0,30)
-const ZOOM_MAX := 1.15
+const ZOOM_MIN := 0.25   ## (13/11 : 0,4 ; la vigie dézoome à 0,30 ; 14/11 : paliers entiers, voir ZOOM_STEPS)
+const ZOOM_MAX := 2.0
 const CLIMB_SPEED := 2.6               ## m/s le long du mât
 const NEST_RADIUS := Vector2(0.38, 0.54)  ## unités du modèle : distance mini / maxi au mât dans le nid
 const LADDER_REACH := 3.2              ## m : distance maxi entre l'échelle de coque et le quai
@@ -1022,8 +1022,8 @@ func _layout_view() -> void:
 func _hd() -> int:
 	if _args.has("hd"):
 		return maxi(1, int(str(_args["hd"])))
-	if _vue4_enabled():   # la vue 4 est faite pour les gros pixels (un seul format de pixel, partout)
-		return 1
+	if _vue4_enabled() and not _args.has("hd-fin"):   # la vue 4 est faite pour les gros pixels (un seul format de pixel, partout)
+		return 1   # (14/11 : essayé en pixels fins, ça ressemblait de nouveau à de la 3D lisse ; --hd=2 les redonne)
 	return 2 if size.y >= 900.0 else 1
 
 
@@ -1047,9 +1047,26 @@ func _zoom_goal() -> float:
 	if _loc == Loc.SHIP and _mode == Mode.HELM:
 		base = 0.52   # à la barre : on veut voir devant
 	if _spy:
-		return GameConfig.SPY_ZOOM   # (la longue-vue grossit, quel que soit le réglage de la molette)
+		return _zoom_step(GameConfig.SPY_ZOOM)   # (la longue-vue grossit, quel que soit le réglage de la molette)
 	var goal := clampf(base * _zoom_user, ZOOM_MIN, ZOOM_MAX)
-	return goal * SHOULDER_ZOOM if _shoulder_active() else goal
+	return _zoom_step(goal * SHOULDER_ZOOM if _shoulder_active() else goal)
+
+
+## 14/11 (caméra, paliers entiers) : les pirates sont dessinés à 36 pixels par mètre. Un zoom quelconque (0,85 à terre, 0,52 à
+## la barre) étirait leurs pixels de façon inégale (certains doublés, d'autres sautés) et les faisait onduler pendant que la
+## molette glissait. Le zoom ne prend plus que des valeurs où un pixel du dessin tombe sur un nombre entier de pixels du jeu
+## (ou l'inverse) : 1 pixel du dessin pour 4, 2, 1 pixel du jeu, ou 2 pixels du jeu pour 1 du dessin.
+const ZOOM_STEPS: Array[float] = [0.25, 0.5, 1.0, 2.0]
+
+
+## Le palier le plus proche (en rapport, pas en écart) d'un grossissement voulu, compte tenu de la finesse du rendu (_hd).
+func _zoom_step(z: float) -> float:
+	var hd := float(_hd())
+	var best := ZOOM_STEPS[0]
+	for s: float in ZOOM_STEPS:
+		if absf(log(s / hd) - log(z)) < absf(log(best / hd) - log(z)):
+			best = s
+	return best / hd
 
 
 ## La vue épaule ne joue que sur le pont, à terre, à la nage ou sur le radeau : la cale, le mât et les vols ont leur cadrage.
@@ -1062,7 +1079,10 @@ func _update_zoom(delta: float) -> void:
 	if _args.has("zoom"):
 		_zoom = float(_args["zoom"])
 	else:
-		_zoom = lerpf(_zoom, _zoom_goal(), 1.0 - exp(-delta * 4.0))
+		var goal := _zoom_goal()
+		_zoom = lerpf(_zoom, goal, 1.0 - exp(-delta * 6.0))
+		if absf(_zoom - goal) < goal * 0.004:   # arrivé : exactement sur le palier (sinon les pixels restent un poil étirés)
+			_zoom = goal
 	if _cam != null and _viewport != null:
 		_cam.size = float(_viewport.size.y) / _ppm()
 
@@ -1095,6 +1115,7 @@ func _build_view() -> void:
 	_container.size = Vector2(VIEW_SIZE)
 	_container.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	add_child(_container)
+	_build_text_overlay()
 	_post_vp = SubViewport.new()
 	_post_vp.size = VIEW_SIZE
 	_post_vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS
@@ -1952,7 +1973,9 @@ func _float_ship() -> void:
 	roll -= _sim.rudder * 0.035 * clampf(_sim.speed / maxf(_sim.max_speed, 0.1), 0.0, 1.0)
 	_ship.position = Vector3(0.0, heave, 0.0)
 	_world_origin = flat
-	_world_fixed.position = Vector3(-flat.x, 0.0, -flat.z)
+	var new_origin := Vector3(-flat.x, 0.0, -flat.z)
+	if _world_fixed.position != new_origin:   # (14/11, fps : même posé à l'identique, ça coûtait 1,7 ms : tout le décor est ses enfants)
+		_world_fixed.position = new_origin
 	_water_mat.set_shader_parameter("world_offset", Vector2(flat.x, flat.z))
 	_water_mat.set_shader_parameter("sun_dir", _sun.global_transform.basis.z.normalized())
 	_water_mat.set_shader_parameter("view_dir", _cam.global_transform.basis.z.normalized())
@@ -2581,6 +2604,9 @@ func _apply_test_args() -> void:
 		get_tree().create_timer(float(_args.get("shot-after-secs", "3"))).timeout.connect(func() -> void:
 			_frames_left = int(_args["frames"])
 			RenderingServer.frame_post_draw.connect(_save_frame))
+	if _args.has("mouse"):   # essai : --mouse=x,y place la souris à ce point de la fenêtre au bout de 2 s (caméra vers la visée)
+		var mp := str(_args["mouse"]).split(",")
+		get_tree().create_timer(2.0).timeout.connect(func() -> void: get_viewport().warp_mouse(Vector2(float(mp[0]), float(mp[1]))))
 	if _args.has("quit-after-secs"):
 		get_tree().create_timer(float(_args["quit-after-secs"])).timeout.connect(get_tree().quit)
 
@@ -2771,10 +2797,23 @@ func _build_old_town_life() -> void:
 
 ## Place les habitants, fait marcher les promeneurs ; ceux d'un intérieur ne se voient que quand on y est.
 func _update_npcs(delta: float) -> void:
+	# 14/11 (fps) : 78 habitants, la plupart loin de l'écran. Un habitant hors de vue n'est ni animé, ni posé, ni dessiné, et ses
+	# feuilles d'images ne sont pas fabriquées (son chemin, lui, avance toujours). Le sol sous ses pieds n'est cherché que
+	# s'il a fait 40 cm depuis la dernière recherche (220 ms par seconde avant).
+	var focus := _lpos if _loc == Loc.LAND else _my_world_pos()
+	var cull2 := GameConfig.NPC_CULL_RANGE * GameConfig.NPC_CULL_RANGE
 	for npc: TownNpc in _npcs:
 		var move := npc.update(delta)
+		if focus.distance_squared_to(npc.pos) > cull2:
+			if npc.sprite.visible:
+				npc.sprite.visible = false
+				npc.blob.visible = false
+				if npc.tag != null:
+					npc.tag.visible = false
+			continue
 		if npc.wanderer and (npc.id.begins_with("p_") or npc.id.begins_with("w_")) and not _town_plan.is_empty() \
-				and npc.pos.distance_to(GameConfig.OLD_TOWN_CENTER) > 200.0:
+				and npc.pos.distance_to(GameConfig.OLD_TOWN_CENTER) > 200.0 and npc.pos.distance_squared_to(npc.h_from) > 0.16:
+			npc.h_from = npc.pos
 			var hw := _land.surface_below(npc.pos, 50.0)
 			if hw != Land.NO_SURFACE:
 				npc.h = hw
@@ -2784,6 +2823,7 @@ func _update_npcs(delta: float) -> void:
 		npc.sprite.position = Vector3(npc.pos.x, npc.h + 0.02, npc.pos.y)
 		npc.blob.position = Vector3(npc.pos.x, npc.h + 0.04, npc.pos.y)
 		if shown:
+			npc.sprite.start_sheets()   # (ses feuilles ne se fabriquent qu'une fois qu'il est dans la zone affichée)
 			npc.sprite.drive(delta, move, false, false, Vector2.ZERO)
 		if npc.tag != null:   # son nom : seulement d'assez près (sinon la ville serait couverte d'étiquettes)
 			var here := _lpos if _loc == Loc.LAND else _my_world_pos()
@@ -3484,7 +3524,9 @@ func _update_islands(delta: float) -> void:
 				apply_hurt(int(ev["damage"]), ev["from"])
 			elif _net.active:
 				_net.send_hurt(tid, int(ev["damage"]), ev["from"])
-	_islands.update_visuals(delta, _is_authority())
+	var islands_focus := _sim.position if _loc != Loc.LAND and _loc != Loc.SWIM else _lpos
+	_islands.update_visuals(delta, _is_authority(), islands_focus)
+	_islands.stream(delta, islands_focus)   # (les îles lointaines sortent de la scène : voir IslandWorld.stream)
 	if _is_authority() and not _args.has("no-gen-islands"):
 		_gen_t -= delta
 		if _gen_t <= 0.0:
@@ -4483,6 +4525,7 @@ func _process(delta_raw: float) -> void:
 	_update_hud()
 	_apply_minimal_hud(delta)
 	_net.tick(delta)
+	_update_text_overlay()
 	if _args.has("log"):
 		_log_timer += delta
 		if _log_timer >= 1.0:
@@ -6796,6 +6839,13 @@ func _vue4_update(delta: float) -> void:
 		_vue4_apply(not _v4_persp)
 
 
+## Caméra à la barre (14/11) : crans de 45° ; elle change de cran quand le cap s'en écarte de plus de 32° (22,5° + une marge,
+## pour ne pas basculer d'un cran à l'autre quand on tient un cap entre deux).
+const HELM_YAW_STEP := PI / 4.0
+const HELM_YAW_SWITCH := PI * 32.0 / 180.0
+var _helm_yaw_goal := NAN
+
+
 func _update_camera(delta: float) -> void:
 	# La caméra suit le bateau (fixe à l'origine) plus le décalage du pirate sur le pont, en douceur.
 	# Caméra au sous-pixel : la 3D est rendue avec une caméra calée sur la grille de pixels (donc pas
@@ -6804,13 +6854,25 @@ func _update_camera(delta: float) -> void:
 	# 2 ou 3 pixels d'écran.
 	if _vue4_enabled():
 		_vue4_update(delta)
-	_cam_offset = _cam_offset.lerp(_camera_target(), 1.0 - exp(-delta * 6.0))
+	_cam_offset = _smooth_damp(_cam_offset, _deadzone(_camera_target(), delta) + _aim_lead(), delta)
 	_elev_deg = lerpf(_elev_deg, SHOULDER_ELEV_DEG if _shoulder_active() else (_v4_elev if _v4_persp else _elev_user), 1.0 - exp(-delta * 4.0))
 	# 13/11 (Jimmy : voir ce qui est devant soi) : en vue basse (V), à la barre, la caméra se place derrière le bateau et
 	# regarde vers l'avant ; à pied, on la tourne à la main (molette enfoncée)
 	if (_shoulder_active() or _v4_persp) and _loc == Loc.SHIP and _mode == Mode.HELM:   # (vue 4 : en mer, à la barre, la caméra se place derrière le bateau)
 		var fwd := _sim.forward()
-		_cam_yaw = lerp_angle(_cam_yaw, atan2(-fwd.x, -fwd.y), 1.0 - exp(-delta * 1.6))
+		# 14/11 (caméra à crans) : en pixel art, une caméra qui tourne fait onduler toute l'image à chaque instant. Elle reste
+		# donc sur un cap fixe, par crans de HELM_YAW_STEP, et ne change de cran (vite) que quand le bateau s'en est écarté de
+		# HELM_YAW_SWITCH ; entre deux crans, l'image est immobile.
+		var want := atan2(-fwd.x, -fwd.y)
+		if is_nan(_helm_yaw_goal):
+			_helm_yaw_goal = snappedf(want, HELM_YAW_STEP)
+		elif absf(angle_difference(_helm_yaw_goal, want)) > HELM_YAW_SWITCH:
+			_helm_yaw_goal = snappedf(want, HELM_YAW_STEP)
+		_cam_yaw = lerp_angle(_cam_yaw, _helm_yaw_goal, 1.0 - exp(-delta * 5.0))
+		if absf(angle_difference(_cam_yaw, _helm_yaw_goal)) < 0.002:
+			_cam_yaw = _helm_yaw_goal
+	else:
+		_helm_yaw_goal = NAN
 	_cam.rotation = Vector3(-deg_to_rad(_elev_deg), _cam_yaw, 0.0)   # (_cam_yaw : cap de la caméra, tourné avec la molette)
 	PirateSprite.view_yaw = _cam_yaw
 	var el := deg_to_rad(_elev_deg)
@@ -6862,9 +6924,98 @@ func _camera_target() -> Vector3:
 	return Vector3(rel.x, cam_h, rel.z)
 
 
+## 14/11 (zone morte à terre) : la caméra ne suit le pirate que quand il sort d'un petit cadre autour d'elle ; arrêté, elle se
+## recentre doucement sur lui. En pixel art, une caméra qui bouge sans cesse fait scintiller tout le décor : ici, elle reste
+## immobile pendant les petits pas (combat, visée, discussion). Ailleurs qu'à terre, la cible passe telle quelle.
+var _dz_anchor := Vector3.ZERO
+var _dz_on := false
+var _dz_still := 0.0
+var _dz_prev := Vector2.ZERO
+
+
+func _deadzone(target_rel: Vector3, delta: float) -> Vector3:
+	if _loc != Loc.LAND:
+		_dz_on = false
+		return target_rel
+	# (le cadre est tenu en coordonnées du monde : si le bateau bouge pendant qu'on est à terre, il ne glisse pas avec lui)
+	var origin := Vector3(_world_origin.x, 0.0, _world_origin.z)
+	var target := target_rel + origin
+	if not _dz_on:
+		_dz_on = true
+		_dz_anchor = target
+		_dz_prev = _lpos
+	_dz_still = _dz_still + delta if _lpos.distance_to(_dz_prev) < 0.002 else 0.0
+	_dz_prev = _lpos
+	# écart pirate - caméra dans les axes de l'écran (droite, bas), comme _snap_ground
+	var right := Vector2(cos(_cam_yaw), -sin(_cam_yaw))
+	var down := Vector2(sin(_cam_yaw), cos(_cam_yaw))
+	var d := Vector2(target.x - _dz_anchor.x, target.z - _dz_anchor.z)
+	var u := d.dot(right)
+	var w := d.dot(down)
+	var mu := signf(u) * maxf(absf(u) - GameConfig.CAM_DEADZONE_W, 0.0)
+	var mw := signf(w) * maxf(absf(w) - GameConfig.CAM_DEADZONE_H, 0.0)
+	var shift := right * mu + down * mw
+	_dz_anchor.x += shift.x
+	_dz_anchor.z += shift.y
+	if _dz_still > GameConfig.CAM_RECENTER_DELAY:
+		var k := 1.0 - exp(-delta * GameConfig.CAM_RECENTER_RATE)
+		_dz_anchor.x = lerpf(_dz_anchor.x, target.x, k)
+		_dz_anchor.z = lerpf(_dz_anchor.z, target.z, k)
+	_dz_anchor.y = target.y   # (la hauteur suit tout de suite : escaliers, terrasses)
+	return _dz_anchor - origin
+
+
+## 14/11 (caméra vers la visée) : au canon, la caméra glisse dans le sens du tube (on voit où tombe le boulet) ; à terre, elle
+## parcourt une part du chemin entre le pirate et la souris, plafonnée (Enter the Gungeon, Nuclear Throne). Ailleurs : rien.
+func _aim_lead() -> Vector3:
+	if _cam == null or _container == null or _args.has("no-aim-lead"):   # (--no-aim-lead : essais sans la souris)
+		return Vector3.ZERO
+	if _loc == Loc.SHIP and _gun_i >= 0 and _gun_i < _cannon_nodes.size():
+		var barrel := _cannon_nodes[_gun_i]["barrel"] as Node3D
+		var muzzle := _ship.to_global(ShipCannons.muzzle_local(_cannon_nodes[_gun_i]))
+		var d := Vector2(muzzle.x - barrel.global_position.x, muzzle.z - barrel.global_position.z)
+		if d.length() < 0.01:
+			return Vector3.ZERO
+		d = d.normalized() * GameConfig.CAM_AIM_CANNON
+		return Vector3(d.x, 0.0, d.y)
+	if _loc != Loc.LAND or _dialog.is_open() or _shop_menu.is_open() or _chart.is_open() or _pause.is_open() or _inventory.is_open():
+		return Vector3.ZERO
+	var mouse := get_viewport().get_mouse_position()
+	if not get_viewport().get_visible_rect().has_point(mouse) or not get_window().has_focus():
+		return Vector3.ZERO
+	var feet := _container.position + _cam.unproject_position(_land_point(_lpos, _lh)) * float(_factor)
+	var d := mouse - feet
+	var px_per_m := _ppm() * float(_factor)
+	var w := Vector2(d.x, d.y / sin(deg_to_rad(_elev_deg))).rotated(-_cam_yaw) / px_per_m   # (écran -> monde, comme _aim_at_click)
+	w = (w * GameConfig.CAM_AIM_SHARE).limit_length(GameConfig.CAM_AIM_MAX)
+	return Vector3(w.x, 0.0, w.y)
+
+
 ## Place la caméra d'un coup sur sa cible (changement d'étage : pas de glissement de 40 m).
 func _snap_camera() -> void:
 	_cam_offset = _camera_target()
+	_cam_vel = Vector3.ZERO
+
+
+## 14/11 (caméra) : ressort amorti critique, la forme « SmoothDamp » (Game Programming Gems 4 ; Ryan Juckett, « Damped Springs »).
+## Avant : un rapprochement exponentiel, qui part d'un coup à pleine vitesse et ralentit ensuite. Le ressort garde une vitesse :
+## il accélère, puis freine, et ne dépasse jamais la cible. Indépendant de la cadence d'images.
+var _cam_vel := Vector3.ZERO
+
+
+func _smooth_damp(current: Vector3, target: Vector3, delta: float) -> Vector3:
+	var omega := 2.0 / maxf(GameConfig.CAM_SMOOTH_TIME, 0.001)
+	var x := omega * delta
+	var decay := 1.0 / (1.0 + x + 0.48 * x * x + 0.235 * x * x * x)
+	var change := current - target
+	var temp := (_cam_vel + omega * change) * delta
+	_cam_vel = (_cam_vel - omega * temp) * decay
+	var out := target + (change + temp) * decay
+	# pas de dépassement : si on a franchi la cible, on s'y pose
+	if (target - current).dot(out - target) > 0.0:
+		out = target
+		_cam_vel = Vector3.ZERO
+	return out
 
 
 ## Cale une position au sol sur la grille de pixels de l'écran (x : 1 px ; z : 1 px vertical).
@@ -7083,13 +7234,11 @@ func _unhandled_input(event: InputEvent) -> void:
 			_lh = keep_h
 			_try_attack(mb.button_index == MOUSE_BUTTON_RIGHT)
 		elif mb.pressed and mb.button_index == MOUSE_BUTTON_WHEEL_UP:
-			_zoom_user = clampf(_zoom_user * 1.12, 0.4 if _vue4_enabled() else 0.55, 1.9)   # molette : on se rapproche
-			if _vue4_enabled():
-				_say("Zoom x%.2f" % _zoom_user, 0.8)
+			_zoom_user = clampf(_zoom_user * 2.0, 0.25, 4.0)   # molette : un palier plus près (voir ZOOM_STEPS)
+			_say("Zoom x%s" % str(_zoom_step(_zoom_goal()) * _hd()), 0.8)
 		elif mb.pressed and mb.button_index == MOUSE_BUTTON_WHEEL_DOWN:
-			_zoom_user = clampf(_zoom_user / 1.12, 0.4 if _vue4_enabled() else 0.55, 1.9)   # on s'éloigne
-			if _vue4_enabled():
-				_say("Zoom x%.2f" % _zoom_user, 0.8)
+			_zoom_user = clampf(_zoom_user / 2.0, 0.25, 4.0)   # un palier plus loin
+			_say("Zoom x%s" % str(_zoom_step(_zoom_goal()) * _hd()), 0.8)
 		return
 	if not (event is InputEventKey):
 		return
@@ -11025,3 +11174,96 @@ func _raft_prompt() -> String:
 	var kts := _raft.sim.speed * 1.944 if _raft != null else 0.0
 	var sail := "voile hissée" if _raft != null and _raft.sim.sail_level > 0 else "voile affalée"
 	return "Radeau (%.1f nœuds, %s) — A/D : barrer   W/S : hisser / affaler   E : débarquer   Espace : plonger" % [kts, sail]
+
+
+# ------------------------------------------------------------------ textes en pleine résolution (14/11)
+# Le monde est rendu en gros pixels puis agrandi : un texte posé dans la scène (Label3D : noms, panneaux, indications) était
+# agrandi avec lui et devenait illisible. En gros pixels, les Label3D sont donc cachés à la caméra du jeu (couche 2) et redessinés
+# ici par des Label 2D à la résolution de l'écran, à la même place et à la même taille.
+
+var _txt_layer: Control
+var _txt_labels: Array[Label3D] = []
+var _txt_pool: Array[Label] = []
+var _txt_overlay := false
+
+
+func _build_text_overlay() -> void:
+	_txt_layer = Control.new()
+	_txt_layer.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_txt_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_txt_layer)
+	get_tree().node_added.connect(func(n: Node) -> void:
+		if is_instance_valid(n) and n is Label3D:
+			_txt_labels.append(n as Label3D)
+			(n as Label3D).layers = 2 if _txt_overlay else 1)
+
+
+func _set_text_overlay(on: bool) -> void:
+	_txt_overlay = on
+	if _cam != null:
+		_cam.cull_mask = 1 if on else 0xFFFFF
+	for l: Label3D in _txt_labels:
+		if is_instance_valid(l):
+			l.layers = 2 if on else 1
+	if not on:
+		for t: Label in _txt_pool:
+			t.visible = false
+
+
+func _update_text_overlay() -> void:
+	if _txt_layer == null or _cam == null:
+		return
+	var want := _factor > 1
+	if want != _txt_overlay:
+		_set_text_overlay(want)
+	if not want:
+		return
+	var used := 0
+	var alive: Array[Label3D] = []
+	var screen := Vector2(size)
+	var right := _cam.global_transform.basis.x
+	var f := float(_factor)
+	for l: Label3D in _txt_labels:
+		if not is_instance_valid(l):
+			continue
+		alive.append(l)
+		if l.text == "" or l.modulate.a < 0.02 or not l.is_visible_in_tree():
+			continue
+		var wp := l.global_position
+		if _cam.is_position_behind(wp):
+			continue
+		var a := (_cam.unproject_position(wp) - Vector2.ONE) * f   # (l'image du jeu est décalée d'un pixel de jeu : voir _layout_view)
+		if a.x < -300.0 or a.y < -150.0 or a.x > screen.x + 300.0 or a.y > screen.y + 150.0:
+			continue
+		var per_m := ((_cam.unproject_position(wp + right) - _cam.unproject_position(wp)).length()) * f
+		var unit := l.pixel_size * per_m   # pixels d'écran par pixel de police
+		var px := maxi(int(roundf(float(l.font_size) * unit)), 14)   # (jamais plus petit que 14 px : lisible)
+		var t: Label
+		if used < _txt_pool.size():
+			t = _txt_pool[used]
+		else:
+			t = Label.new()
+			t.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			t.label_settings = LabelSettings.new()
+			_txt_layer.add_child(t)
+			_txt_pool.append(t)
+		used += 1
+		var ls := t.label_settings
+		if l.font != null and ls.font != l.font:
+			ls.font = l.font
+		if ls.font_size != px:
+			ls.font_size = px
+		ls.font_color = Color(1, 1, 1, 1)
+		ls.outline_size = int(roundf(float(l.outline_size) * unit))
+		ls.outline_color = l.outline_modulate
+		t.modulate = l.modulate
+		if t.text != l.text:
+			t.text = l.text
+		t.visible = true
+		var sz := t.get_minimum_size()
+		t.size = sz
+		t.position = (a - sz * 0.5).round()
+	_txt_labels = alive
+	for i in range(used, _txt_pool.size()):
+		_txt_pool[i].visible = false

@@ -25,6 +25,7 @@ var wander_to := Vector2.ZERO
 var target_id := 0
 var node: Node3D
 var ground_y := 0.0           ## hauteur du sol sous l'ennemi (plateau, rampe)
+var visual_placed := false     ## vrai une fois posé à sa place (les ennemis lointains ne sont plus animés : voir IslandWorld.update_visuals)
 var remote_target := Vector2.ZERO   ## chez un client : où l'hôte dit qu'il est
 var _parts: Dictionary = {}
 var _meshes: Array[MeshInstance3D] = []

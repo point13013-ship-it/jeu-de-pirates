@@ -16,6 +16,7 @@ var blob: MeshInstance3D       ## ombre ronde sous ses pieds
 var interior := -1             ## indice de l intérieur où il se tient (-1 : dehors)
 var tag: Label3D               ## son nom au-dessus de la tête (visible d'assez près)
 
+var h_from := Vector2(1.0e9, 1.0e9)   ## où la hauteur du sol a été cherchée la dernière fois (le jeu ne la refait qu'après un pas)
 var _path: Array[Vector2] = []
 var _target := 1
 var _speed := 1.0
@@ -37,6 +38,8 @@ static func from_data(d: Dictionary, walker: bool) -> TownNpc:
 		look["parts"][k] = parts[k]
 	n.sprite = PirateSprite.new()
 	n.sprite.compass_enabled = false   # lot 8 (10.4) : plus de boussole dans la main des habitants (bras le long du corps)
+	n.sprite.anims_only = ["idle", "walk"]   # 14/11 (fps) : un habitant ne porte, ne grimpe, ne saute jamais
+	n.sprite.lazy_sheets = true              # ... et ses feuilles ne se fabriquent que s'il est assez près pour être vu
 	n.sprite.set_look(look)
 	n.tag = _make_tag(n.display_name, n.role)
 	n.sprite.add_child(n.tag)

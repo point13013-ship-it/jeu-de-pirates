@@ -327,3 +327,74 @@ Plan complet et réponses de Jimmy : design/plan-retours-session-3-joueurs.md.
 - Menu principal : fond refait (shaders/menu_sea.gdshader, coucher de soleil en gros pixels, palette v1), ponton sous le pirate.
 - Reste de la refonte : silhouettes d'îles (falaises en strates, épaves, ruines), autres menus (pause, boutique, création du
   pirate), sillage en texture, reflets des lanternes, vue sous l'eau.
+
+## Performances et HD (14/11/2026, demande d'Ilan : « ça freeze, et on ne voit pas bien tous les éléments »)
+
+Mesuré à 1920x1080 (RTX 5060, GPU à 15 % : le jeu était limité par le processeur, pas par la carte graphique) : 20 images/s
+au port avant, 50 à 80 après (52 en mer, 78 à l'arrêt au port).
+
+- **HD** : essayé (pixels fins par défaut), puis retiré : ça redevenait de la 3D lisse. La vue 4 reste en gros pixels ; `--hd=2` donne les pixels fins.
+- **Le « freeze » du début** : chaque habitant (78) fabriquait 7 feuilles d'animation (une composition = au moins 5 images de rendu
+  + une lecture de la carte graphique, une à la fois) : plus d'une minute à 25 images/s. Maintenant : habitants limités à
+  `idle` et `walk`, feuilles fabriquées seulement quand l'habitant entre dans la zone affichée (`PirateSprite.lazy_sheets`,
+  `start_sheets`), et **cache disque** `user://sheet_cache` (feuilles sans arme). Premier lancement : ~18 s un peu plus lents,
+  ensuite plus rien. **Quand les images des pirates ou leur teinture changent : monter `SHEET_CACHE_REV`** (pirate_sprite.gd).
+- Habitants hors de vue (`NPC_CULL_RANGE` 85 m) : ni animés ni dessinés ; recherche du sol sous leurs pieds seulement après 40 cm
+  de marche (220 ms/s avant) ; `PirateSprite._apply` ne retouche plus les matières quand rien ne change.
+- Îles : ennemis et coffres animés seulement à moins de 110 m (`VISUAL_RANGE`, ~130 ms/s avant) ; îles à plus de 330 m du
+  rivage retirées de la scène et remises à moins de 290 m (`IslandWorld.stream`) : chaque île découverte ajoutait ~150 nœuds
+  déplacés à chaque image, le jeu ralentissait au fil de la navigation.
+- `_world_fixed.position` n'est réécrit que s'il change (1,7 ms par image, même à l'arrêt).
+- **Pas fait** (par ordre de gain) : le monde défile sous le bateau (tout `_world_fixed` est déplacé à chaque image en mer : ~9 ms) ;
+  le bateau fait ~930 petits MeshInstance3D (cordages 147, échelons, cadres de fenêtres) : les fusionner par matière gagnerait
+  ~2 ms ; ils projettent tous une ombre.
+- Vérifié : tests unitaires (tous verts sauf `test_town.gd`, déjà en échec), capture `qa_vue4/hd_port_apres.png`, île qui
+  réapparaît après téléportation loin puis retour. Pas rejoué : jeu à plusieurs, combat à terre sur une île, abordage.
+
+## Caméra : zooms par paliers entiers (14/11/2026)
+
+Recherche (Itay Keren « Scroll Back », John Nesky « 50 Camera Mistakes », article « Texel Splatting » 2026, forums Godot) :
+en pixel art, la taille d'un pixel du dessin doit tomber sur un nombre entier de pixels du jeu. Les pirates sont dessinés à
+36 px/m ; avec un zoom de 0,85 (terre) ou 0,52 (barre), leurs pixels étaient inégaux et ondulaient pendant que la molette glissait.
+
+- Le zoom ne prend plus que les paliers `ZOOM_STEPS` (0,25 / 0,5 / 1 / 2, divisés par `_hd()`) : terre 0,85 -> 1 (un peu plus
+  près), mer 0,5, barre 0,52 -> 0,5, vigie 0,30 -> 0,25, longue-vue 0,9 -> 1. La transition reste douce, puis se pose exactement.
+- Molette : un palier par cran (x2), message « Zoom xN ». `ZOOM_MAX` 2.
+- Limite : en mer (0,5) un pirate n'affiche qu'un pixel de dessin sur deux (régulier, mais deux fois moins de détail) ; un cran
+  de molette donne le palier 1. Captures : `qa_vue4/zoom/` (avant / après, à terre et au port).
+- Remarque vue au port : les noms des habitants proches se superposent parfois (Corbin, Passant) ; ils étaient déjà dessinés
+  par-dessus tout avant.
+
+## Caméra à la barre par crans (14/11/2026)
+
+En pixel art, une caméra qui tourne fait onduler toute l'image. À la barre (vue 4), la caméra ne suit plus le cap en continu :
+elle reste sur un cap fixe par crans de 45° (`HELM_YAW_STEP`) et passe au cran suivant, en moins d'une seconde, quand le bateau
+s'en est écarté de plus de 32° (`HELM_YAW_SWITCH`, marge pour ne pas basculer en boucle). Vérifié au journal (virage continu :
+caméra fixe à 180°, 135°, 90°, 45°). Capture : `qa_vue4/zoom/barre_crans.png`. Pas encore senti en jouant.
+
+## Caméra vers la visée (14/11/2026)
+
+`_aim_lead()` (sailing_game.gd), réglages `CAM_AIM_*` (game_config.gd) :
+- À terre : la caméra parcourt 25 % du chemin pirate -> souris, sans dépasser 3,5 m (le pirate reste à l'écran). Coupé quand un
+  menu, la carte, le sac ou un dialogue est ouvert, quand la souris sort de la fenêtre ou que la fenêtre n'a pas le focus.
+- Au canon : la caméra glisse de 8 m dans le sens du tube (on voit où part le boulet).
+- Vérifié : souris à droite puis à gauche de l'écran (le pirate se décale de ~250 px du bon côté), capture au canon
+  `qa_vue4/zoom/canon_visee.png`. Essai : `--mouse=x,y` place la souris au bout de 2 s.
+- Pas fait : sur le pont à pied et à la nage (la vue en perspective rend la souris -> sol trop instable).
+
+## Zone morte de la caméra à terre (14/11/2026)
+
+`_deadzone()` (sailing_game.gd), réglages `CAM_DEADZONE_*` et `CAM_RECENTER_*` (game_config.gd) : à terre, le pirate bouge dans un
+cadre de 3 m x 2 m autour de la caméra sans qu'elle suive ; il la pousse quand il en sort ; à l'arrêt depuis 0,5 s, elle se recentre
+doucement. Le cadre est tenu en coordonnées du monde (le bateau peut bouger pendant qu'on est à terre). La visée (souris) s'ajoute
+après. Vérifié au journal de position : un pas de 1,2 m ne déplace pas la caméra, puis elle se recentre ; en marchant, elle suit
+avec ~3 m de retard (cadre + lissage + visée vers la souris). Pas encore senti en jouant.
+
+## Suivi de caméra par ressort amorti (14/11/2026)
+
+`_smooth_damp()` (sailing_game.gd, forme « SmoothDamp » : Game Programming Gems 4, Ryan Juckett « Damped Springs »), réglage
+`CAM_SMOOTH_TIME` 0,25 s (game_config.gd). Remplace le rapprochement exponentiel qui partait d'un coup à pleine vitesse. La caméra
+garde une vitesse : elle accélère, puis freine, sans jamais dépasser sa cible ; `_snap_camera` remet la vitesse à zéro.
+Vérifié au journal de position (`--no-aim-lead` coupe la visée à la souris pour un essai reproductible) : immobile tant que le
+pirate reste dans la zone morte, départ progressif, ~2,4 m de retard en marchant, arrêt en douceur sans dépassement, puis
+recentrage. Pas encore senti en jouant. Les cinq pistes caméra de la recherche du 14/11 sont faites.

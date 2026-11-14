@@ -2,6 +2,17 @@
   "_commentaire": "Les nouveautés affichées dans la salle de jeux (bouton Nouveautés, et après chaque mise à jour). La plus récente d'abord. 'version': 'prochaine' est remplacé par le numéro de la version au moment de la publication (publish.ps1). Les images sont les fichiers de ce dossier ; publish.ps1 les envoie avec la version.",
   "versions": [
     {
+      "version": "prochaine",
+      "titre": "Nouvelle vue en mer, jeu plus fluide",
+      "points": [
+        "En mer, la caméra passe en vue basse avec l'horizon : on voit les îles arriver de loin. À terre et dans la cale, la vue de dessus reste. Molette enfoncée + souris haut/bas : incliner la vue en mer.",
+        "Rendu en vrai pixel art : gros pixels nets, ciel en bandes de couleur avec des nuages, eau, voiles et ombres plus nettes.",
+        "Beaucoup plus fluide : plus de ralentissement au démarrage ni au fil de la navigation (au port, de 20 à plus de 100 images par seconde sur notre PC).",
+        "Les noms, panneaux et indications dans le monde sont maintenant nets et lisibles.",
+        "Caméra revue : la molette zoome par paliers (pixels toujours réguliers), à la barre la caméra tourne par crans, à terre elle regarde un peu vers ta souris, au canon dans le sens du tir, et elle suit en douceur."
+      ]
+    },
+    {
       "version": "2026.11.13-2148",
       "titre": "Petit correctif",
       "points": [

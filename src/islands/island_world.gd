@@ -933,14 +933,60 @@ func spawn_slash(origin: Vector2, dir: Vector2) -> void:
 
 
 ## Chaque image, chez tout le monde : animations des ennemis, des coffres, des coups de sabre.
-func update_visuals(delta: float, authority: bool) -> void:
+## Îles lointaines : on les retire de la scène (leurs nœuds restent en mémoire) tant qu'on en est à plus de STREAM_OUT m du rivage, et on
+## les remet à moins de STREAM_IN m. 14/11 (fps) : chaque île ajoute ~150 nœuds, tous déplacés à chaque image quand le bateau avance
+## (le monde défile sous lui) ; le jeu ralentissait à mesure qu'on découvrait des îles. La caméra ne voit pas plus loin que 250 m.
+const STREAM_OUT := 330.0
+const STREAM_IN := 290.0
+var _stream_t := 0.0
+
+
+func stream(delta: float, focus: Vector2) -> void:
+	if _root == null:
+		return
+	_stream_t -= delta
+	if _stream_t > 0.0:
+		return
+	_stream_t = 0.5
+	for isl: Dictionary in islands:
+		var node := isl["node"] as Node3D
+		if node == null:
+			continue
+		var d := (isl["center"] as Vector2).distance_to(focus) - float(isl["radius"])
+		if node.is_inside_tree():
+			if d > STREAM_OUT:
+				_root.remove_child(node)
+		elif d < STREAM_IN:
+			_root.add_child(node)
+
+
+## Une île retirée de la scène n'a plus de parent pour la libérer : on le fait à la fin.
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_PREDELETE:
+		for isl: Dictionary in islands:
+			var node: Variant = isl.get("node")
+			if is_instance_valid(node) and node is Node and not (node as Node).is_inside_tree():
+				(node as Node).free()
+
+
+## `focus` : où se trouve le joueur ; ce qui est plus loin que VISUAL_RANGE n'est pas animé (14/11, fps : toutes les îles animaient
+## tous leurs ennemis et leurs coffres à chaque image, ~130 ms par seconde). Sans `focus`, tout est animé.
+const VISUAL_RANGE := 110.0
+func update_visuals(delta: float, authority: bool, focus: Vector2 = Vector2(INF, INF)) -> void:
 	if _root == null:
 		return
 	_time += delta
+	var r2 := VISUAL_RANGE * VISUAL_RANGE
+	var gated := is_finite(focus.x)
 	for en in enemies:
+		if gated and en.visual_placed and en.pos.distance_squared_to(focus) > r2:
+			continue
 		en.ground_y = height(en.island, en.pos)
 		en.update_visual(delta, _time, authority)
+		en.visual_placed = true
 	for ch: Dictionary in chests:
+		if gated and (ch["pos"] as Vector2).distance_squared_to(focus) > r2:
+			continue
 		var target := -1.9 if ch["open"] else 0.0
 		ch["lid_angle"] = lerpf(float(ch["lid_angle"]), target, 1.0 - exp(-delta * 9.0))
 		(ch["lid"] as Node3D).rotation.x = float(ch["lid_angle"])

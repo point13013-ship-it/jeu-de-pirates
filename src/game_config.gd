@@ -167,7 +167,8 @@ const CAM_HEAVE_FOLLOW := 0.35        ## part du soulèvement du pont que la cam
 
 # ------------------------------------------------------------------ Lot 8 (en avance) : interface
 
-const NPC_NAME_RANGE := 9.0           ## m : le nom d'un habitant s'affiche à cette distance
+const NPC_CULL_RANGE := 85.0          ## m : au-delà, un habitant n'est ni animé ni dessiné (fps ; la vigie voit à ~50 m)
+const NPC_NAME_RANGE := 9.0          ## m : le nom d'un habitant s'affiche à cette distance
 const CHART_CELL := 100.0             ## 10.2 : m, côté d'une case de la grille de la carte
 const CHART_COL_OFFSET := 13          ## la colonne du port (x = 0) est la 14e lettre (N)
 const CHART_ROW_OFFSET := 20          ## la ligne du port (z = 0) est la ligne 20
@@ -336,6 +337,17 @@ const SAND_BAND := 3.4               ## m du rivage d'une île où l'on marche d
 const CAM_ELEV_MIN := 16.0             ## (12/11 : 24 ; plus bas, on voit loin devant, presque à hauteur d'yeux)
 const CAM_ELEV_MAX := 72.0
 const CAM_LOOKAHEAD := 7.0             ## m : de combien la caméra glisse devant l'étrave à pleine vitesse (x2 en vue rasante)
+## 14/11 : la caméra regarde vers la visée (principe d'Enter the Gungeon / Nuclear Throne)
+const CAM_AIM_SHARE := 0.25            ## à terre : part du chemin pirate -> souris que la caméra parcourt
+const CAM_AIM_MAX := 3.5               ## m : … sans jamais s'écarter davantage du pirate (il reste bien à l'écran)
+const CAM_AIM_CANNON := 8.0            ## m : au canon, la caméra glisse d'autant dans le sens du tir
+## 14/11 : zone morte à terre (Itay Keren, « camera window ») : le pirate bouge dans ce cadre sans que la caméra suive
+const CAM_DEADZONE_W := 1.5            ## m : demi-largeur du cadre (gauche-droite de l'écran)
+const CAM_DEADZONE_H := 1.0            ## m : demi-profondeur du cadre (haut-bas de l'écran)
+const CAM_RECENTER_DELAY := 0.5        ## s : à l'arrêt depuis ce temps, la caméra se recentre doucement sur le pirate
+const CAM_RECENTER_RATE := 1.5         ## vitesse de ce recentrage (plus grand : plus vite)
+## 14/11 : suivi par ressort amorti (critique) : la caméra démarre et s'arrête en douceur, sans dépasser sa cible
+const CAM_SMOOTH_TIME := 0.25          ## s : temps de réaction (plus grand : plus mou ; l'ancien lissage valait ~0,17 s)
 const CAM_RESET_CLICK_GAP := 0.4
 ## Touche M (essais) : le pirate vole au-dessus de la carte, vite, pour aller voir les îles.
 const FLY_SPEED := 45.0                ## m/s

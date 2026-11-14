@@ -263,11 +263,36 @@ func set_look(new_look: Dictionary) -> void:
 	look = PirateLook.sanitize(new_look)
 	_palette_dirty = true
 	_textures.clear()
+	if lazy_sheets and not _sheets_started:
+		return   # (les feuilles ne se fabriquent qu'à l'appel de start_sheets : voir plus bas)
 	var sig := _sig()
-	for a: String in FPS:
+	for a: String in _wanted_anims():
 		_request(a, sig)
 	if _actions_on:
 		for a: String in ACTION_FPS:
+			_request(a, sig)
+
+
+## 14/11 (fps) : un habitant n'a besoin que de « idle » et « walk » (jamais de porter, grimper, sauter ni de barre) et ses feuilles
+## ne se fabriquent que quand il entre dans la zone affichée. Chaque feuille coûte au moins cinq images de rendu : 78 habitants x
+## 7 animations tenaient le jeu à 25 images/s pendant plus d'une minute.
+var anims_only: Array[String] = []   ## vide : toutes les animations (FPS)
+var lazy_sheets := false             ## vrai : les feuilles attendent start_sheets()
+var _sheets_started := false
+
+
+func _wanted_anims() -> Array:
+	return anims_only if not anims_only.is_empty() else FPS.keys()
+
+
+## Lance la fabrication des feuilles d'un sprite « paresseux » (une seule fois).
+func start_sheets() -> void:
+	if _sheets_started:
+		return
+	_sheets_started = true
+	if not look.is_empty():
+		var sig := _sig()
+		for a: String in _wanted_anims():
 			_request(a, sig)
 
 
@@ -279,10 +304,12 @@ func set_weapon(weapon: String, skin: String = WeaponSkins.CLASSIC) -> void:
 	held_weapon = weapon
 	held_skin = skin
 	_palette_dirty = true
+	if lazy_sheets and not _sheets_started:
+		return
 	var sig := _sig()
 	# (13/11 : on redemande aussi les feuilles qui ne sont pas encore arrivées. Elles avaient été lancées pour l'ancienne arme :
 	# leur résultat est jeté, et sans cela « porte un coffre », « barre », « échelle » ne se chargeaient jamais.)
-	for a: String in FPS:
+	for a: String in _wanted_anims():
 		if WeaponArt.holds(a) or not _textures.has(a):
 			_request(a, sig)
 	if _actions_on:
@@ -375,23 +402,42 @@ func _apply() -> void:
 		visible = false
 		return
 	visible = true
-	var frames: int = int(PirateLook.catalog()["anims"][used])
-	if hframes != frames:
-		hframes = frames
-	if texture != tex:
-		texture = tex
-	frame = direction * frames + (_forced_frame if _forced_frame >= 0 else int(_time) % frames)
+	var frames: int = _frames_of(used)
+	var new_frame := direction * frames + (_forced_frame if _forced_frame >= 0 else int(_time) % frames)
 	# 13/11 : de face (direction 0) et de dos (4), les images de marche ne montrent pas les pas (les jambes viennent vers la
 	# caméra) : le pirate glissait, surtout en portant un coffre. Le shader lève un pied puis l'autre, au rythme de la marche.
 	var phase := 0.0
-	if used.ends_with("walk") and (direction == 0 or direction == 4):
-		phase = sin(TAU * _time / float(frames))
-	for m: ShaderMaterial in [_main_mat, _xray_mat]:
-		if m != null:
-			m.set_shader_parameter("step_phase", phase)
-			m.set_shader_parameter("sheet", Vector2(frames, 8.0))
-	_sync_depth_and_xray()
+	if direction == 0 or direction == 4:
+		if used.ends_with("walk"):
+			phase = sin(TAU * _time / float(frames))
+	# 14/11 (fps) : cette fonction tourne à chaque image pour chaque pirate ; quand rien ne change (même image, même feuille, même
+	# pas), on ne touche ni aux matières ni à la silhouette.
+	if tex != texture or frames != hframes or new_frame != frame or no_depth_test != _ap_no_depth or not is_equal_approx(phase, _ap_phase):
+		if hframes != frames:
+			hframes = frames
+		if texture != tex:
+			texture = tex
+		frame = new_frame
+		for m: ShaderMaterial in [_main_mat, _xray_mat]:
+			if m != null:
+				m.set_shader_parameter("step_phase", phase)
+				m.set_shader_parameter("sheet", Vector2(frames, 8.0))
+		_ap_phase = phase
+		_ap_no_depth = no_depth_test
+		_sync_depth_and_xray()
 	_update_compass()
+
+
+var _ap_phase := -99.0
+var _ap_no_depth := false
+static var _frames_cache: Dictionary = {}
+
+
+## Nombre d'images d'une animation (le catalogue est lu une fois, puis gardé ici).
+static func _frames_of(anim_name: String) -> int:
+	if not _frames_cache.has(anim_name):
+		_frames_cache[anim_name] = int(PirateLook.catalog()["anims"][anim_name])
+	return int(_frames_cache[anim_name])
 
 
 ## La feuille d'une animation pour un look : calculée une fois puis gardée.
@@ -412,10 +458,46 @@ static func texture_for(p_look: Dictionary, a: String, weapon: String = "", skin
 	register_colors(PirateLook.sanitize(p_look))
 	if not sheets.is_empty():
 		register_weapon(weapon, skin)
-	var tex: Texture2D = await _compose(PirateLook.sanitize(p_look), a, sheets)
+	var tex: Texture2D = null
+	var disk := ""
+	if sheets.is_empty():
+		disk = _disk_path(key)
+		tex = _disk_load(disk)
+	if tex == null:
+		tex = await _compose(PirateLook.sanitize(p_look), a, sheets)
+		if disk != "" and tex != null:
+			_disk_save(disk, tex)
 	_cache[key] = tex
 	_building.erase(key)
 	return tex
+
+
+## 14/11 (fps) : cache disque des feuilles sans arme (user://sheet_cache). Fabriquer une feuille coûte au moins cinq images de rendu
+## et une lecture de la carte graphique ; les habitants sont les mêmes à chaque partie : on ne les fabrique qu'une fois.
+## À CHANGER quand les images des pirates ou leur teinture changent : SHEET_CACHE_REV (le catalogue et le shader y sont déjà).
+const SHEET_CACHE_REV := 1
+const SHEET_CACHE_DIR := "user://sheet_cache/"
+static var _disk_token := ""
+
+
+static func _disk_path(key: String) -> String:
+	if _disk_token == "":
+		_disk_token = (str(SHEET_CACHE_REV) + FileAccess.get_md5(PirateLook.CATALOG_PATH) + SHADE_SHADER.md5_text()).md5_text().substr(0, 10)
+	return SHEET_CACHE_DIR + _disk_token + "_" + key.md5_text() + ".png"
+
+
+static func _disk_load(path: String) -> Texture2D:
+	if not FileAccess.file_exists(path):
+		return null
+	var img := Image.load_from_file(path)
+	if img == null or img.is_empty():
+		return null
+	return ImageTexture.create_from_image(img)
+
+
+static func _disk_save(path: String, tex: Texture2D) -> void:
+	DirAccess.make_dir_recursive_absolute(SHEET_CACHE_DIR)
+	tex.get_image().save_png(path)
 
 
 ## La couleur d'un pixel de ton `t` (gris de la feuille, 0..1) pour une pièce de teinte `tint`.
