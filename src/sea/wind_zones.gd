@@ -7,6 +7,7 @@ extends RefCounted
 ## - Sautes : gérées par l'hôte (step), l'angle du vent est déjà diffusé avec l'état du bateau.
 
 const CELL := 420.0            ## m : côté d'une case
+const CALMS_ENABLED := false   ## 14/11 (demande d'Ilan : « je ne veux pas faire du sur-place ») : plus de zones de calme ; true pour les remettre
 const ODDS := 0.34             ## part des cases qui portent un calme
 const RADIUS_MIN := 80.0       ## m
 const RADIUS_MAX := 130.0
@@ -53,6 +54,8 @@ static func zone_of(cx: int, cy: int) -> Vector3:
 
 ## Force du vent en `p` (monde x/z) : 1 partout, STRENGTH au cœur d'un calme, progressif sur le bord.
 static func strength_at(p: Vector2) -> float:
+	if not CALMS_ENABLED:
+		return 1.0
 	var cx := floori(p.x / CELL)
 	var cy := floori(p.y / CELL)
 	var s := 1.0
