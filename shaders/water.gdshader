@@ -102,7 +102,7 @@ float waves_at(vec2 p) {
 }
 
 // pente de la surface (houle + vaguelettes) et hauteur des vaguelettes
-vec3 slope_at(vec2 p, float t_ripple) {
+vec3 slope_at(vec2 p, float t_ripple, float calm) {
 	vec2 g = vec2(0.0);
 	for (int i = 0; i < 4; i++) {
 		g += waves[i].x * wave_slope(p.x * waves[i].y + p.y * waves[i].z + sea_time * waves[i].w) * waves[i].yz;
@@ -115,7 +115,7 @@ vec3 slope_at(vec2 p, float t_ripple) {
 	float gust = 0.55 + 0.45 * sin(p.x * 0.09 + p.y * 0.13) * sin(p.x * 0.05 - p.y * 0.11 + 1.3);
 	for (int i = 0; i < 5; i++) {
 		float ph = q.x * RIPPLES[i].y + q.y * RIPPLES[i].z + t_ripple * RIPPLES[i].w;
-		float a = RIPPLES[i].x * gust;
+		float a = RIPPLES[i].x * gust * calm;
 		g += a * cos(ph) * RIPPLES[i].yz;
 		hr += a * sin(ph);
 	}
@@ -161,6 +161,15 @@ void vertex() {
 }
 
 void fragment() {
+	// vue 4 (perspective) : la hauteur de vague et l'écume de sillage sont recalculées PAR PIXEL. Interpolées entre les sommets du maillage, elles
+	// découpent l'eau en grands polygones aux bords droits près de la caméra (les triangles y sont grands). Orthographique : inchangé.
+	float wh = wave_h;
+	float wf = wake_foam;
+	if (PROJECTION_MATRIX[3][3] < 0.5) {
+		vec2 wk = wake_at(wp.xz);
+		wh = waves_at(wp.xz) + wk.x;
+		wf = wk.y;
+	}
 	// épaisseur d'eau entre la surface et ce qu'il y a dessous, le long du regard (pour l'écume
 	// tout contre la coque)
 	float depth = texture(depth_tex, SCREEN_UV).r;
@@ -172,7 +181,12 @@ void fragment() {
 	// animation continue : à la bonne cadence (144 images/s), des paliers font « sauter » toute la mer
 	float t_rip = TIME * 0.8;
 	float st = TIME * 0.6;
-	vec3 s = slope_at(wp.xz, t_rip);
+	// vue 4 (perspective) : au loin, les vaguelettes s'apaisent (la houle reste) : une mer plus claire à lire vers l'horizon, sans bruit de pixels.
+	// Rien ne change en orthographique (PROJECTION_MATRIX[3][3] = 1).
+	float calm = 1.0 - 0.8 * smoothstep(55.0, 230.0, length(VERTEX)) * (1.0 - PROJECTION_MATRIX[3][3]);
+	vec3 s = slope_at(wp.xz, t_rip, calm);
+	// direction du regard, par pixel (en perspective elle change d'un pixel à l'autre ; en orthographique c'est la même partout)
+	vec3 vdir = normalize((INV_VIEW_MATRIX * vec4(VIEW, 0.0)).xyz);
 	vec3 n = normalize(vec3(-s.x, 1.0, -s.y));
 
 	// 4 tons selon l'orientation de la surface vers le soleil (écart à une mer parfaitement plate)
@@ -182,17 +196,17 @@ void fragment() {
 	// la houle se lit d'un coup d'œil (12/11) : sur le haut d'une vague, l'eau monte d'un ton ; au fond du creux, elle
 	// descend d'un ton. On voit les rangées de vagues avancer, en restant dans les quatre tons peints de la mer.
 	float amp = max(waves[0].x + waves[1].x + waves[2].x + waves[3].x, 0.01);
-	float rel = wave_h / amp;   // -0,7 (creux) .. 1,4 (crête)
+	float rel = wh / amp;   // -0,7 (creux) .. 1,4 (crête)
 	tone = clamp(tone + step(0.55, rel) - step(rel, -0.42), 0.0, 3.0);
 	vec3 col = c_trough;
 	col = mix(col, c_side, step(0.5, tone));
 	col = mix(col, c_lit, step(1.5, tone));
 	col = mix(col, c_crest, step(2.5, tone));
 	// reflet du ciel sur les pentes nettement tournées vers la caméra
-	float facing = dot(n, view_dir) - view_dir.y;
+	float facing = dot(n, vdir) - vdir.y;
 	col = mix(col, c_sky, step(band_width * 2.4, facing) * step(lit, band_width * 0.9));
 	// éclats du soleil : là où la vaguelette renvoie le soleil vers la caméra
-	vec3 half_v = normalize(sun_dir + view_dir);
+	vec3 half_v = normalize(sun_dir + vdir);
 	float spec = dot(n, half_v) - half_v.y;
 	col = mix(col, c_glint, step(band_width * 3.2, spec));
 	// moutons d'écume sur les plus hautes crêtes (houle + vaguelettes)
@@ -209,12 +223,12 @@ void fragment() {
 	float nz = sin(wp.x * 3.1 + st * 2.0) * sin(wp.z * 2.7 - st * 1.6);
 	vec2 hd = hull_dist(wp.xz);
 	float n2 = sin(wp.x * 2.3 - st * 2.6 + wp.z * 1.1) * sin(wp.z * 3.4 + st * 1.9 - wp.x * 0.7);
-	float band = 0.22 + 0.25 * ship_speed + max(wave_h, 0.0) * 1.6;
+	float band = 0.22 + 0.25 * ship_speed + max(wh, 0.0) * 1.6;
 	band *= 1.0 + smoothstep(0.7, 1.0, hd.y) * (0.3 + 1.0 * ship_speed);
 	float ring = step(0.0, hd.x) * step(hd.x, band * (0.7 + 0.35 * n2));
 	float ring_far = step(band * 1.2, hd.x) * step(hd.x, band * 1.55) * step(0.7, n2);
 	float contact = max(1.0 - step(contact_foam * (0.75 + 0.35 * nz), thickness), max(ring, ring_far));
-	float wake = step(0.72, wake_foam + 0.3 * nz);
+	float wake = step(0.72, wf + 0.3 * nz);
 	col = mix(col, foam_color, max(contact, wake));
 
 	ALBEDO = debug_view == 1 ? vec3(clamp(thickness / 4.0, 0.0, 1.0)) : col;
